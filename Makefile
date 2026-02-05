@@ -100,6 +100,11 @@ db-init: ## Initialize database with migrations
 	@mkdir -p ~/.clusterctl
 	sqlite3 ~/.clusterctl/clusterctl.db < migrations/001_init.sql
 
+## Tailscale Serve
+
+serve: build-server ## Run server with Tailscale Serve (Tailnet-only access)
+	@./scripts/serve.sh
+
 ## Docker targets
 
 docker-build: ## Build Docker image
