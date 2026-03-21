@@ -2,11 +2,13 @@ package agent
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -214,12 +216,9 @@ func (a *Agent) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Authenticate request using Bearer token
-	if a.authToken != "" {
-		auth := r.Header.Get("Authorization")
-		if auth != "Bearer "+a.authToken {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
+	if !a.authenticateRequest(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
 	}
 
 	// Limit request body size to prevent abuse
@@ -236,10 +235,30 @@ func (a *Agent) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// authenticateRequest checks the Bearer token using constant-time comparison.
+// Returns true if no token is configured or the token matches.
+func (a *Agent) authenticateRequest(r *http.Request) bool {
+	if a.authToken == "" {
+		return true
+	}
+	auth := r.Header.Get("Authorization")
+	const prefix = "Bearer "
+	if !strings.HasPrefix(auth, prefix) {
+		return false
+	}
+	token := auth[len(prefix):]
+	return subtle.ConstantTimeCompare([]byte(token), []byte(a.authToken)) == 1
+}
+
 // handleHealth handles GET /health requests.
 func (a *Agent) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !a.authenticateRequest(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -256,6 +275,11 @@ func (a *Agent) handleHealth(w http.ResponseWriter, r *http.Request) {
 func (a *Agent) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if !a.authenticateRequest(r) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 

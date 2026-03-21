@@ -67,7 +67,9 @@ func (uc *FailoverUseCase) ExecuteFailover(
 	}
 
 	// Step 3: Update cluster config
-	cluster.ChangeHead(newHeadID)
+	if err := cluster.ChangeHead(newHeadID); err != nil {
+		return fmt.Errorf("failed to change head to %s: %w", newHeadID, err)
+	}
 	cluster.Status = domain.ClusterStatusStarting
 	now := time.Now()
 	cluster.StartedAt = &now

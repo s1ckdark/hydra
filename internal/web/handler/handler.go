@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"net/url"
 
@@ -10,6 +11,12 @@ import (
 	"github.com/dave/clusterctl/internal/domain"
 	"github.com/dave/clusterctl/internal/usecase"
 )
+
+// internalError logs the full error and returns a generic message to the client.
+func internalError(c echo.Context, msg string, err error) error {
+	log.Printf("internal error: %s: %v", msg, err)
+	return c.JSON(http.StatusInternalServerError, map[string]string{"error": msg})
+}
 
 // Handler handles HTTP requests
 type Handler struct {
@@ -329,7 +336,7 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 	forceRefresh := c.QueryParam("refresh") == "true"
 	devices, err := h.deviceUC.ListDevices(ctx, forceRefresh)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return internalError(c, "failed to list devices", err)
 	}
 
 	return c.JSON(http.StatusOK, devices)
@@ -346,7 +353,8 @@ func (h *Handler) APIDeviceDetail(c echo.Context) error {
 
 	device, err := h.deviceUC.GetDevice(ctx, id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		log.Printf("internal error: get device %s: %v", id, err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "device not found"})
 	}
 
 	return c.JSON(http.StatusOK, device)
@@ -363,7 +371,7 @@ func (h *Handler) APIDeviceMetrics(c echo.Context) error {
 
 	metrics, err := h.monitorUC.GetDeviceMetrics(ctx, id)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return internalError(c, "failed to get device metrics", err)
 	}
 
 	return c.JSON(http.StatusOK, metrics)
@@ -379,7 +387,7 @@ func (h *Handler) APIClusterList(c echo.Context) error {
 
 	clusters, err := h.clusterUC.ListClusters(ctx)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return internalError(c, "failed to list clusters", err)
 	}
 
 	return c.JSON(http.StatusOK, clusters)
@@ -396,7 +404,8 @@ func (h *Handler) APIClusterDetail(c echo.Context) error {
 
 	cluster, err := h.clusterUC.GetCluster(ctx, id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		log.Printf("internal error: get cluster %s: %v", id, err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "cluster not found"})
 	}
 
 	return c.JSON(http.StatusOK, cluster)
@@ -414,12 +423,12 @@ func (h *Handler) APIClusterStart(c echo.Context) error {
 	// Get device map for cluster operations
 	devices, err := h.deviceUC.GetDeviceMap(ctx)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get devices: " + err.Error()})
+		return internalError(c, "failed to get devices", err)
 	}
 
 	err = h.clusterUC.StartCluster(ctx, id, devices)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return internalError(c, "failed to start cluster", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "started", "id": id})
@@ -437,12 +446,12 @@ func (h *Handler) APIClusterStop(c echo.Context) error {
 
 	devices, err := h.deviceUC.GetDeviceMap(ctx)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get devices: " + err.Error()})
+		return internalError(c, "failed to get devices", err)
 	}
 
 	err = h.clusterUC.StopCluster(ctx, id, devices, force)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return internalError(c, "failed to stop cluster", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "stopped", "id": id})
@@ -466,21 +475,28 @@ func (h *Handler) APIClusterAddWorker(c echo.Context) error {
 
 	devices, err := h.deviceUC.GetDeviceMap(ctx)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get devices: " + err.Error()})
+		return internalError(c, "failed to get devices", err)
 	}
 
 	// Get the cluster to find head device
 	cluster, err := h.clusterUC.GetCluster(ctx, id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		log.Printf("internal error: get cluster %s: %v", id, err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "cluster not found"})
 	}
 
 	device := devices[req.DeviceID]
+	if device == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "device not found: " + req.DeviceID})
+	}
 	headDevice := devices[cluster.HeadNodeID]
+	if headDevice == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "head device not found: " + cluster.HeadNodeID})
+	}
 
 	err = h.clusterUC.AddWorker(ctx, id, req.DeviceID, device, headDevice)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return internalError(c, "failed to add worker", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "worker_added", "cluster_id": id, "device_id": req.DeviceID})
@@ -498,14 +514,17 @@ func (h *Handler) APIClusterRemoveWorker(c echo.Context) error {
 
 	devices, err := h.deviceUC.GetDeviceMap(ctx)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get devices: " + err.Error()})
+		return internalError(c, "failed to get devices", err)
 	}
 
 	device := devices[deviceID]
+	if device == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "device not found: " + deviceID})
+	}
 
 	err = h.clusterUC.RemoveWorker(ctx, id, deviceID, device)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return internalError(c, "failed to remove worker", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "worker_removed", "cluster_id": id, "device_id": deviceID})
@@ -529,12 +548,12 @@ func (h *Handler) APIClusterChangeHead(c echo.Context) error {
 
 	devices, err := h.deviceUC.GetDeviceMap(ctx)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to get devices: " + err.Error()})
+		return internalError(c, "failed to get devices", err)
 	}
 
 	err = h.clusterUC.ChangeHead(ctx, id, req.NewHeadID, devices)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return internalError(c, "failed to change head node", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "head_changed", "cluster_id": id, "new_head_id": req.NewHeadID})
@@ -551,7 +570,8 @@ func (h *Handler) APIClusterHealth(c echo.Context) error {
 
 	cluster, err := h.clusterUC.GetCluster(ctx, id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		log.Printf("internal error: get cluster %s: %v", id, err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "cluster not found"})
 	}
 
 	// Check each node's agent health endpoint
@@ -599,7 +619,8 @@ func (h *Handler) APIClusterFailover(c echo.Context) error {
 
 	cluster, err := h.clusterUC.GetCluster(ctx, id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
+		log.Printf("internal error: get cluster %s: %v", id, err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "cluster not found"})
 	}
 
 	var req struct {
@@ -616,7 +637,7 @@ func (h *Handler) APIClusterFailover(c echo.Context) error {
 
 	devices, err := h.deviceUC.GetDeviceMap(ctx)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return internalError(c, "failed to get devices", err)
 	}
 
 	election := &domain.ElectionResult{
@@ -626,7 +647,7 @@ func (h *Handler) APIClusterFailover(c echo.Context) error {
 	}
 
 	if err := h.failoverUC.ExecuteFailover(ctx, cluster, election, devices, ""); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return internalError(c, "failover failed", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{

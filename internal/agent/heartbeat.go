@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"log"
 	"sync"
 	"time"
 
@@ -12,14 +13,50 @@ type HeartbeatMonitor struct {
 	checkInterval time.Duration
 	mu            sync.RWMutex
 	nodeHealth    map[string]*domain.NodeHealth
+	stopCleanup   chan struct{}
 }
 
 func NewHeartbeatMonitor(timeout, checkInterval time.Duration) *HeartbeatMonitor {
-	return &HeartbeatMonitor{
+	m := &HeartbeatMonitor{
 		timeout:       timeout,
 		checkInterval: checkInterval,
 		nodeHealth:    make(map[string]*domain.NodeHealth),
+		stopCleanup:   make(chan struct{}),
 	}
+	go m.cleanupLoop()
+	return m
+}
+
+// cleanupLoop periodically removes stale entries that haven't sent a heartbeat
+// within 3x the timeout period.
+func (m *HeartbeatMonitor) cleanupLoop() {
+	ticker := time.NewTicker(m.timeout * 3)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			m.evictStale()
+		case <-m.stopCleanup:
+			return
+		}
+	}
+}
+
+func (m *HeartbeatMonitor) evictStale() {
+	staleThreshold := m.timeout * 3
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, nh := range m.nodeHealth {
+		if time.Since(nh.LastHeartbeat) > staleThreshold {
+			log.Printf("evicting stale node %s (last heartbeat: %v ago)", id, time.Since(nh.LastHeartbeat))
+			delete(m.nodeHealth, id)
+		}
+	}
+}
+
+// Stop stops the cleanup goroutine.
+func (m *HeartbeatMonitor) Stop() {
+	close(m.stopCleanup)
 }
 
 func (m *HeartbeatMonitor) RecordHeartbeat(hb domain.Heartbeat) {

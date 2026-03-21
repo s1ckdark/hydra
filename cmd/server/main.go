@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"crypto/subtle"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
@@ -69,7 +71,16 @@ func main() {
 	// Middleware
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-	e.Use(middleware.CORS())
+
+	// CORS: restrict to configured origins
+	corsOrigins := cfg.Server.CORSOrigins
+	if len(corsOrigins) == 0 {
+		corsOrigins = []string{"http://localhost:8080"}
+	}
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: corsOrigins,
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete},
+	}))
 
 	// Static files
 	e.Static("/static", "internal/web/static")
@@ -87,22 +98,37 @@ func main() {
 	e.GET("/clusters/:id", h.ClusterDetail)
 	e.DELETE("/clusters/:id", h.ClusterDelete)
 
-	// API routes
+	// API routes — read-only (no auth required)
 	api := e.Group("/api")
 	api.GET("/devices", h.APIDeviceList)
 	api.GET("/devices/:id", h.APIDeviceDetail)
 	api.GET("/devices/:id/metrics", h.APIDeviceMetrics)
 	api.GET("/clusters", h.APIClusterList)
-	api.POST("/clusters", h.APIClusterCreate)
 	api.GET("/clusters/:id", h.APIClusterDetail)
-	api.DELETE("/clusters/:id", h.APIClusterDelete)
-	api.POST("/clusters/:id/start", h.APIClusterStart)
-	api.POST("/clusters/:id/stop", h.APIClusterStop)
-	api.POST("/clusters/:id/workers", h.APIClusterAddWorker)
-	api.DELETE("/clusters/:id/workers/:deviceId", h.APIClusterRemoveWorker)
-	api.PUT("/clusters/:id/head", h.APIClusterChangeHead)
 	api.GET("/clusters/:id/health", h.APIClusterHealth)
-	api.POST("/clusters/:id/failover", h.APIClusterFailover)
+
+	// API routes — mutating (auth required)
+	apiWrite := api.Group("")
+	if cfg.Server.APIKey != "" {
+		apiKey := cfg.Server.APIKey
+		apiWrite.Use(middleware.KeyAuthWithConfig(middleware.KeyAuthConfig{
+			KeyLookup: "header:Authorization",
+			AuthScheme: "Bearer",
+			Validator: func(key string, c echo.Context) (bool, error) {
+				return subtle.ConstantTimeCompare([]byte(key), []byte(apiKey)) == 1, nil
+			},
+		}))
+	} else {
+		log.Println("WARNING: No API key configured — mutating endpoints are unprotected. Set CLUSTERCTL_API_KEY.")
+	}
+	apiWrite.POST("/clusters", h.APIClusterCreate)
+	apiWrite.DELETE("/clusters/:id", h.APIClusterDelete)
+	apiWrite.POST("/clusters/:id/start", h.APIClusterStart)
+	apiWrite.POST("/clusters/:id/stop", h.APIClusterStop)
+	apiWrite.POST("/clusters/:id/workers", h.APIClusterAddWorker)
+	apiWrite.DELETE("/clusters/:id/workers/:deviceId", h.APIClusterRemoveWorker)
+	apiWrite.PUT("/clusters/:id/head", h.APIClusterChangeHead)
+	apiWrite.POST("/clusters/:id/failover", h.APIClusterFailover)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {

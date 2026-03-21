@@ -61,8 +61,10 @@ type RayConfig struct {
 
 // ServerConfig holds web server settings
 type ServerConfig struct {
-	Host string `mapstructure:"host"`
-	Port int    `mapstructure:"port"`
+	Host           string   `mapstructure:"host"`
+	Port           int      `mapstructure:"port"`
+	APIKey         string   `mapstructure:"api_key"`
+	CORSOrigins    []string `mapstructure:"cors_origins"`
 }
 
 // DatabaseConfig holds database settings
@@ -108,8 +110,9 @@ func DefaultConfig() *Config {
 			DefaultVersion:       "2.9.0",
 		},
 		Server: ServerConfig{
-			Host: "0.0.0.0",
-			Port: 8080,
+			Host:        "0.0.0.0",
+			Port:        8080,
+			CORSOrigins: []string{"http://localhost:8080"},
 		},
 		Database: DatabaseConfig{
 			Driver: "sqlite",
@@ -151,6 +154,7 @@ func Load() (*Config, error) {
 	viper.BindEnv("ssh.user", "CLUSTERCTL_SSH_USER")
 	viper.BindEnv("ssh.private_key_path", "CLUSTERCTL_SSH_KEY")
 	viper.BindEnv("database.dsn", "CLUSTERCTL_DATABASE_DSN")
+	viper.BindEnv("server.api_key", "CLUSTERCTL_API_KEY")
 
 	// Try to read config file
 	if err := viper.ReadInConfig(); err != nil {
