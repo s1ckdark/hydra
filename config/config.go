@@ -100,7 +100,7 @@ func DefaultConfig() *Config {
 			PrivateKeyPath:  filepath.Join(os.Getenv("HOME"), ".ssh", "id_rsa"),
 			Port:            22,
 			Timeout:         30,
-			UseTailscaleSSH: true,
+			UseTailscaleSSH: false,
 		},
 		Ray: RayConfig{
 			DefaultPort:          6379,

@@ -4,13 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-
-	"crypto/subtle"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -27,6 +26,40 @@ var (
 	Version   = "dev"
 	BuildTime = "unknown"
 )
+
+// tailscaleCIDR is the Tailscale CGNAT range (100.64.0.0/10)
+var tailscaleCIDR = func() *net.IPNet {
+	_, cidr, _ := net.ParseCIDR("100.64.0.0/10")
+	return cidr
+}()
+
+// isTailscaleOrLocal returns true if the IP is on the Tailscale network or localhost
+func isTailscaleOrLocal(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+	return tailscaleCIDR.Contains(ip)
+}
+
+// tailscaleAuthMiddleware allows requests only from Tailscale network or localhost
+func tailscaleAuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if !isTailscaleOrLocal(c.RealIP()) {
+			return c.JSON(http.StatusForbidden, map[string]string{
+				"error": "access denied: must be on Tailscale network",
+			})
+		}
+		return next(c)
+	}
+}
 
 func main() {
 	// Load configuration
@@ -58,11 +91,13 @@ func main() {
 	defer sshExecutor.Close()
 
 	sshCollector := ssh.NewCollector(sshExecutor)
+	gpuCollector := ssh.NewGPUCollector(sshExecutor)
 
 	// Initialize use cases
 	deviceUC := usecase.NewDeviceUseCase(repos, tsClient, sshCollector)
+	deviceUC.SetGPUChecker(gpuCollector)
+	clusterUC := usecase.NewClusterUseCase(repos, nil) // ray manager set later when needed
 	// monitorUC := usecase.NewMonitorUseCase(repos, sshCollector, deviceUC)
-	// clusterUC would need ray manager
 
 	// Initialize Echo
 	e := echo.New()
@@ -86,16 +121,26 @@ func main() {
 	e.Static("/static", "internal/web/static")
 
 	// Initialize handlers
-	h := handler.NewHandler(deviceUC, nil, nil, nil, cfg)
+	h := handler.NewHandler(deviceUC, clusterUC, nil, nil, cfg)
+	h.SetExecutor(sshExecutor)
 
 	// Routes
 	e.GET("/", h.Dashboard)
 	e.GET("/devices", h.DeviceList)
 	e.GET("/devices/:id", h.DeviceDetail)
+	e.GET("/htmx/devices", h.HTMXDeviceList)
+	e.GET("/htmx/devices/:id", h.HTMXDeviceDetail)
+	e.GET("/htmx/device-count", h.HTMXDeviceCount)
+	e.GET("/htmx/device-options", h.HTMXDeviceOptions)
+	e.GET("/htmx/device-checkboxes", h.HTMXDeviceCheckboxes)
+	e.GET("/htmx/clusters", h.HTMXClusterList)
+	e.GET("/htmx/clusters/:id", h.HTMXClusterDetail)
 	e.GET("/clusters", h.ClusterList)
 	e.GET("/clusters/new", h.ClusterNew)
 	e.POST("/clusters", h.ClusterCreate)
 	e.GET("/clusters/:id", h.ClusterDetail)
+	e.GET("/clusters/:id/execute", h.ClusterExecutePage)
+	e.POST("/clusters/:id/execute", h.ClusterExecuteTask)
 	e.DELETE("/clusters/:id", h.ClusterDelete)
 
 	// API routes — read-only (no auth required)
@@ -107,20 +152,9 @@ func main() {
 	api.GET("/clusters/:id", h.APIClusterDetail)
 	api.GET("/clusters/:id/health", h.APIClusterHealth)
 
-	// API routes — mutating (auth required)
+	// API routes — mutating (Tailscale network auth)
 	apiWrite := api.Group("")
-	if cfg.Server.APIKey != "" {
-		apiKey := cfg.Server.APIKey
-		apiWrite.Use(middleware.KeyAuthWithConfig(middleware.KeyAuthConfig{
-			KeyLookup: "header:Authorization",
-			AuthScheme: "Bearer",
-			Validator: func(key string, c echo.Context) (bool, error) {
-				return subtle.ConstantTimeCompare([]byte(key), []byte(apiKey)) == 1, nil
-			},
-		}))
-	} else {
-		log.Println("WARNING: No API key configured — mutating endpoints are unprotected. Set CLUSTERCTL_API_KEY.")
-	}
+	apiWrite.Use(tailscaleAuthMiddleware)
 	apiWrite.POST("/clusters", h.APIClusterCreate)
 	apiWrite.DELETE("/clusters/:id", h.APIClusterDelete)
 	apiWrite.POST("/clusters/:id/start", h.APIClusterStart)
