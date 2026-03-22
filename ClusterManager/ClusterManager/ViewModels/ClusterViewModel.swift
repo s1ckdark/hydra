@@ -6,11 +6,13 @@ class ClusterViewModel: ObservableObject {
     @Published var selectedCluster: Cluster?
     @Published var health: ClusterHealth?
     @Published var executeResult: ExecuteResponse?
+    @Published var workerStatuses: [WorkerStatus] = []
     @Published var isLoading = false
     @Published var isExecuting = false
     @Published var error: String?
 
     private let api = APIClient.shared
+    private var processPollTask: Task<Void, Never>?
 
     func loadClusters() async {
         isLoading = true
@@ -28,6 +30,32 @@ class ClusterViewModel: ObservableObject {
             health = try await api.getClusterHealth(id: cluster.id)
         } catch {
             self.error = error.localizedDescription
+        }
+        startProcessPolling()
+    }
+
+    func startProcessPolling() {
+        processPollTask?.cancel()
+        guard let cluster = selectedCluster else { return }
+        processPollTask = Task {
+            while !Task.isCancelled {
+                await fetchProcesses(clusterId: cluster.id)
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
+    func stopProcessPolling() {
+        processPollTask?.cancel()
+        processPollTask = nil
+    }
+
+    private func fetchProcesses(clusterId: String) async {
+        do {
+            let response = try await api.getClusterProcesses(id: clusterId)
+            workerStatuses = response.workers
+        } catch {
+            // silently retry
         }
     }
 

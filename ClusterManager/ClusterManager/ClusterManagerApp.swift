@@ -15,5 +15,6 @@ struct ClusterManagerApp: App {
             MenuBarView()
                 .environmentObject(dashboardVM)
         }
+        .menuBarExtraStyle(.window)
     }
 }

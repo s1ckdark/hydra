@@ -1638,3 +1638,122 @@ func (h *Handler) HTMXGPUMonitor(c echo.Context) error {
 	b.WriteString(`</div>`)
 	return c.HTML(http.StatusOK, b.String())
 }
+
+// WorkerProcess represents a process running on a worker node
+type WorkerProcess struct {
+	PID         string  `json:"pid"`
+	ProcessName string  `json:"processName"`
+	CPUPercent  float64 `json:"cpuPercent"`
+	MemPercent  float64 `json:"memPercent"`
+	VRAM_MB     int     `json:"vramMB,omitempty"`
+	Command     string  `json:"command"`
+	IsGPU       bool    `json:"isGpu"`
+}
+
+// WorkerStatus represents the status of a single worker
+type WorkerStatus struct {
+	DeviceID   string          `json:"deviceId"`
+	DeviceName string          `json:"deviceName"`
+	GPU        string          `json:"gpu,omitempty"`
+	Processes  []WorkerProcess `json:"processes"`
+	Error      string          `json:"error,omitempty"`
+}
+
+// APIClusterProcesses returns running processes on all cluster workers
+func (h *Handler) APIClusterProcesses(c echo.Context) error {
+	id := c.Param("id")
+
+	if h.clusterUC == nil || h.executor == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "service not available"})
+	}
+
+	cluster, err := h.clusterUC.GetCluster(c.Request().Context(), id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "cluster not found"})
+	}
+
+	devices, err := h.deviceUC.GetDeviceMap(c.Request().Context())
+	if err != nil {
+		return internalError(c, "failed to get devices", err)
+	}
+
+	var workers []*domain.Device
+	for _, wid := range cluster.WorkerIDs {
+		if d, ok := devices[wid]; ok && d.IsOnline() {
+			workers = append(workers, d)
+		}
+	}
+
+	statuses := make([]WorkerStatus, len(workers))
+	var wg sync.WaitGroup
+
+	script := `echo "==GPU=="; nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null; echo "==CPU=="; ps aux --sort=-%cpu -ww | awk 'NR>1 && NR<=8 {printf "%s|%s|%s|", $2, $3, $4; for(i=11;i<=NF;i++) printf "%s ", $i; print ""}'`
+
+	for i, w := range workers {
+		wg.Add(1)
+		go func(idx int, dev *domain.Device) {
+			defer wg.Done()
+			sshCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			ws := WorkerStatus{DeviceID: dev.ID, DeviceName: dev.GetDisplayName()}
+			if dev.HasGPU {
+				ws.GPU = fmt.Sprintf("%dx %s", dev.GPUCount, dev.GPUModel)
+			}
+
+			output, execErr := h.executor.Execute(sshCtx, dev, script)
+			if execErr != nil {
+				ws.Error = execErr.Error()
+				statuses[idx] = ws
+				return
+			}
+
+			lines := strings.Split(strings.TrimSpace(output), "\n")
+			section := ""
+			gpuPids := make(map[string]int)
+
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line == "==GPU==" { section = "gpu"; continue }
+				if line == "==CPU==" { section = "cpu"; continue }
+				if line == "" { continue }
+
+				if section == "gpu" {
+					parts := strings.SplitN(line, ", ", 3)
+					if len(parts) == 3 {
+						pid := strings.TrimSpace(parts[0])
+						vram := 0
+						fmt.Sscanf(strings.TrimSpace(parts[2]), "%d", &vram)
+						gpuPids[pid] = vram
+						ws.Processes = append(ws.Processes, WorkerProcess{
+							PID: pid, ProcessName: strings.TrimSpace(parts[1]),
+							VRAM_MB: vram, Command: strings.TrimSpace(parts[1]), IsGPU: true,
+						})
+					}
+				} else if section == "cpu" {
+					parts := strings.SplitN(line, "|", 4)
+					if len(parts) == 4 {
+						pid := strings.TrimSpace(parts[0])
+						if _, isGpu := gpuPids[pid]; isGpu { continue }
+						var cpuPct, memPct float64
+						fmt.Sscanf(strings.TrimSpace(parts[1]), "%f", &cpuPct)
+						fmt.Sscanf(strings.TrimSpace(parts[2]), "%f", &memPct)
+						cmd := strings.TrimSpace(parts[3])
+						if len(cmd) > 80 { cmd = cmd[:80] + "..." }
+						ws.Processes = append(ws.Processes, WorkerProcess{
+							PID: pid, CPUPercent: cpuPct, MemPercent: memPct,
+							Command: cmd, IsGPU: false,
+						})
+					}
+				}
+			}
+			statuses[idx] = ws
+		}(i, w)
+	}
+	wg.Wait()
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"cluster_id": id, "timestamp": time.Now(),
+		"worker_count": len(workers), "workers": statuses,
+	})
+}

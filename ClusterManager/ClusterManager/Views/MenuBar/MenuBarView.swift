@@ -24,47 +24,58 @@ struct MenuBarView: View {
                 ForEach(gpuVM.nodes) { node in
                     if let gpus = node.gpus, !gpus.isEmpty {
                         ForEach(gpus) { gpu in
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(utilizationColor(gpu.utilizationPercent))
-                                    .frame(width: 6, height: 6)
-                                Text(node.deviceName.components(separatedBy: ".").first ?? node.deviceName)
-                                    .font(.caption)
-                                    .frame(width: 70, alignment: .leading)
-                                    .lineLimit(1)
-
-                                // Utilization bar
-                                GeometryReader { geo in
-                                    ZStack(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 2)
-                                            .fill(.quaternary)
-                                        RoundedRectangle(cornerRadius: 2)
-                                            .fill(utilizationColor(gpu.utilizationPercent))
-                                            .frame(width: geo.size.width * gpu.utilizationPercent / 100)
-                                    }
+                            VStack(alignment: .leading, spacing: 2) {
+                                // Line 1: node name
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(utilizationColor(gpu.utilizationPercent))
+                                        .frame(width: 6, height: 6)
+                                    Text(node.deviceName.components(separatedBy: ".").first ?? node.deviceName)
+                                        .font(.caption)
+                                        .fontWeight(.medium)
                                 }
-                                .frame(width: 50, height: 8)
+                                // Line 2: bar + stats
+                                HStack(spacing: 6) {
+                                    GeometryReader { geo in
+                                        ZStack(alignment: .leading) {
+                                            RoundedRectangle(cornerRadius: 2)
+                                                .fill(.quaternary)
+                                            RoundedRectangle(cornerRadius: 2)
+                                                .fill(utilizationColor(gpu.utilizationPercent))
+                                                .frame(width: geo.size.width * gpu.utilizationPercent / 100)
+                                        }
+                                    }
+                                    .frame(height: 6)
 
-                                Text(String(format: "%2.0f%%", gpu.utilizationPercent))
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .frame(width: 30, alignment: .trailing)
-                                Text("\(gpu.temperatureC)°")
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(tempColor(gpu.temperatureC))
-                                    .frame(width: 28, alignment: .trailing)
+                                    Text(String(format: "%.0f%%", gpu.utilizationPercent))
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .frame(width: 30, alignment: .trailing)
+                                    Text("\(gpu.memoryUsedMB/1024)G/\(gpu.memoryTotalMB/1024)G")
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 52, alignment: .trailing)
+                                    Text("\(gpu.temperatureC)°C")
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(tempColor(gpu.temperatureC))
+                                        .frame(width: 30, alignment: .trailing)
+                                }
+                                .padding(.leading, 10)
                             }
+                            .padding(.vertical, 1)
                         }
                     } else if node.hasError {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle")
-                                .foregroundStyle(.red)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .foregroundStyle(.red)
+                                    .font(.caption2)
+                                Text(node.deviceName.components(separatedBy: ".").first ?? node.deviceName)
+                                    .font(.caption)
+                            }
+                            Text("connection error")
                                 .font(.caption2)
-                            Text(node.deviceName.components(separatedBy: ".").first ?? node.deviceName)
-                                .font(.caption)
-                            Spacer()
-                            Text("error")
-                                .font(.caption2)
                                 .foregroundStyle(.red)
+                                .padding(.leading, 10)
                         }
                     }
                 }

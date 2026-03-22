@@ -39,6 +39,10 @@ actor APIClient {
         return try await get("/api/devices/\(id)")
     }
 
+    func getDeviceMetrics(id: String) async throws -> DeviceMetrics {
+        return try await get("/api/devices/\(id)/metrics")
+    }
+
     func executeOnDevice(id: String, command: String, timeout: Int = 30) async throws -> TaskResult {
         return try await post("/api/devices/\(id)/execute", body: ExecuteRequest(command: command, timeout_seconds: timeout))
     }
@@ -56,6 +60,10 @@ actor APIClient {
     func createCluster(name: String, headID: String, workerIDs: [String]) async throws -> Cluster {
         let req = CreateClusterRequest(name: name, head_id: headID, worker_ids: workerIDs)
         return try await post("/api/clusters", body: req)
+    }
+
+    func getClusterProcesses(id: String) async throws -> ClusterProcessesResponse {
+        return try await get("/api/clusters/\(id)/processes")
     }
 
     func getGPUMonitor() async throws -> GPUMonitorResponse {

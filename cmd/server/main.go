@@ -160,6 +160,7 @@ func main() {
 	api.GET("/clusters/:id", h.APIClusterDetail)
 	api.GET("/clusters/:id/health", h.APIClusterHealth)
 	api.GET("/monitor/gpu", h.APIGPUMonitor)
+	api.GET("/clusters/:id/processes", h.APIClusterProcesses)
 	api.GET("/monitor/snapshot", h.APIMetricsSnapshot)
 
 	// API routes — mutating (Tailscale network auth)

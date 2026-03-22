@@ -174,6 +174,83 @@ struct ClusterDetailView: View {
                     }
                 }
 
+                // Worker Processes (live)
+                if !vm.workerStatuses.isEmpty {
+                    GroupBox("Worker Processes (live · 5s)") {
+                        ForEach(vm.workerStatuses) { worker in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Circle()
+                                        .fill(worker.hasError ? .red : .green)
+                                        .frame(width: 6, height: 6)
+                                    Text(worker.shortName)
+                                        .font(.caption.bold())
+                                    if let gpu = worker.gpu {
+                                        Text(gpu)
+                                            .font(.caption2)
+                                            .foregroundStyle(.purple)
+                                    }
+                                    Spacer()
+                                    Text("\((worker.processes ?? []).count) processes")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                if worker.hasError {
+                                    Text(worker.error ?? "")
+                                        .font(.caption2)
+                                        .foregroundStyle(.red)
+                                } else {
+                                    // GPU processes
+                                    if !worker.gpuProcesses.isEmpty {
+                                        ForEach(worker.gpuProcesses) { proc in
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "gpu")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.purple)
+                                                Text(proc.command)
+                                                    .font(.system(.caption2, design: .monospaced))
+                                                    .lineLimit(1)
+                                                Spacer()
+                                                if let vram = proc.vramMB {
+                                                    Text("\(vram)MB")
+                                                        .font(.system(.caption2, design: .monospaced))
+                                                        .foregroundStyle(.purple)
+                                                }
+                                                Text("PID \(proc.pid)")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            .padding(.leading, 12)
+                                        }
+                                    }
+
+                                    // Top CPU processes
+                                    ForEach(worker.cpuProcesses.prefix(3)) { proc in
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "cpu")
+                                                .font(.caption2)
+                                                .foregroundStyle(.blue)
+                                            Text(proc.command)
+                                                .font(.system(.caption2, design: .monospaced))
+                                                .lineLimit(1)
+                                            Spacer()
+                                            Text(String(format: "%.1f%%", proc.cpuPercent))
+                                                .font(.system(.caption2, design: .monospaced))
+                                                .foregroundStyle(proc.cpuPercent > 50 ? .red : .secondary)
+                                        }
+                                        .padding(.leading, 12)
+                                    }
+                                }
+
+                                if worker.id != vm.workerStatuses.last?.id {
+                                    Divider()
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if let error = vm.error {
                     Text(error)
                         .foregroundStyle(.red)
@@ -182,6 +259,7 @@ struct ClusterDetailView: View {
             }
             .padding()
         }
+        .onDisappear { vm.stopProcessPolling() }
     }
 }
 
