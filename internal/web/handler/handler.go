@@ -380,6 +380,7 @@ func (h *Handler) APIClusterCreate(c echo.Context) error {
 		Name      string   `json:"name"`
 		HeadID    string   `json:"head_id"`
 		WorkerIDs []string `json:"worker_ids"`
+		Mode      string   `json:"mode"` // "basic" or "ray"
 	}
 	if err := c.Bind(&req); err != nil {
 		// Fallback to form values for HTMX compatibility
@@ -397,7 +398,12 @@ func (h *Handler) APIClusterCreate(c echo.Context) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "cluster service not available"})
 	}
 
-	cluster, err := h.clusterUC.CreateCluster(c.Request().Context(), req.Name, req.HeadID, req.WorkerIDs)
+	mode := domain.ClusterModeBasic
+	if req.Mode == "ray" {
+		mode = domain.ClusterModeRay
+	}
+
+	cluster, err := h.clusterUC.CreateCluster(c.Request().Context(), req.Name, req.HeadID, req.WorkerIDs, mode)
 	if err != nil {
 		return internalError(c, "failed to create cluster", err)
 	}

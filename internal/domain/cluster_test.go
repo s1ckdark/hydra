@@ -17,11 +17,20 @@ func TestNewCluster(t *testing.T) {
 	if c.Status != ClusterStatusPending {
 		t.Errorf("Status = %q, want %q", c.Status, ClusterStatusPending)
 	}
-	if c.RayPort != 6379 {
-		t.Errorf("RayPort = %d, want 6379", c.RayPort)
+	if c.Mode != ClusterModeBasic {
+		t.Errorf("Mode = %q, want %q", c.Mode, ClusterModeBasic)
 	}
-	if c.DashboardPort != 8265 {
-		t.Errorf("DashboardPort = %d, want 8265", c.DashboardPort)
+	// Basic mode should not set Ray ports
+	if c.RayPort != 0 {
+		t.Errorf("RayPort = %d, want 0 for basic mode", c.RayPort)
+	}
+	// Ray mode should set ports
+	rc := NewClusterWithMode("ray-test", "head1", []string{"w1"}, ClusterModeRay)
+	if rc.RayPort != 6379 {
+		t.Errorf("Ray mode RayPort = %d, want 6379", rc.RayPort)
+	}
+	if rc.DashboardPort != 8265 {
+		t.Errorf("Ray mode DashboardPort = %d, want 8265", rc.DashboardPort)
 	}
 	if len(c.WorkerIDs) != 2 {
 		t.Fatalf("WorkerIDs length = %d, want 2", len(c.WorkerIDs))

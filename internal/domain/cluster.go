@@ -5,7 +5,15 @@ import (
 	"time"
 )
 
-// ClusterStatus represents the current status of a Ray cluster
+// ClusterMode represents the execution mode of a cluster
+type ClusterMode string
+
+const (
+	ClusterModeBasic ClusterMode = "basic" // SSH-based direct execution
+	ClusterModeRay   ClusterMode = "ray"   // Ray cluster orchestration
+)
+
+// ClusterStatus represents the current status of a cluster
 type ClusterStatus string
 
 const (
@@ -28,20 +36,21 @@ var (
 	ErrCannotRemoveHead    = errors.New("cannot remove head node, change head first")
 )
 
-// Cluster represents a Ray cluster configuration
+// Cluster represents a cluster configuration
 type Cluster struct {
 	ID          string        `json:"id"`
 	Name        string        `json:"name"`
 	Description string        `json:"description"`
+	Mode        ClusterMode   `json:"mode"`
 	Status      ClusterStatus `json:"status"`
 	HeadNodeID  string        `json:"headNodeId"`
 	WorkerIDs   []string      `json:"workerIds"`
 	DashboardURL string       `json:"dashboardUrl"`
 
-	// Ray configuration
-	RayPort         int    `json:"rayPort"`
-	DashboardPort   int    `json:"dashboardPort"`
-	ObjectStoreMemory int64 `json:"objectStoreMemory"` // bytes
+	// Ray configuration (only used when Mode == "ray")
+	RayPort         int    `json:"rayPort,omitempty"`
+	DashboardPort   int    `json:"dashboardPort,omitempty"`
+	ObjectStoreMemory int64 `json:"objectStoreMemory,omitempty"` // bytes
 
 	// Metadata
 	CreatedAt time.Time `json:"createdAt"`
@@ -56,17 +65,31 @@ type Cluster struct {
 
 // NewCluster creates a new cluster with default settings
 func NewCluster(name, headNodeID string, workerIDs []string) *Cluster {
+	return NewClusterWithMode(name, headNodeID, workerIDs, ClusterModeBasic)
+}
+
+// NewClusterWithMode creates a new cluster with the specified mode
+func NewClusterWithMode(name, headNodeID string, workerIDs []string, mode ClusterMode) *Cluster {
 	now := time.Now()
-	return &Cluster{
-		Name:          name,
-		Status:        ClusterStatusPending,
-		HeadNodeID:    headNodeID,
-		WorkerIDs:     workerIDs,
-		RayPort:       6379,
-		DashboardPort: 8265,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+	c := &Cluster{
+		Name:       name,
+		Mode:       mode,
+		Status:     ClusterStatusPending,
+		HeadNodeID: headNodeID,
+		WorkerIDs:  workerIDs,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
+	if mode == ClusterModeRay {
+		c.RayPort = 6379
+		c.DashboardPort = 8265
+	}
+	return c
+}
+
+// IsRayMode returns true if the cluster uses Ray orchestration
+func (c *Cluster) IsRayMode() bool {
+	return c.Mode == ClusterModeRay
 }
 
 // TotalNodes returns the total number of nodes (head + workers)

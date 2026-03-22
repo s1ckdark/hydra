@@ -195,6 +195,9 @@ func (d *DB) migrate() error {
 			error TEXT
 		)`,
 
+		// Cluster mode column
+		`ALTER TABLE clusters ADD COLUMN mode TEXT DEFAULT 'basic'`,
+
 		// GPU columns on devices (idempotent ALTER TABLEs)
 		`ALTER TABLE devices ADD COLUMN has_gpu INTEGER DEFAULT 0`,
 		`ALTER TABLE devices ADD COLUMN gpu_model TEXT DEFAULT ''`,
