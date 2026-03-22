@@ -52,7 +52,8 @@ func isTailscaleOrLocal(remoteAddr string) bool {
 // tailscaleAuthMiddleware allows requests only from Tailscale network or localhost
 func tailscaleAuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if !isTailscaleOrLocal(c.RealIP()) {
+		// Use RemoteAddr directly — never trust X-Forwarded-For headers
+		if !isTailscaleOrLocal(c.Request().RemoteAddr) {
 			return c.JSON(http.StatusForbidden, map[string]string{
 				"error": "access denied: must be on Tailscale network",
 			})

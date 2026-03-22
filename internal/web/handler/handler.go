@@ -1101,11 +1101,31 @@ func (h *Handler) ClusterExecutePage(c echo.Context) error {
 }
 
 // ClusterExecuteTask runs a command on all cluster workers in parallel
+// dangerousPatterns are shell metacharacters and patterns that could enable command injection
+var dangerousPatterns = []string{";", "&&", "||", "|", "`", "$(", "${", ">", "<", "\n", "\r", "\\"}
+
+// validateCommand checks that a command is safe to execute remotely
+func validateCommand(cmd string) error {
+	if len(cmd) > 1024 {
+		return fmt.Errorf("command too long (max 1024 chars)")
+	}
+	for _, p := range dangerousPatterns {
+		if strings.Contains(cmd, p) {
+			return fmt.Errorf("command contains disallowed pattern: %q", p)
+		}
+	}
+	return nil
+}
+
 func (h *Handler) ClusterExecuteTask(c echo.Context) error {
 	id := c.Param("id")
 	command := c.FormValue("command")
 	if command == "" {
 		return c.HTML(http.StatusOK, `<p class="text-red-500">Command is required</p>`)
+	}
+
+	if err := validateCommand(command); err != nil {
+		return c.HTML(http.StatusOK, fmt.Sprintf(`<p class="text-red-500">Invalid command: %s</p>`, err.Error()))
 	}
 
 	if h.clusterUC == nil || h.executor == nil {
