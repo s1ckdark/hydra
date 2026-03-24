@@ -68,6 +68,19 @@ database:
   # For PostgreSQL: postgres://user:password@host:port/database
   dsn: "~/.clusterctl/clusterctl.db"
 
+# Agent AI Provider Settings
+agent:
+  # AI provider for cluster decisions: claude, ollama, openai
+  # Leave empty to auto-detect (claude if API key exists, otherwise ollama)
+  ai_provider: ""
+
+  # Anthropic API key (for claude provider)
+  anthropic_api_key: ""
+
+  # Ollama settings (for ollama provider)
+  ollama_endpoint: "http://localhost:11434"
+  ollama_model: "gpt-oss:20b"
+
 # Logging Settings
 log:
   # Log level: debug, info, warn, error

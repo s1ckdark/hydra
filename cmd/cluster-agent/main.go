@@ -13,6 +13,7 @@ import (
 	"github.com/dave/naga/internal/agent"
 	"github.com/dave/naga/internal/domain"
 	"github.com/dave/naga/internal/infra/ai/claude"
+	"github.com/dave/naga/internal/infra/ai/ollama"
 )
 
 func main() {
@@ -23,12 +24,24 @@ func main() {
 	heartbeat := flag.Duration("heartbeat", 3*time.Second, "Heartbeat interval")
 	timeout := flag.Duration("timeout", 15*time.Second, "Failure timeout")
 	anthropicKey := flag.String("anthropic-key", "", "Anthropic API key (default: $ANTHROPIC_API_KEY)")
+	aiProvider := flag.String("ai-provider", "", "AI provider: claude, ollama (default: auto-detect)")
+	ollamaEndpoint := flag.String("ollama-endpoint", "", "Ollama endpoint (default: http://localhost:11434)")
+	ollamaModel := flag.String("ollama-model", "", "Ollama model name (default: gpt-oss:20b)")
 
 	flag.Parse()
 
 	// Resolve API key from env if not set via flag
 	if *anthropicKey == "" {
 		*anthropicKey = os.Getenv("ANTHROPIC_API_KEY")
+	}
+	if *aiProvider == "" {
+		*aiProvider = os.Getenv("NAGA_AI_PROVIDER")
+	}
+	if *ollamaEndpoint == "" {
+		*ollamaEndpoint = os.Getenv("NAGA_OLLAMA_ENDPOINT")
+	}
+	if *ollamaModel == "" {
+		*ollamaModel = os.Getenv("NAGA_OLLAMA_MODEL")
 	}
 
 	if *nodeID == "" {
@@ -60,7 +73,7 @@ func main() {
 		ListenAddr:        fmt.Sprintf(":%d", *port),
 		HeartbeatInterval: *heartbeat,
 		FailureTimeout:    *timeout,
-		HeadSelector:      resolveHeadSelector(*anthropicKey),
+		HeadSelector:      resolveHeadSelector(*aiProvider, *anthropicKey, *ollamaEndpoint, *ollamaModel),
 	}
 
 	a := agent.NewAgent(cfg)
@@ -82,9 +95,24 @@ func main() {
 	}
 }
 
-func resolveHeadSelector(apiKey string) agent.HeadSelector {
-	if apiKey == "" {
+func resolveHeadSelector(provider, anthropicKey, ollamaEndpoint, ollamaModel string) agent.HeadSelector {
+	switch provider {
+	case "ollama":
+		log.Printf("using ollama provider (endpoint=%s, model=%s)", ollamaEndpoint, ollamaModel)
+		return ollama.NewProvider(ollamaEndpoint, ollamaModel)
+	case "claude":
+		if anthropicKey == "" {
+			return nil
+		}
+		return claude.NewProvider(anthropicKey, "")
+	default:
+		// Auto-detect: prefer claude if key exists, otherwise try ollama
+		if anthropicKey != "" {
+			return claude.NewProvider(anthropicKey, "")
+		}
+		if ollamaEndpoint != "" || ollamaModel != "" {
+			return ollama.NewProvider(ollamaEndpoint, ollamaModel)
+		}
 		return nil
 	}
-	return claude.NewProvider(apiKey, "")
 }
