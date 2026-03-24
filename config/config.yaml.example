@@ -81,6 +81,10 @@ agent:
   ollama_endpoint: "http://localhost:11434"
   ollama_model: "gpt-oss:20b"
 
+  # LM Studio settings (for lmstudio provider)
+  lmstudio_endpoint: "http://localhost:1234"
+  lmstudio_model: "gpt-oss-20b"
+
 # Logging Settings
 log:
   # Log level: debug, info, warn, error

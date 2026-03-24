@@ -13,6 +13,7 @@ import (
 	"github.com/dave/naga/internal/agent"
 	"github.com/dave/naga/internal/domain"
 	"github.com/dave/naga/internal/infra/ai/claude"
+	"github.com/dave/naga/internal/infra/ai/lmstudio"
 	"github.com/dave/naga/internal/infra/ai/ollama"
 )
 
@@ -24,13 +25,15 @@ func main() {
 	heartbeat := flag.Duration("heartbeat", 3*time.Second, "Heartbeat interval")
 	timeout := flag.Duration("timeout", 15*time.Second, "Failure timeout")
 	anthropicKey := flag.String("anthropic-key", "", "Anthropic API key (default: $ANTHROPIC_API_KEY)")
-	aiProvider := flag.String("ai-provider", "", "AI provider: claude, ollama (default: auto-detect)")
+	aiProvider := flag.String("ai-provider", "", "AI provider: claude, ollama, lmstudio (default: auto-detect)")
 	ollamaEndpoint := flag.String("ollama-endpoint", "", "Ollama endpoint (default: http://localhost:11434)")
 	ollamaModel := flag.String("ollama-model", "", "Ollama model name (default: gpt-oss:20b)")
+	lmstudioEndpoint := flag.String("lmstudio-endpoint", "", "LM Studio endpoint (default: http://localhost:1234)")
+	lmstudioModel := flag.String("lmstudio-model", "", "LM Studio model name (default: gpt-oss-20b)")
 
 	flag.Parse()
 
-	// Resolve API key from env if not set via flag
+	// Resolve from env if not set via flag
 	if *anthropicKey == "" {
 		*anthropicKey = os.Getenv("ANTHROPIC_API_KEY")
 	}
@@ -42,6 +45,12 @@ func main() {
 	}
 	if *ollamaModel == "" {
 		*ollamaModel = os.Getenv("NAGA_OLLAMA_MODEL")
+	}
+	if *lmstudioEndpoint == "" {
+		*lmstudioEndpoint = os.Getenv("NAGA_LMSTUDIO_ENDPOINT")
+	}
+	if *lmstudioModel == "" {
+		*lmstudioModel = os.Getenv("NAGA_LMSTUDIO_MODEL")
 	}
 
 	if *nodeID == "" {
@@ -73,7 +82,7 @@ func main() {
 		ListenAddr:        fmt.Sprintf(":%d", *port),
 		HeartbeatInterval: *heartbeat,
 		FailureTimeout:    *timeout,
-		HeadSelector:      resolveHeadSelector(*aiProvider, *anthropicKey, *ollamaEndpoint, *ollamaModel),
+		HeadSelector:      resolveHeadSelector(*aiProvider, *anthropicKey, *ollamaEndpoint, *ollamaModel, *lmstudioEndpoint, *lmstudioModel),
 	}
 
 	a := agent.NewAgent(cfg)
@@ -95,23 +104,29 @@ func main() {
 	}
 }
 
-func resolveHeadSelector(provider, anthropicKey, ollamaEndpoint, ollamaModel string) agent.HeadSelector {
+func resolveHeadSelector(provider, anthropicKey, ollamaEndpoint, ollamaModel, lmstudioEndpoint, lmstudioModel string) agent.HeadSelector {
 	switch provider {
 	case "ollama":
 		log.Printf("using ollama provider (endpoint=%s, model=%s)", ollamaEndpoint, ollamaModel)
 		return ollama.NewProvider(ollamaEndpoint, ollamaModel)
+	case "lmstudio":
+		log.Printf("using lmstudio provider (endpoint=%s, model=%s)", lmstudioEndpoint, lmstudioModel)
+		return lmstudio.NewProvider(lmstudioEndpoint, lmstudioModel)
 	case "claude":
 		if anthropicKey == "" {
 			return nil
 		}
 		return claude.NewProvider(anthropicKey, "")
 	default:
-		// Auto-detect: prefer claude if key exists, otherwise try ollama
+		// Auto-detect: claude → ollama → lmstudio → nil
 		if anthropicKey != "" {
 			return claude.NewProvider(anthropicKey, "")
 		}
 		if ollamaEndpoint != "" || ollamaModel != "" {
 			return ollama.NewProvider(ollamaEndpoint, ollamaModel)
+		}
+		if lmstudioEndpoint != "" || lmstudioModel != "" {
+			return lmstudio.NewProvider(lmstudioEndpoint, lmstudioModel)
 		}
 		return nil
 	}

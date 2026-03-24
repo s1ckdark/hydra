@@ -87,9 +87,11 @@ type AgentConfig struct {
 	CheckpointDir       string `mapstructure:"checkpoint_dir"`
 	AnthropicAPIKey     string `mapstructure:"anthropic_api_key"`
 	AgentPort           int    `mapstructure:"agent_port"`
-	AIProvider          string `mapstructure:"ai_provider"`       // "claude", "ollama", "openai"
+	AIProvider          string `mapstructure:"ai_provider"`       // "claude", "ollama", "lmstudio", "openai"
 	OllamaEndpoint      string `mapstructure:"ollama_endpoint"`
 	OllamaModel         string `mapstructure:"ollama_model"`
+	LMStudioEndpoint    string `mapstructure:"lmstudio_endpoint"`
+	LMStudioModel       string `mapstructure:"lmstudio_model"`
 }
 
 // DefaultConfig returns a Config with default values
