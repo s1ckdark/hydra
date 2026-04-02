@@ -11,58 +11,58 @@ import (
 	"github.com/dave/naga/internal/domain"
 )
 
-// ClusterRepository implements repository.ClusterRepository for SQLite
-type ClusterRepository struct {
+// OrchRepository implements repository.OrchRepository for SQLite
+type OrchRepository struct {
 	db dbExecutor
 }
 
-// NewClusterRepository creates a new ClusterRepository
-func NewClusterRepository(db dbExecutor) *ClusterRepository {
-	return &ClusterRepository{db: db}
+// NewOrchRepository creates a new OrchRepository
+func NewOrchRepository(db dbExecutor) *OrchRepository {
+	return &OrchRepository{db: db}
 }
 
-// Create creates a new cluster
-func (r *ClusterRepository) Create(ctx context.Context, cluster *domain.Cluster) error {
-	if cluster.ID == "" {
-		cluster.ID = uuid.New().String()
+// Create creates a new orch
+func (r *OrchRepository) Create(ctx context.Context, orch *domain.Orch) error {
+	if orch.ID == "" {
+		orch.ID = uuid.New().String()
 	}
 
-	workerIDs, _ := json.Marshal(cluster.WorkerIDs)
+	workerIDs, _ := json.Marshal(orch.WorkerIDs)
 
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO clusters (
+		INSERT INTO orchs (
 			id, name, description, mode, status, head_node_id, worker_ids,
 			dashboard_url, ray_port, dashboard_port, object_store_memory,
 			created_at, updated_at, started_at, stopped_at, last_error, last_error_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		cluster.ID, cluster.Name, cluster.Description, cluster.Mode, cluster.Status,
-		cluster.HeadNodeID, string(workerIDs), cluster.DashboardURL,
-		cluster.RayPort, cluster.DashboardPort, cluster.ObjectStoreMemory,
-		cluster.CreatedAt, cluster.UpdatedAt, cluster.StartedAt, cluster.StoppedAt,
-		cluster.LastError, cluster.LastErrorAt,
+		orch.ID, orch.Name, orch.Description, orch.Mode, orch.Status,
+		orch.CoordinatorID, string(workerIDs), orch.DashboardURL,
+		orch.RayPort, orch.DashboardPort, orch.ObjectStoreMemory,
+		orch.CreatedAt, orch.UpdatedAt, orch.StartedAt, orch.StoppedAt,
+		orch.LastError, orch.LastErrorAt,
 	)
 
 	return err
 }
 
-// Update updates an existing cluster
-func (r *ClusterRepository) Update(ctx context.Context, cluster *domain.Cluster) error {
-	workerIDs, _ := json.Marshal(cluster.WorkerIDs)
-	cluster.UpdatedAt = time.Now()
+// Update updates an existing orch
+func (r *OrchRepository) Update(ctx context.Context, orch *domain.Orch) error {
+	workerIDs, _ := json.Marshal(orch.WorkerIDs)
+	orch.UpdatedAt = time.Now()
 
 	result, err := r.db.ExecContext(ctx, `
-		UPDATE clusters SET
+		UPDATE orchs SET
 			name = ?, description = ?, mode = ?, status = ?, head_node_id = ?,
 			worker_ids = ?, dashboard_url = ?, ray_port = ?, dashboard_port = ?,
 			object_store_memory = ?, updated_at = ?, started_at = ?, stopped_at = ?,
 			last_error = ?, last_error_at = ?
 		WHERE id = ?
 	`,
-		cluster.Name, cluster.Description, cluster.Mode, cluster.Status, cluster.HeadNodeID,
-		string(workerIDs), cluster.DashboardURL, cluster.RayPort, cluster.DashboardPort,
-		cluster.ObjectStoreMemory, cluster.UpdatedAt, cluster.StartedAt, cluster.StoppedAt,
-		cluster.LastError, cluster.LastErrorAt, cluster.ID,
+		orch.Name, orch.Description, orch.Mode, orch.Status, orch.CoordinatorID,
+		string(workerIDs), orch.DashboardURL, orch.RayPort, orch.DashboardPort,
+		orch.ObjectStoreMemory, orch.UpdatedAt, orch.StartedAt, orch.StoppedAt,
+		orch.LastError, orch.LastErrorAt, orch.ID,
 	)
 	if err != nil {
 		return err
@@ -70,96 +70,96 @@ func (r *ClusterRepository) Update(ctx context.Context, cluster *domain.Cluster)
 
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return domain.ErrClusterNotFound
+		return domain.ErrOrchNotFound
 	}
 
 	return nil
 }
 
-// GetByID retrieves a cluster by its ID
-func (r *ClusterRepository) GetByID(ctx context.Context, id string) (*domain.Cluster, error) {
+// GetByID retrieves a orch by its ID
+func (r *OrchRepository) GetByID(ctx context.Context, id string) (*domain.Orch, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, name, description, mode, status, head_node_id, worker_ids,
 			   dashboard_url, ray_port, dashboard_port, object_store_memory,
 			   created_at, updated_at, started_at, stopped_at, last_error, last_error_at
-		FROM clusters WHERE id = ?
+		FROM orchs WHERE id = ?
 	`, id)
 
-	return r.scanCluster(row)
+	return r.scanOrch(row)
 }
 
-// GetByName retrieves a cluster by its name
-func (r *ClusterRepository) GetByName(ctx context.Context, name string) (*domain.Cluster, error) {
+// GetByName retrieves a orch by its name
+func (r *OrchRepository) GetByName(ctx context.Context, name string) (*domain.Orch, error) {
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, name, description, mode, status, head_node_id, worker_ids,
 			   dashboard_url, ray_port, dashboard_port, object_store_memory,
 			   created_at, updated_at, started_at, stopped_at, last_error, last_error_at
-		FROM clusters WHERE name = ?
+		FROM orchs WHERE name = ?
 	`, name)
 
-	return r.scanCluster(row)
+	return r.scanOrch(row)
 }
 
-// GetAll retrieves all clusters
-func (r *ClusterRepository) GetAll(ctx context.Context) ([]*domain.Cluster, error) {
+// GetAll retrieves all orchs
+func (r *OrchRepository) GetAll(ctx context.Context) ([]*domain.Orch, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, description, mode, status, head_node_id, worker_ids,
 			   dashboard_url, ray_port, dashboard_port, object_store_memory,
 			   created_at, updated_at, started_at, stopped_at, last_error, last_error_at
-		FROM clusters ORDER BY created_at DESC
+		FROM orchs ORDER BY created_at DESC
 	`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	return r.scanClusters(rows)
+	return r.scanOrchs(rows)
 }
 
-// GetByStatus retrieves clusters by status
-func (r *ClusterRepository) GetByStatus(ctx context.Context, status domain.ClusterStatus) ([]*domain.Cluster, error) {
+// GetByStatus retrieves orchs by status
+func (r *OrchRepository) GetByStatus(ctx context.Context, status domain.OrchStatus) ([]*domain.Orch, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT id, name, description, mode, status, head_node_id, worker_ids,
 			   dashboard_url, ray_port, dashboard_port, object_store_memory,
 			   created_at, updated_at, started_at, stopped_at, last_error, last_error_at
-		FROM clusters WHERE status = ? ORDER BY created_at DESC
+		FROM orchs WHERE status = ? ORDER BY created_at DESC
 	`, status)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	return r.scanClusters(rows)
+	return r.scanOrchs(rows)
 }
 
-// Delete removes a cluster by ID
-func (r *ClusterRepository) Delete(ctx context.Context, id string) error {
-	result, err := r.db.ExecContext(ctx, "DELETE FROM clusters WHERE id = ?", id)
+// Delete removes a orch by ID
+func (r *OrchRepository) Delete(ctx context.Context, id string) error {
+	result, err := r.db.ExecContext(ctx, "DELETE FROM orchs WHERE id = ?", id)
 	if err != nil {
 		return err
 	}
 
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		return domain.ErrClusterNotFound
+		return domain.ErrOrchNotFound
 	}
 
 	return nil
 }
 
-// GetClusterByDeviceID finds the cluster that contains a device
-func (r *ClusterRepository) GetClusterByDeviceID(ctx context.Context, deviceID string) (*domain.Cluster, error) {
+// GetOrchByDeviceID finds the orch that contains a device
+func (r *OrchRepository) GetOrchByDeviceID(ctx context.Context, deviceID string) (*domain.Orch, error) {
 	// Check head node first
 	row := r.db.QueryRowContext(ctx, `
 		SELECT id, name, description, mode, status, head_node_id, worker_ids,
 			   dashboard_url, ray_port, dashboard_port, object_store_memory,
 			   created_at, updated_at, started_at, stopped_at, last_error, last_error_at
-		FROM clusters WHERE head_node_id = ?
+		FROM orchs WHERE head_node_id = ?
 	`, deviceID)
 
-	cluster, err := r.scanCluster(row)
+	orch, err := r.scanOrch(row)
 	if err == nil {
-		return cluster, nil
+		return orch, nil
 	}
 
 	// Check worker IDs (JSON array search)
@@ -167,7 +167,7 @@ func (r *ClusterRepository) GetClusterByDeviceID(ctx context.Context, deviceID s
 		SELECT id, name, description, mode, status, head_node_id, worker_ids,
 			   dashboard_url, ray_port, dashboard_port, object_store_memory,
 			   created_at, updated_at, started_at, stopped_at, last_error, last_error_at
-		FROM clusters
+		FROM orchs
 	`)
 	if err != nil {
 		return nil, err
@@ -175,7 +175,7 @@ func (r *ClusterRepository) GetClusterByDeviceID(ctx context.Context, deviceID s
 	defer rows.Close()
 
 	for rows.Next() {
-		c, err := r.scanClusterFromRows(rows)
+		c, err := r.scanOrchFromRows(rows)
 		if err != nil {
 			continue
 		}
@@ -187,22 +187,22 @@ func (r *ClusterRepository) GetClusterByDeviceID(ctx context.Context, deviceID s
 		}
 	}
 
-	return nil, domain.ErrClusterNotFound
+	return nil, domain.ErrOrchNotFound
 }
 
-func (r *ClusterRepository) scanCluster(row *sql.Row) (*domain.Cluster, error) {
-	var c domain.Cluster
+func (r *OrchRepository) scanOrch(row *sql.Row) (*domain.Orch, error) {
+	var c domain.Orch
 	var workerIDsJSON string
 	var description, mode, dashboardURL, lastError sql.NullString
 	var startedAt, stoppedAt, lastErrorAt sql.NullTime
 
 	err := row.Scan(
-		&c.ID, &c.Name, &description, &mode, &c.Status, &c.HeadNodeID, &workerIDsJSON,
+		&c.ID, &c.Name, &description, &mode, &c.Status, &c.CoordinatorID, &workerIDsJSON,
 		&dashboardURL, &c.RayPort, &c.DashboardPort, &c.ObjectStoreMemory,
 		&c.CreatedAt, &c.UpdatedAt, &startedAt, &stoppedAt, &lastError, &lastErrorAt,
 	)
 	if err == sql.ErrNoRows {
-		return nil, domain.ErrClusterNotFound
+		return nil, domain.ErrOrchNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -212,9 +212,9 @@ func (r *ClusterRepository) scanCluster(row *sql.Row) (*domain.Cluster, error) {
 		c.Description = description.String
 	}
 	if mode.Valid && mode.String != "" {
-		c.Mode = domain.ClusterMode(mode.String)
+		c.Mode = domain.OrchMode(mode.String)
 	} else {
-		c.Mode = domain.ClusterModeBasic
+		c.Mode = domain.OrchModeBasic
 	}
 	if dashboardURL.Valid {
 		c.DashboardURL = dashboardURL.String
@@ -240,14 +240,14 @@ func (r *ClusterRepository) scanCluster(row *sql.Row) (*domain.Cluster, error) {
 	return &c, nil
 }
 
-func (r *ClusterRepository) scanClusterFromRows(rows *sql.Rows) (*domain.Cluster, error) {
-	var c domain.Cluster
+func (r *OrchRepository) scanOrchFromRows(rows *sql.Rows) (*domain.Orch, error) {
+	var c domain.Orch
 	var workerIDsJSON string
 	var description, mode, dashboardURL, lastError sql.NullString
 	var startedAt, stoppedAt, lastErrorAt sql.NullTime
 
 	err := rows.Scan(
-		&c.ID, &c.Name, &description, &mode, &c.Status, &c.HeadNodeID, &workerIDsJSON,
+		&c.ID, &c.Name, &description, &mode, &c.Status, &c.CoordinatorID, &workerIDsJSON,
 		&dashboardURL, &c.RayPort, &c.DashboardPort, &c.ObjectStoreMemory,
 		&c.CreatedAt, &c.UpdatedAt, &startedAt, &stoppedAt, &lastError, &lastErrorAt,
 	)
@@ -259,9 +259,9 @@ func (r *ClusterRepository) scanClusterFromRows(rows *sql.Rows) (*domain.Cluster
 		c.Description = description.String
 	}
 	if mode.Valid && mode.String != "" {
-		c.Mode = domain.ClusterMode(mode.String)
+		c.Mode = domain.OrchMode(mode.String)
 	} else {
-		c.Mode = domain.ClusterModeBasic
+		c.Mode = domain.OrchModeBasic
 	}
 	if dashboardURL.Valid {
 		c.DashboardURL = dashboardURL.String
@@ -287,17 +287,17 @@ func (r *ClusterRepository) scanClusterFromRows(rows *sql.Rows) (*domain.Cluster
 	return &c, nil
 }
 
-func (r *ClusterRepository) scanClusters(rows *sql.Rows) ([]*domain.Cluster, error) {
-	var clusters []*domain.Cluster
+func (r *OrchRepository) scanOrchs(rows *sql.Rows) ([]*domain.Orch, error) {
+	var orchs []*domain.Orch
 
 	for rows.Next() {
-		c, err := r.scanClusterFromRows(rows)
+		c, err := r.scanOrchFromRows(rows)
 		if err != nil {
 			return nil, err
 		}
-		clusters = append(clusters, c)
+		orchs = append(orchs, c)
 	}
 
-	return clusters, rows.Err()
+	return orchs, rows.Err()
 }
 

@@ -12,7 +12,7 @@ func TestHeartbeatMonitor_DetectFailure(t *testing.T) {
 
 	mon.RecordHeartbeat(domain.Heartbeat{
 		NodeID:    "head-1",
-		ClusterID: "cluster-1",
+		OrchID: "orch-1",
 		Role:      domain.NodeRoleHead,
 		Timestamp: time.Now(),
 	})
@@ -28,7 +28,7 @@ func TestHeartbeatMonitor_DetectFailure(t *testing.T) {
 		t.Error("expected head-1 to be unhealthy after timeout")
 	}
 
-	failed := mon.GetFailedNodes("cluster-1")
+	failed := mon.GetFailedNodes("orch-1")
 	if len(failed) != 1 || failed[0].NodeID != "head-1" {
 		t.Errorf("expected 1 failed node (head-1), got %v", failed)
 	}
@@ -37,9 +37,9 @@ func TestHeartbeatMonitor_DetectFailure(t *testing.T) {
 func TestHeartbeatMonitor_GetHealthyWorkers(t *testing.T) {
 	mon := NewHeartbeatMonitor(15*time.Second, time.Second)
 	now := time.Now()
-	mon.RecordHeartbeat(domain.Heartbeat{NodeID: "head-1", ClusterID: "c1", Role: domain.NodeRoleHead, Timestamp: now})
-	mon.RecordHeartbeat(domain.Heartbeat{NodeID: "worker-1", ClusterID: "c1", Role: domain.NodeRoleWorker, Timestamp: now})
-	mon.RecordHeartbeat(domain.Heartbeat{NodeID: "worker-2", ClusterID: "c1", Role: domain.NodeRoleWorker, Timestamp: now})
+	mon.RecordHeartbeat(domain.Heartbeat{NodeID: "head-1", OrchID: "c1", Role: domain.NodeRoleHead, Timestamp: now})
+	mon.RecordHeartbeat(domain.Heartbeat{NodeID: "worker-1", OrchID: "c1", Role: domain.NodeRoleWorker, Timestamp: now})
+	mon.RecordHeartbeat(domain.Heartbeat{NodeID: "worker-2", OrchID: "c1", Role: domain.NodeRoleWorker, Timestamp: now})
 
 	workers := mon.GetHealthyWorkers("c1")
 	if len(workers) != 2 {

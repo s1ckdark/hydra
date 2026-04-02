@@ -27,7 +27,7 @@ func (m *mockFailoverRayManager) StopRay(ctx context.Context, device *domain.Dev
 	return nil
 }
 
-func (m *mockFailoverRayManager) GetClusterInfo(ctx context.Context, headDevice *domain.Device) (*domain.RayClusterInfo, error) {
+func (m *mockFailoverRayManager) GetOrchInfo(ctx context.Context, headDevice *domain.Device) (*domain.RayOrchInfo, error) {
 	return nil, nil
 }
 
@@ -55,14 +55,14 @@ func TestFailoverUseCase_ExecuteFailover(t *testing.T) {
 	ray := &mockFailoverRayManager{started: make(map[string]bool), stopped: make(map[string]bool)}
 	uc := NewFailoverUseCase(ray)
 
-	cluster := &domain.Cluster{
+	orch := &domain.Orch{
 		ID:            "c1",
-		Name:          "test-cluster",
-		HeadNodeID:    "old-head",
+		Name:          "test-orch",
+		CoordinatorID:    "old-head",
 		WorkerIDs:     []string{"worker-1", "worker-2"},
 		RayPort:       6379,
 		DashboardPort: 8265,
-		Status:        domain.ClusterStatusRunning,
+		Status:        domain.OrchStatusRunning,
 	}
 
 	devices := map[string]*domain.Device{
@@ -73,7 +73,7 @@ func TestFailoverUseCase_ExecuteFailover(t *testing.T) {
 
 	result := &domain.ElectionResult{NewHeadID: "worker-1", Reason: "lowest GPU", AIDecision: false}
 
-	err := uc.ExecuteFailover(context.Background(), cluster, result, devices, "/tmp/checkpoints")
+	err := uc.ExecuteFailover(context.Background(), orch, result, devices, "/tmp/checkpoints")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -83,10 +83,10 @@ func TestFailoverUseCase_ExecuteFailover(t *testing.T) {
 	if !ray.started["worker-2"] {
 		t.Error("expected worker-2 reconnected")
 	}
-	if cluster.HeadNodeID != "worker-1" {
-		t.Errorf("expected head worker-1, got %s", cluster.HeadNodeID)
+	if orch.CoordinatorID != "worker-1" {
+		t.Errorf("expected head worker-1, got %s", orch.CoordinatorID)
 	}
-	if cluster.Status != domain.ClusterStatusRunning {
+	if orch.Status != domain.OrchStatusRunning {
 		t.Error("expected running status")
 	}
 }

@@ -3,12 +3,13 @@ import Foundation
 actor APIClient {
     static let shared = APIClient()
 
-    private let baseURL: URL
+    private var baseURL: URL
     private let session: URLSession
     private let decoder: JSONDecoder
 
-    init(baseURL: String = "http://localhost:8080") {
-        self.baseURL = URL(string: baseURL)!
+    init() {
+        let stored = UserDefaults.standard.string(forKey: "serverURL") ?? "http://localhost:8080"
+        self.baseURL = URL(string: stored)!
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         self.session = URLSession(configuration: config)
@@ -26,6 +27,12 @@ actor APIClient {
             throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date: \(str)")
         }
         self.decoder = decoder
+    }
+
+    /// Reloads base URL from UserDefaults (call after settings change).
+    func reloadBaseURL() {
+        let stored = UserDefaults.standard.string(forKey: "serverURL") ?? "http://localhost:8080"
+        self.baseURL = URL(string: stored)!
     }
 
     // MARK: - Devices
@@ -47,55 +54,96 @@ actor APIClient {
         return try await post("/api/devices/\(id)/execute", body: ExecuteRequest(command: command, timeout_seconds: timeout))
     }
 
-    // MARK: - Clusters
+    // MARK: - Orchs
 
-    func listClusters() async throws -> [Cluster] {
-        return try await get("/api/clusters")
+    func listOrchs() async throws -> [Orch] {
+        return try await get("/api/orchs")
     }
 
-    func getCluster(id: String) async throws -> Cluster {
-        return try await get("/api/clusters/\(id)")
+    func getOrch(id: String) async throws -> Orch {
+        return try await get("/api/orchs/\(id)")
     }
 
-    func createCluster(name: String, headID: String, workerIDs: [String]) async throws -> Cluster {
-        let req = CreateClusterRequest(name: name, head_id: headID, worker_ids: workerIDs)
-        return try await post("/api/clusters", body: req)
+    func createOrch(name: String, headID: String, workerIDs: [String]) async throws -> Orch {
+        let req = CreateOrchRequest(name: name, head_id: headID, worker_ids: workerIDs)
+        return try await post("/api/orchs", body: req)
     }
 
-    func getClusterProcesses(id: String) async throws -> ClusterProcessesResponse {
-        return try await get("/api/clusters/\(id)/processes")
+    func getOrchProcesses(id: String) async throws -> OrchProcessesResponse {
+        return try await get("/api/orchs/\(id)/processes")
     }
 
     func getGPUMonitor() async throws -> GPUMonitorResponse {
         return try await get("/api/monitor/gpu")
     }
 
-    func deleteCluster(id: String, force: Bool = false) async throws {
-        let path = force ? "/api/clusters/\(id)?force=true" : "/api/clusters/\(id)"
+    func deleteOrch(id: String, force: Bool = false) async throws {
+        let path = force ? "/api/orchs/\(id)?force=true" : "/api/orchs/\(id)"
         let _: [String: String] = try await delete(path)
     }
 
-    func getClusterHealth(id: String) async throws -> ClusterHealth {
-        return try await get("/api/clusters/\(id)/health")
+    func getOrchHealth(id: String) async throws -> OrchHealth {
+        return try await get("/api/orchs/\(id)/health")
     }
 
-    func executeOnCluster(id: String, command: String, timeout: Int = 30) async throws -> ExecuteResponse {
-        return try await post("/api/clusters/\(id)/execute", body: ExecuteRequest(command: command, timeout_seconds: timeout))
+    func executeOnOrch(id: String, command: String, timeout: Int = 30) async throws -> ExecuteResponse {
+        return try await post("/api/orchs/\(id)/execute", body: ExecuteRequest(command: command, timeout_seconds: timeout))
+    }
+
+    // MARK: - Tasks
+
+    func listTasks() async throws -> [NagaTask] {
+        return try await get("/api/tasks")
+    }
+
+    // MARK: - Health
+
+    func healthCheck() async throws -> HealthResponse {
+        return try await get("/health")
+    }
+
+    struct HealthResponse: Decodable {
+        let status: String
+        let version: String
+    }
+
+    // MARK: - Auth
+
+    struct AuthMeResponse: Decodable {
+        let authenticated: Bool
+        let ip: String?
+        let network: String?
+        let user: String?
+        let device: Device?
+    }
+
+    func authMe() async throws -> AuthMeResponse {
+        return try await get("/api/auth/me")
+    }
+
+    func setBaseURL(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        self.baseURL = url
+        UserDefaults.standard.set(urlString, forKey: "serverURL")
     }
 
     // MARK: - HTTP
 
+    private func makeURL(_ path: String) -> URL {
+        URL(string: path, relativeTo: baseURL)!.absoluteURL
+    }
+
     private func get<T: Decodable>(_ path: String) async throws -> T {
-        let url = baseURL.appendingPathComponent(path)
-        let (data, response) = try await session.data(from: url)
+        let (data, response) = try await session.data(from: makeURL(path))
         try checkResponse(response, data)
         return try decoder.decode(T.self, from: data)
     }
 
     private func post<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        var request = URLRequest(url: makeURL(path))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(&request)
         request.httpBody = try JSONEncoder().encode(body)
         let (data, response) = try await session.data(for: request)
         try checkResponse(response, data)
@@ -103,11 +151,19 @@ actor APIClient {
     }
 
     private func delete<T: Decodable>(_ path: String) async throws -> T {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        var request = URLRequest(url: makeURL(path))
         request.httpMethod = "DELETE"
+        applyAuth(&request)
         let (data, response) = try await session.data(for: request)
         try checkResponse(response, data)
         return try decoder.decode(T.self, from: data)
+    }
+
+    private func applyAuth(_ request: inout URLRequest) {
+        let key = CredentialStore.shared.get(.serverAPIKey)
+        if !key.isEmpty {
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        }
     }
 
     private func checkResponse(_ response: URLResponse, _ data: Data) throws {

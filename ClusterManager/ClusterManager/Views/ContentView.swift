@@ -11,8 +11,16 @@ struct ContentView: View {
             DeviceListView()
                 .tabItem { Label("Devices", systemImage: "desktopcomputer") }
 
-            ClusterListView()
-                .tabItem { Label("Clusters", systemImage: "server.rack") }
+            OrchListView()
+                .tabItem { Label("Orchs", systemImage: "server.rack") }
+
+            #if os(macOS)
+            TasksView()
+                .tabItem { Label("Tasks", systemImage: "list.bullet.clipboard") }
+
+            SettingsView()
+                .tabItem { Label("Settings", systemImage: "gearshape") }
+            #endif
         }
         .task {
             await dashboardVM.load()

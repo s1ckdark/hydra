@@ -11,7 +11,7 @@ import (
 // head node election. The AI must respond with ONLY valid JSON.
 func BuildSelectionPrompt(candidates []domain.ElectionCandidate) string {
 	candidateJSON, _ := json.MarshalIndent(candidates, "", "  ")
-	return fmt.Sprintf(`You are a cluster management AI. The head node has failed and you must select the best replacement.
+	return fmt.Sprintf(`You are a orch management AI. The head node has failed and you must select the best replacement.
 
 Candidates:
 %s
@@ -72,7 +72,7 @@ func workerScore(w WorkerSnapshot) float64 {
 func BuildTaskSchedulingPrompt(task *domain.Task, workers []WorkerSnapshot) string {
 	taskJSON, _ := json.MarshalIndent(task, "", "  ")
 	workersJSON, _ := json.MarshalIndent(workers, "", "  ")
-	return fmt.Sprintf(`You are a cluster task scheduler. Select the best worker for the given task.
+	return fmt.Sprintf(`You are a orch task scheduler. Select the best worker for the given task.
 
 Task:
 %s
@@ -92,7 +92,7 @@ Respond with ONLY valid JSON (no explanation, no markdown):
 func BuildCapacityEstimationPrompt(worker WorkerSnapshot, pendingTasks []*domain.Task) string {
 	workerJSON, _ := json.MarshalIndent(worker, "", "  ")
 	tasksJSON, _ := json.MarshalIndent(pendingTasks, "", "  ")
-	return fmt.Sprintf(`You are a cluster resource estimator. Estimate the remaining capacity of the given worker.
+	return fmt.Sprintf(`You are a orch resource estimator. Estimate the remaining capacity of the given worker.
 
 Worker:
 %s

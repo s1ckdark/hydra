@@ -17,29 +17,29 @@ import (
 	"github.com/dave/naga/internal/usecase"
 )
 
-func newClusterCmd() *cobra.Command {
+func newOrchCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "cluster",
-		Short: "Manage Ray clusters",
-		Long:  "Create, modify, and delete Ray clusters across your Tailscale devices",
+		Use:   "orch",
+		Short: "Manage Ray orchs",
+		Long:  "Create, modify, and delete Ray orchs across your Tailscale devices",
 	}
 
-	cmd.AddCommand(newClusterCreateCmd())
-	cmd.AddCommand(newClusterListCmd())
-	cmd.AddCommand(newClusterStatusCmd())
-	cmd.AddCommand(newClusterDeleteCmd())
-	cmd.AddCommand(newClusterAddWorkerCmd())
-	cmd.AddCommand(newClusterRemoveWorkerCmd())
-	cmd.AddCommand(newClusterChangeHeadCmd())
-	cmd.AddCommand(newClusterStartCmd())
-	cmd.AddCommand(newClusterStopCmd())
-	cmd.AddCommand(newClusterMonitorCmd())
-	cmd.AddCommand(newClusterAgentCmd())
+	cmd.AddCommand(newOrchCreateCmd())
+	cmd.AddCommand(newOrchListCmd())
+	cmd.AddCommand(newOrchStatusCmd())
+	cmd.AddCommand(newOrchDeleteCmd())
+	cmd.AddCommand(newOrchAddWorkerCmd())
+	cmd.AddCommand(newOrchRemoveWorkerCmd())
+	cmd.AddCommand(newOrchChangeHeadCmd())
+	cmd.AddCommand(newOrchStartCmd())
+	cmd.AddCommand(newOrchStopCmd())
+	cmd.AddCommand(newOrchMonitorCmd())
+	cmd.AddCommand(newOrchAgentCmd())
 
 	return cmd
 }
 
-func newClusterCreateCmd() *cobra.Command {
+func newOrchCreateCmd() *cobra.Command {
 	var (
 		head        string
 		workers     []string
@@ -50,11 +50,11 @@ func newClusterCreateCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "create <name>",
-		Short: "Create a new Ray cluster",
-		Long: `Create a new Ray cluster with specified head and worker nodes.
+		Short: "Create a new Ray orch",
+		Long: `Create a new Ray orch with specified head and worker nodes.
 
 Example:
-  clusterctl cluster create my-cluster --head node1 --workers node2,node3`,
+  orchctl orch create my-orch --head node1 --workers node2,node3`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -92,49 +92,49 @@ Example:
 				workerIDs = append(workerIDs, wd.ID)
 			}
 
-			// Create cluster
-			cluster := domain.NewCluster(name, headDevice.ID, workerIDs)
-			cluster.Description = description
+			// Create orch
+			orch := domain.NewOrch(name, headDevice.ID, workerIDs)
+			orch.Description = description
 			if rayPort > 0 {
-				cluster.RayPort = rayPort
+				orch.RayPort = rayPort
 			}
 			if dashPort > 0 {
-				cluster.DashboardPort = dashPort
+				orch.DashboardPort = dashPort
 			}
 
-			fmt.Printf("Creating cluster '%s'...\n", name)
+			fmt.Printf("Creating orch '%s'...\n", name)
 			fmt.Printf("  Head: %s (%s)\n", headDevice.Name, headDevice.TailscaleIP)
 			for i, wid := range workerIDs {
 				wd := findDeviceByID(devices, wid)
 				fmt.Printf("  Worker %d: %s (%s)\n", i+1, wd.Name, wd.TailscaleIP)
 			}
 
-			// TODO: Actually start Ray cluster via SSH
-			fmt.Println("\nCluster configuration created.")
-			fmt.Println("Use 'clusterctl cluster start " + name + "' to start the cluster.")
+			// TODO: Actually start Ray orch via SSH
+			fmt.Println("\nOrch configuration created.")
+			fmt.Println("Use 'orchctl orch start " + name + "' to start the orch.")
 
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVar(&head, "head", "", "Head node device name or ID (required)")
+	cmd.Flags().StringVar(&head, "coordinator", "", "Head node device name or ID (required)")
 	cmd.Flags().StringSliceVar(&workers, "workers", nil, "Worker node device names or IDs (comma-separated)")
-	cmd.Flags().StringVar(&description, "description", "", "Cluster description")
+	cmd.Flags().StringVar(&description, "description", "", "Orch description")
 	cmd.Flags().IntVar(&rayPort, "ray-port", 0, "Ray port (default: 6379)")
 	cmd.Flags().IntVar(&dashPort, "dashboard-port", 0, "Dashboard port (default: 8265)")
-	cmd.MarkFlagRequired("head")
+	cmd.MarkFlagRequired("coordinator")
 
 	return cmd
 }
 
-func newClusterListCmd() *cobra.Command {
+func newOrchListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List all clusters",
+		Short: "List all orchs",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// TODO: Load from repository
-			fmt.Println("No clusters configured yet.")
-			fmt.Println("Use 'clusterctl cluster create' to create a new cluster.")
+			fmt.Println("No orchs configured yet.")
+			fmt.Println("Use 'orchctl orch create' to create a new orch.")
 			return nil
 		},
 	}
@@ -142,20 +142,20 @@ func newClusterListCmd() *cobra.Command {
 	return cmd
 }
 
-func newClusterStatusCmd() *cobra.Command {
+func newOrchStatusCmd() *cobra.Command {
 	var detailed bool
 
 	cmd := &cobra.Command{
-		Use:   "status <cluster-name>",
-		Short: "Show cluster status",
+		Use:   "status <orch-name>",
+		Short: "Show orch status",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			fmt.Printf("Cluster: %s\n", name)
+			fmt.Printf("Orch: %s\n", name)
 			fmt.Println("Status: not implemented yet")
 
-			// TODO: Get cluster from repository
+			// TODO: Get orch from repository
 			// TODO: Query Ray status from head node
 
 			return nil
@@ -167,28 +167,28 @@ func newClusterStatusCmd() *cobra.Command {
 	return cmd
 }
 
-func newClusterDeleteCmd() *cobra.Command {
+func newOrchDeleteCmd() *cobra.Command {
 	var force bool
 
 	cmd := &cobra.Command{
-		Use:   "delete <cluster-name>",
-		Short: "Delete a cluster",
-		Long: `Delete a cluster. By default, checks if the cluster has running jobs.
+		Use:   "delete <orch-name>",
+		Short: "Delete a orch",
+		Long: `Delete a orch. By default, checks if the orch has running jobs.
 Use --force to skip the check and force deletion.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
 			if !force {
-				// TODO: Check if cluster has running jobs
-				fmt.Printf("Checking if cluster '%s' is in use...\n", name)
+				// TODO: Check if orch has running jobs
+				fmt.Printf("Checking if orch '%s' is in use...\n", name)
 			}
 
-			fmt.Printf("Deleting cluster '%s'...\n", name)
+			fmt.Printf("Deleting orch '%s'...\n", name)
 			// TODO: Stop Ray processes on all nodes
 			// TODO: Remove from repository
 
-			fmt.Println("Cluster deleted.")
+			fmt.Println("Orch deleted.")
 			return nil
 		},
 	}
@@ -198,21 +198,21 @@ Use --force to skip the check and force deletion.`,
 	return cmd
 }
 
-func newClusterAddWorkerCmd() *cobra.Command {
+func newOrchAddWorkerCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add-worker <cluster-name> <device>",
-		Short: "Add a worker node to the cluster",
+		Use:   "add-worker <orch-name> <device>",
+		Short: "Add a worker node to the orch",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			clusterName := args[0]
+			orchName := args[0]
 			deviceName := args[1]
 
-			fmt.Printf("Adding worker '%s' to cluster '%s'...\n", deviceName, clusterName)
+			fmt.Printf("Adding worker '%s' to orch '%s'...\n", deviceName, orchName)
 
 			// TODO: Validate device exists and is online
-			// TODO: Load cluster from repository
-			// TODO: Add worker to cluster
-			// TODO: Connect worker to Ray cluster
+			// TODO: Load orch from repository
+			// TODO: Add worker to orch
+			// TODO: Connect worker to Ray orch
 
 			fmt.Println("Worker added successfully.")
 			return nil
@@ -222,15 +222,15 @@ func newClusterAddWorkerCmd() *cobra.Command {
 	return cmd
 }
 
-func newClusterRemoveWorkerCmd() *cobra.Command {
+func newOrchRemoveWorkerCmd() *cobra.Command {
 	var force bool
 
 	cmd := &cobra.Command{
-		Use:   "remove-worker <cluster-name> <device>",
-		Short: "Remove a worker node from the cluster",
+		Use:   "remove-worker <orch-name> <device>",
+		Short: "Remove a worker node from the orch",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			clusterName := args[0]
+			orchName := args[0]
 			deviceName := args[1]
 
 			if !force {
@@ -238,10 +238,10 @@ func newClusterRemoveWorkerCmd() *cobra.Command {
 				// TODO: Check for running tasks on the worker
 			}
 
-			fmt.Printf("Removing worker '%s' from cluster '%s'...\n", deviceName, clusterName)
+			fmt.Printf("Removing worker '%s' from orch '%s'...\n", deviceName, orchName)
 
 			// TODO: Stop Ray on the worker
-			// TODO: Update cluster configuration
+			// TODO: Update orch configuration
 			// TODO: Save to repository
 
 			fmt.Println("Worker removed successfully.")
@@ -254,22 +254,22 @@ func newClusterRemoveWorkerCmd() *cobra.Command {
 	return cmd
 }
 
-func newClusterChangeHeadCmd() *cobra.Command {
+func newOrchChangeHeadCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "change-head <cluster-name> <new-head-device>",
-		Short: "Change the head node of a cluster",
-		Long: `Change the head node of a cluster. The current head becomes a worker,
+		Use:   "change-head <orch-name> <new-head-device>",
+		Short: "Change the head node of a orch",
+		Long: `Change the head node of a orch. The current head becomes a worker,
 and the specified device becomes the new head.
 
 This operation requires:
-1. Stopping all jobs on the cluster
+1. Stopping all jobs on the orch
 2. Restarting Ray with the new head configuration`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			clusterName := args[0]
+			orchName := args[0]
 			newHead := args[1]
 
-			fmt.Printf("Changing head node of cluster '%s' to '%s'...\n", clusterName, newHead)
+			fmt.Printf("Changing head node of orch '%s' to '%s'...\n", orchName, newHead)
 			fmt.Println("\nThis will:")
 			fmt.Println("  1. Stop all running jobs")
 			fmt.Println("  2. Stop Ray on all nodes")
@@ -277,11 +277,11 @@ This operation requires:
 			fmt.Println("  4. Restart all workers")
 
 			// TODO: Implement head change logic
-			// - Check cluster exists
+			// - Check orch exists
 			// - Check new head is valid and online
-			// - Stop cluster
+			// - Stop orch
 			// - Update configuration
-			// - Restart cluster with new head
+			// - Restart orch with new head
 
 			fmt.Println("\nHead node change completed.")
 			return nil
@@ -291,21 +291,21 @@ This operation requires:
 	return cmd
 }
 
-func newClusterStartCmd() *cobra.Command {
+func newOrchStartCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "start <cluster-name>",
-		Short: "Start a cluster",
+		Use:   "start <orch-name>",
+		Short: "Start a orch",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
-			fmt.Printf("Starting cluster '%s'...\n", name)
+			fmt.Printf("Starting orch '%s'...\n", name)
 
-			// TODO: Load cluster from repository
+			// TODO: Load orch from repository
 			// TODO: Start Ray on head node
 			// TODO: Connect workers to head
 
-			fmt.Println("Cluster started.")
+			fmt.Println("Orch started.")
 			return nil
 		},
 	}
@@ -313,26 +313,26 @@ func newClusterStartCmd() *cobra.Command {
 	return cmd
 }
 
-func newClusterStopCmd() *cobra.Command {
+func newOrchStopCmd() *cobra.Command {
 	var force bool
 
 	cmd := &cobra.Command{
-		Use:   "stop <cluster-name>",
-		Short: "Stop a cluster",
+		Use:   "stop <orch-name>",
+		Short: "Stop a orch",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
 			if !force {
-				fmt.Printf("Checking for running jobs on cluster '%s'...\n", name)
+				fmt.Printf("Checking for running jobs on orch '%s'...\n", name)
 				// TODO: Check for running jobs
 			}
 
-			fmt.Printf("Stopping cluster '%s'...\n", name)
+			fmt.Printf("Stopping orch '%s'...\n", name)
 
 			// TODO: Stop Ray on all nodes
 
-			fmt.Println("Cluster stopped.")
+			fmt.Println("Orch stopped.")
 			return nil
 		},
 	}
@@ -342,14 +342,14 @@ func newClusterStopCmd() *cobra.Command {
 	return cmd
 }
 
-func newClusterMonitorCmd() *cobra.Command {
+func newOrchMonitorCmd() *cobra.Command {
 	var interval int
 
 	cmd := &cobra.Command{
-		Use:   "monitor <cluster-name>",
-		Short: "Monitor GPU usage across cluster nodes",
+		Use:   "monitor <orch-name>",
+		Short: "Monitor GPU usage across orch nodes",
 		Long: `Monitor GPU utilization, memory, temperature, and power for all nodes
-in a cluster in real-time. Requires nvidia-smi on worker nodes.
+in a orch in real-time. Requires nvidia-smi on worker nodes.
 
 Keys:
   d  Toggle table/detail view
@@ -358,7 +358,7 @@ Keys:
   q  Quit`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			clusterName := args[0]
+			orchName := args[0]
 
 			cfg, err := getConfig()
 			if err != nil {
@@ -379,7 +379,7 @@ Keys:
 				deviceMap[d.ID] = d
 			}
 
-			// Load cluster from repository
+			// Load orch from repository
 			db, err := sqlite.NewDB(cfg.Database.DSN)
 			if err != nil {
 				return fmt.Errorf("failed to open database: %w", err)
@@ -387,22 +387,22 @@ Keys:
 			defer db.Close()
 
 			repos := db.Repositories()
-			clusterUC := usecase.NewClusterUseCase(repos, nil)
-			cluster, err := clusterUC.GetCluster(ctx, clusterName)
+			orchUC := usecase.NewOrchUseCase(repos, nil)
+			orch, err := orchUC.GetOrch(ctx, orchName)
 			if err != nil {
-				return fmt.Errorf("cluster '%s' not found: %w", clusterName, err)
+				return fmt.Errorf("orch '%s' not found: %w", orchName, err)
 			}
 
-			// Resolve cluster nodes to devices
-			var clusterDevices []*domain.Device
-			for _, nodeID := range cluster.AllNodeIDs() {
+			// Resolve orch nodes to devices
+			var orchDevices []*domain.Device
+			for _, nodeID := range orch.AllNodeIDs() {
 				if d, ok := deviceMap[nodeID]; ok && d.CanSSH() {
-					clusterDevices = append(clusterDevices, d)
+					orchDevices = append(orchDevices, d)
 				}
 			}
 
-			if len(clusterDevices) == 0 {
-				return fmt.Errorf("no reachable nodes in cluster '%s'", clusterName)
+			if len(orchDevices) == 0 {
+				return fmt.Errorf("no reachable nodes in orch '%s'", orchName)
 			}
 
 			sshExecutor := ssh.NewExecutor(ssh.Config{
@@ -417,7 +417,7 @@ Keys:
 			gpuCollector := ssh.NewGPUCollector(sshExecutor)
 
 			duration := time.Duration(interval) * time.Second
-			model := monitor.NewModel(clusterName, clusterDevices, gpuCollector, duration)
+			model := monitor.NewModel(orchName, orchDevices, gpuCollector, duration)
 			p := tea.NewProgram(model, tea.WithAltScreen())
 			_, err = p.Run()
 			return err
@@ -428,10 +428,10 @@ Keys:
 	return cmd
 }
 
-func newClusterAgentCmd() *cobra.Command {
+func newOrchAgentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agent",
-		Short: "Manage cluster node agents",
+		Short: "Manage orch node agents",
 	}
 	cmd.AddCommand(newAgentInstallCmd())
 	cmd.AddCommand(newAgentUninstallCmd())
@@ -446,12 +446,12 @@ func newAgentInstallCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "install <cluster-name>",
-		Short: "Install agent on all cluster nodes",
-		Long:  "Copies the cluster-agent binary and installs systemd service on each node.",
+		Use:   "install <orch-name>",
+		Short: "Install agent on all orch nodes",
+		Long:  "Copies the orch-agent binary and installs systemd service on each node.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			clusterName := args[0]
+			orchName := args[0]
 
 			cfg, err := getConfig()
 			if err != nil {
@@ -483,11 +483,11 @@ func newAgentInstallCmd() *cobra.Command {
 				}
 
 				role := "worker"
-				// TODO: determine role from cluster config
+				// TODO: determine role from orch config
 
 				sysCfg := agent.SystemdConfig{
 					NodeID:     d.ID,
-					ClusterID:  clusterName,
+					OrchID:  orchName,
 					Role:       role,
 					Port:       port,
 					BinaryPath: binaryPath,
@@ -522,18 +522,18 @@ func newAgentInstallCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&binaryPath, "binary", "/usr/local/bin/cluster-agent", "Path to agent binary")
+	cmd.Flags().StringVar(&binaryPath, "binary", "/usr/local/bin/orch-agent", "Path to agent binary")
 	cmd.Flags().IntVar(&port, "port", 9090, "Agent listen port")
 	return cmd
 }
 
 func newAgentUninstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "uninstall <cluster-name>",
-		Short: "Uninstall agent from all cluster nodes",
+		Use:   "uninstall <orch-name>",
+		Short: "Uninstall agent from all orch nodes",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			clusterName := args[0]
+			orchName := args[0]
 
 			cfg, err := getConfig()
 			if err != nil {
@@ -565,7 +565,7 @@ func newAgentUninstallCmd() *cobra.Command {
 
 				fmt.Printf("  Uninstalling agent from %s...\n", d.GetDisplayName())
 
-				for _, uninstallCmd := range agent.UninstallCommands(clusterName, d.ID) {
+				for _, uninstallCmd := range agent.UninstallCommands(orchName, d.ID) {
 					if _, err := sshExecutor.Execute(ctx, d, uninstallCmd); err != nil {
 						fmt.Printf("    Warning: %v\n", err)
 					}
@@ -582,11 +582,11 @@ func newAgentUninstallCmd() *cobra.Command {
 
 func newAgentStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "status <cluster-name>",
-		Short: "Check agent status on all cluster nodes",
+		Use:   "status <orch-name>",
+		Short: "Check agent status on all orch nodes",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			clusterName := args[0]
+			orchName := args[0]
 
 			cfg, err := getConfig()
 			if err != nil {
@@ -611,7 +611,7 @@ func newAgentStatusCmd() *cobra.Command {
 			})
 			defer sshExecutor.Close()
 
-			fmt.Printf("Agent status for cluster '%s':\n\n", clusterName)
+			fmt.Printf("Agent status for orch '%s':\n\n", orchName)
 
 			for _, d := range allDevices {
 				if !d.CanSSH() {
@@ -619,7 +619,7 @@ func newAgentStatusCmd() *cobra.Command {
 					continue
 				}
 
-				svcName := agent.ServiceName(clusterName, d.ID)
+				svcName := agent.ServiceName(orchName, d.ID)
 				output, err := sshExecutor.Execute(ctx, d, fmt.Sprintf("systemctl is-active %s 2>/dev/null || echo inactive", svcName))
 				if err != nil {
 					fmt.Printf("  %-20s  ERROR: %v\n", d.GetDisplayName(), err)
@@ -666,4 +666,4 @@ func findDeviceByID(devices []*domain.Device, id string) *domain.Device {
 }
 
 // For future use when usecase is implemented
-var _ = usecase.ClusterUseCase{}
+var _ = usecase.OrchUseCase{}

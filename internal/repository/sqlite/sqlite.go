@@ -60,8 +60,8 @@ func (d *DB) Close() error {
 func (d *DB) Repositories() *repository.Repositories {
 	return &repository.Repositories{
 		Devices:      NewDeviceRepository(d.db),
-		Clusters:     NewClusterRepository(d.db),
-		ClusterNodes: NewClusterNodeRepository(d.db),
+		Orchs:     NewOrchRepository(d.db),
+		OrchNodes: NewOrchNodeRepository(d.db),
 		Metrics:      NewMetricsRepository(d.db),
 		UnitOfWork:   d,
 	}
@@ -96,14 +96,14 @@ func (t *Transaction) Devices() repository.DeviceRepository {
 	return &DeviceRepository{db: t.tx}
 }
 
-// Clusters returns the cluster repository for this transaction
-func (t *Transaction) Clusters() repository.ClusterRepository {
-	return &ClusterRepository{db: t.tx}
+// Orchs returns the orch repository for this transaction
+func (t *Transaction) Orchs() repository.OrchRepository {
+	return &OrchRepository{db: t.tx}
 }
 
-// ClusterNodes returns the cluster node repository for this transaction
-func (t *Transaction) ClusterNodes() repository.ClusterNodeRepository {
-	return &ClusterNodeRepository{db: t.tx}
+// OrchNodes returns the orch node repository for this transaction
+func (t *Transaction) OrchNodes() repository.OrchNodeRepository {
+	return &OrchNodeRepository{db: t.tx}
 }
 
 // Metrics returns the metrics repository for this transaction
@@ -135,8 +135,8 @@ func (d *DB) migrate() error {
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 
-		// Clusters table
-		`CREATE TABLE IF NOT EXISTS clusters (
+		// Orchs table
+		`CREATE TABLE IF NOT EXISTS orchs (
 			id TEXT PRIMARY KEY,
 			name TEXT UNIQUE NOT NULL,
 			description TEXT,
@@ -155,10 +155,10 @@ func (d *DB) migrate() error {
 			last_error_at DATETIME
 		)`,
 
-		// Cluster nodes table
-		`CREATE TABLE IF NOT EXISTS cluster_nodes (
+		// Orch nodes table
+		`CREATE TABLE IF NOT EXISTS orch_nodes (
 			device_id TEXT NOT NULL,
-			cluster_id TEXT NOT NULL,
+			orch_id TEXT NOT NULL,
 			role TEXT NOT NULL,
 			status TEXT NOT NULL,
 			ray_address TEXT,
@@ -169,8 +169,8 @@ func (d *DB) migrate() error {
 			left_at DATETIME,
 			last_error TEXT,
 			last_error_at DATETIME,
-			PRIMARY KEY (device_id, cluster_id),
-			FOREIGN KEY (cluster_id) REFERENCES clusters(id) ON DELETE CASCADE
+			PRIMARY KEY (device_id, orch_id),
+			FOREIGN KEY (orch_id) REFERENCES orchs(id) ON DELETE CASCADE
 		)`,
 
 		// Metrics table
@@ -195,15 +195,15 @@ func (d *DB) migrate() error {
 			error TEXT
 		)`,
 
-		// Cluster mode column
-		`ALTER TABLE clusters ADD COLUMN mode TEXT DEFAULT 'basic'`,
+		// Orch mode column
+		`ALTER TABLE orchs ADD COLUMN mode TEXT DEFAULT 'basic'`,
 
-		// Cluster groups table
-		`CREATE TABLE IF NOT EXISTS cluster_groups (
+		// Orch groups table
+		`CREATE TABLE IF NOT EXISTS orch_groups (
 			id TEXT PRIMARY KEY,
 			name TEXT UNIQUE NOT NULL,
 			description TEXT,
-			cluster_ids TEXT,
+			orch_ids TEXT,
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
@@ -215,8 +215,8 @@ func (d *DB) migrate() error {
 
 		// Indexes
 		`CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_clusters_status ON clusters(status)`,
-		`CREATE INDEX IF NOT EXISTS idx_clusters_name ON clusters(name)`,
+		`CREATE INDEX IF NOT EXISTS idx_orchs_status ON orchs(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_orchs_name ON orchs(name)`,
 		`CREATE INDEX IF NOT EXISTS idx_metrics_device_time ON metrics(device_id, collected_at DESC)`,
 	}
 

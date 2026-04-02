@@ -22,13 +22,13 @@ var (
 func NewRootCmd(version, buildTime string) *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   "naga",
-		Short: "Manage Tailscale devices and Ray clusters",
+		Short: "Manage Tailscale devices and Ray orchs",
 		Long: `naga is a CLI tool for managing devices in your Tailscale network
-and creating/managing Ray clusters across those devices.
+and creating/managing Ray orchs across those devices.
 
 It provides:
   - Device listing and monitoring
-  - Ray cluster creation, modification, and deletion
+  - Ray orch creation, modification, and deletion
   - Resource monitoring (CPU, Memory, Disk)
   - Head/Worker node management`,
 		Version: fmt.Sprintf("%s (built: %s)", version, buildTime),
@@ -47,7 +47,7 @@ It provides:
 
 	// Add subcommands
 	rootCmd.AddCommand(newDeviceCmd())
-	rootCmd.AddCommand(newClusterCmd())
+	rootCmd.AddCommand(newOrchCmd())
 	rootCmd.AddCommand(newMonitorCmd())
 	rootCmd.AddCommand(newConfigCmd())
 	rootCmd.AddCommand(newServerCmd())

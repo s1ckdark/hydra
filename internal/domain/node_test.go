@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-func TestClusterNode_Roles(t *testing.T) {
-	head := &ClusterNode{Role: NodeRoleHead}
-	worker := &ClusterNode{Role: NodeRoleWorker}
+func TestOrchNode_Roles(t *testing.T) {
+	head := &OrchNode{Role: NodeRoleHead}
+	worker := &OrchNode{Role: NodeRoleWorker}
 
 	if !head.IsHead() {
 		t.Error("head node IsHead() = false")
@@ -23,7 +23,7 @@ func TestClusterNode_Roles(t *testing.T) {
 	}
 }
 
-func TestClusterNode_IsRunning(t *testing.T) {
+func TestOrchNode_IsRunning(t *testing.T) {
 	tests := []struct {
 		status NodeStatus
 		want   bool
@@ -36,7 +36,7 @@ func TestClusterNode_IsRunning(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(string(tt.status), func(t *testing.T) {
-			n := &ClusterNode{Status: tt.status}
+			n := &OrchNode{Status: tt.status}
 			if got := n.IsRunning(); got != tt.want {
 				t.Errorf("IsRunning() = %v, want %v", got, tt.want)
 			}
@@ -44,8 +44,8 @@ func TestClusterNode_IsRunning(t *testing.T) {
 	}
 }
 
-func TestClusterNode_IsHealthy(t *testing.T) {
-	n := &ClusterNode{Status: NodeStatusRunning}
+func TestOrchNode_IsHealthy(t *testing.T) {
+	n := &OrchNode{Status: NodeStatusRunning}
 	if !n.IsHealthy() {
 		t.Error("running node should be healthy")
 	}
@@ -56,10 +56,10 @@ func TestClusterNode_IsHealthy(t *testing.T) {
 	}
 }
 
-func TestClusterNode_SetError(t *testing.T) {
-	n := &ClusterNode{
+func TestOrchNode_SetError(t *testing.T) {
+	n := &OrchNode{
 		DeviceID:  "d1",
-		ClusterID: "c1",
+		OrchID: "c1",
 		Status:    NodeStatusRunning,
 	}
 

@@ -34,7 +34,7 @@ struct iOSDashboardView: View {
                         GridItem(.flexible())
                     ], spacing: 12) {
                         StatCard(title: "Devices", value: "\(viewModel.devices.count)", icon: "desktopcomputer", color: .blue)
-                        StatCard(title: "Clusters", value: "\(viewModel.clusters.count)", icon: "server.rack", color: .green)
+                        StatCard(title: "Orchs", value: "\(viewModel.orchs.count)", icon: "server.rack", color: .green)
                         StatCard(title: "Capabilities", value: "\(capabilityRegistry.enabledCapabilities.count)", icon: "cpu", color: .purple)
                         StatCard(title: "Pending Tasks", value: "0", icon: "clock", color: .orange)
                     }

@@ -8,26 +8,90 @@ struct NagaApp: App {
         #if os(iOS)
         WindowGroup {
             iOSContentView()
-                .onAppear {
-                    setupCapabilities()
-                }
+                .onAppear { setupCapabilities() }
+                .task { await autoDiscoverServer() }
         }
         #else
         WindowGroup {
             ContentView()
                 .environmentObject(dashboardVM)
                 .onAppear {
+                    NSApp.setActivationPolicy(.regular)
+                    NSApp.activate(ignoringOtherApps: true)
                     setupCapabilities()
                 }
+                .task { await autoDiscoverServer() }
         }
         .defaultSize(width: 1000, height: 700)
+        .commands {
+            CommandMenu("Edit") {
+                Button("Cut") {
+                    NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("x")
 
-        MenuBarExtra("GPU Cluster", systemImage: "server.rack") {
+                Button("Copy") {
+                    NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("c")
+
+                Button("Paste") {
+                    NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("v")
+
+                Button("Select All") {
+                    NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("a")
+
+                Divider()
+
+                Button("Undo") {
+                    NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
+                }
+                .keyboardShortcut("z")
+
+                Button("Redo") {
+                    NSApp.sendAction(Selector(("redo:")), to: nil, from: nil)
+                }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+            }
+        }
+
+        Settings {
+            SettingsView()
+        }
+
+        MenuBarExtra("GPU Orch", systemImage: "server.rack") {
             MenuBarView()
                 .environmentObject(dashboardVM)
         }
         .menuBarExtraStyle(.window)
         #endif
+    }
+
+    /// Tries to find the server via Bonjour if no URL is saved yet.
+    private func autoDiscoverServer() async {
+        let savedURL = UserDefaults.standard.string(forKey: "serverURL") ?? ""
+        // Already configured — nothing to do
+        if !savedURL.isEmpty { return }
+
+        // Try localhost first (most common dev setup)
+        if let url = URL(string: "http://localhost:8080/health") {
+            do {
+                let (_, response) = try await URLSession.shared.data(from: url)
+                if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                    await APIClient.shared.setBaseURL("http://localhost:8080")
+                    NSLog("[autoDiscover] found server at localhost:8080")
+                    return
+                }
+            } catch {}
+        }
+
+        // Fallback: Bonjour discovery runs in the background
+        // If found, it will update the server URL automatically
+        NSLog("[autoDiscover] no server found, waiting for Bonjour discovery")
     }
 
     private func setupCapabilities() {

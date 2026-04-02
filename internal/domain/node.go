@@ -2,15 +2,15 @@ package domain
 
 import "time"
 
-// NodeRole represents the role of a node in a Ray cluster
+// NodeRole represents the role of a node in a Ray orch
 type NodeRole string
 
 const (
-	NodeRoleHead   NodeRole = "head"
+	NodeRoleHead   NodeRole = "coordinator"
 	NodeRoleWorker NodeRole = "worker"
 )
 
-// NodeStatus represents the current status of a node in a cluster
+// NodeStatus represents the current status of a node in a orch
 type NodeStatus string
 
 const (
@@ -23,10 +23,10 @@ const (
 	NodeStatusUnreachable NodeStatus = "unreachable"
 )
 
-// ClusterNode represents a node's membership and status in a cluster
-type ClusterNode struct {
+// OrchNode represents a node's membership and status in a orch
+type OrchNode struct {
 	DeviceID    string     `json:"deviceId"`
-	ClusterID   string     `json:"clusterId"`
+	OrchID   string     `json:"orchId"`
 	Role        NodeRole   `json:"role"`
 	Status      NodeStatus `json:"status"`
 	RayAddress  string     `json:"rayAddress"`  // e.g., "100.64.0.1:6379"
@@ -44,27 +44,27 @@ type ClusterNode struct {
 }
 
 // IsHead returns true if this node is the head node
-func (n *ClusterNode) IsHead() bool {
+func (n *OrchNode) IsHead() bool {
 	return n.Role == NodeRoleHead
 }
 
 // IsWorker returns true if this node is a worker node
-func (n *ClusterNode) IsWorker() bool {
+func (n *OrchNode) IsWorker() bool {
 	return n.Role == NodeRoleWorker
 }
 
 // IsRunning returns true if this node is running
-func (n *ClusterNode) IsRunning() bool {
+func (n *OrchNode) IsRunning() bool {
 	return n.Status == NodeStatusRunning
 }
 
 // IsHealthy returns true if the node is in a healthy state
-func (n *ClusterNode) IsHealthy() bool {
+func (n *OrchNode) IsHealthy() bool {
 	return n.Status == NodeStatusRunning
 }
 
 // SetError sets an error state on the node
-func (n *ClusterNode) SetError(err string) {
+func (n *OrchNode) SetError(err string) {
 	now := time.Now()
 	n.Status = NodeStatusError
 	n.LastError = err
@@ -75,15 +75,15 @@ func (n *ClusterNode) SetError(err string) {
 type RayNodeInfo struct {
 	NodeID          string  `json:"nodeId"`
 	NodeIP          string  `json:"nodeIp"`
-	IsHeadNode      bool    `json:"isHeadNode"`
+	IsCoordinator      bool    `json:"isCoordinator"`
 	State           string  `json:"state"`
 	NodeName        string  `json:"nodeName"`
 	ResourcesTotal  map[string]float64 `json:"resourcesTotal"`
 	ResourcesAvail  map[string]float64 `json:"resourcesAvailable"`
 }
 
-// RayClusterInfo represents overall Ray cluster information
-type RayClusterInfo struct {
+// RayOrchInfo represents overall Ray orch information
+type RayOrchInfo struct {
 	GCSAddress    string         `json:"gcsAddress"`
 	DashboardURL  string         `json:"dashboardUrl"`
 	PythonVersion string         `json:"pythonVersion"`

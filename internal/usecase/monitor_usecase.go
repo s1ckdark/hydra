@@ -78,18 +78,18 @@ func (uc *MonitorUseCase) GetAllMetrics(ctx context.Context) (*domain.MetricsSna
 	return snapshot, nil
 }
 
-// GetClusterMetrics gets metrics for all nodes in a cluster
-func (uc *MonitorUseCase) GetClusterMetrics(ctx context.Context, cluster *domain.Cluster) (*domain.MetricsSnapshot, error) {
+// GetOrchMetrics gets metrics for all nodes in a orch
+func (uc *MonitorUseCase) GetOrchMetrics(ctx context.Context, orch *domain.Orch) (*domain.MetricsSnapshot, error) {
 	deviceMap, err := uc.deviceUC.GetDeviceMap(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get devices for this cluster
-	var clusterDevices []*domain.Device
-	for _, nodeID := range cluster.AllNodeIDs() {
+	// Get devices for this orch
+	var orchDevices []*domain.Device
+	for _, nodeID := range orch.AllNodeIDs() {
 		if device, ok := deviceMap[nodeID]; ok && device.CanSSH() {
-			clusterDevices = append(clusterDevices, device)
+			orchDevices = append(orchDevices, device)
 		}
 	}
 
@@ -98,11 +98,11 @@ func (uc *MonitorUseCase) GetClusterMetrics(ctx context.Context, cluster *domain
 		CollectedAt: time.Now(),
 	}
 
-	if len(clusterDevices) == 0 {
+	if len(orchDevices) == 0 {
 		return snapshot, nil
 	}
 
-	metrics, err := uc.collector.CollectMetricsParallel(ctx, clusterDevices)
+	metrics, err := uc.collector.CollectMetricsParallel(ctx, orchDevices)
 	if err != nil {
 		return nil, err
 	}

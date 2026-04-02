@@ -90,7 +90,7 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 	}
 
 	// Check GPU on candidates in the background (non-blocking)
-	// Clone devices to avoid data race with the caller
+	// Check GPU on candidates in the background (non-blocking)
 	if uc.gpuChecker != nil {
 		cloned := make([]*domain.Device, len(devices))
 		for i, d := range devices {

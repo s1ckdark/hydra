@@ -191,48 +191,48 @@ func TestDeviceRepository_SaveMany(t *testing.T) {
 	}
 }
 
-// --- Cluster Repository Tests ---
+// --- Orch Repository Tests ---
 
-func TestClusterRepository_CreateAndGetByID(t *testing.T) {
+func TestOrchRepository_CreateAndGetByID(t *testing.T) {
 	db := newTestDB(t)
-	repo := NewClusterRepository(db.db)
+	repo := NewOrchRepository(db.db)
 	ctx := context.Background()
 
-	cluster := domain.NewCluster("my-cluster", "head1", []string{"w1", "w2"})
-	cluster.Description = "test cluster"
+	orch := domain.NewOrch("my-orch", "head1", []string{"w1", "w2"})
+	orch.Description = "test orch"
 
-	if err := repo.Create(ctx, cluster); err != nil {
+	if err := repo.Create(ctx, orch); err != nil {
 		t.Fatalf("Create error: %v", err)
 	}
-	if cluster.ID == "" {
+	if orch.ID == "" {
 		t.Error("ID should be auto-generated")
 	}
 
-	got, err := repo.GetByID(ctx, cluster.ID)
+	got, err := repo.GetByID(ctx, orch.ID)
 	if err != nil {
 		t.Fatalf("GetByID error: %v", err)
 	}
-	if got.Name != "my-cluster" {
-		t.Errorf("Name = %q, want %q", got.Name, "my-cluster")
+	if got.Name != "my-orch" {
+		t.Errorf("Name = %q, want %q", got.Name, "my-orch")
 	}
-	if got.HeadNodeID != "head1" {
-		t.Errorf("HeadNodeID = %q, want %q", got.HeadNodeID, "head1")
+	if got.CoordinatorID != "head1" {
+		t.Errorf("CoordinatorID = %q, want %q", got.CoordinatorID, "head1")
 	}
 	if len(got.WorkerIDs) != 2 {
 		t.Errorf("WorkerIDs length = %d, want 2", len(got.WorkerIDs))
 	}
-	if got.Description != "test cluster" {
-		t.Errorf("Description = %q, want %q", got.Description, "test cluster")
+	if got.Description != "test orch" {
+		t.Errorf("Description = %q, want %q", got.Description, "test orch")
 	}
 }
 
-func TestClusterRepository_GetByName(t *testing.T) {
+func TestOrchRepository_GetByName(t *testing.T) {
 	db := newTestDB(t)
-	repo := NewClusterRepository(db.db)
+	repo := NewOrchRepository(db.db)
 	ctx := context.Background()
 
-	cluster := domain.NewCluster("unique-name", "h1", nil)
-	repo.Create(ctx, cluster)
+	orch := domain.NewOrch("unique-name", "h1", nil)
+	repo.Create(ctx, orch)
 
 	got, err := repo.GetByName(ctx, "unique-name")
 	if err != nil {
@@ -243,132 +243,132 @@ func TestClusterRepository_GetByName(t *testing.T) {
 	}
 
 	_, err = repo.GetByName(ctx, "nonexistent")
-	if err != domain.ErrClusterNotFound {
-		t.Errorf("GetByName(nonexistent) = %v, want ErrClusterNotFound", err)
+	if err != domain.ErrOrchNotFound {
+		t.Errorf("GetByName(nonexistent) = %v, want ErrOrchNotFound", err)
 	}
 }
 
-func TestClusterRepository_Update(t *testing.T) {
+func TestOrchRepository_Update(t *testing.T) {
 	db := newTestDB(t)
-	repo := NewClusterRepository(db.db)
+	repo := NewOrchRepository(db.db)
 	ctx := context.Background()
 
-	cluster := domain.NewCluster("c1", "h1", nil)
-	repo.Create(ctx, cluster)
+	orch := domain.NewOrch("c1", "h1", nil)
+	repo.Create(ctx, orch)
 
-	cluster.Status = domain.ClusterStatusRunning
-	cluster.DashboardURL = "http://localhost:8265"
-	if err := repo.Update(ctx, cluster); err != nil {
+	orch.Status = domain.OrchStatusRunning
+	orch.DashboardURL = "http://localhost:8265"
+	if err := repo.Update(ctx, orch); err != nil {
 		t.Fatalf("Update error: %v", err)
 	}
 
-	got, _ := repo.GetByID(ctx, cluster.ID)
-	if got.Status != domain.ClusterStatusRunning {
-		t.Errorf("Status = %q, want %q", got.Status, domain.ClusterStatusRunning)
+	got, _ := repo.GetByID(ctx, orch.ID)
+	if got.Status != domain.OrchStatusRunning {
+		t.Errorf("Status = %q, want %q", got.Status, domain.OrchStatusRunning)
 	}
 	if got.DashboardURL != "http://localhost:8265" {
 		t.Errorf("DashboardURL = %q", got.DashboardURL)
 	}
 
 	// Update non-existent
-	fake := &domain.Cluster{ID: "fake"}
-	if err := repo.Update(ctx, fake); err != domain.ErrClusterNotFound {
-		t.Errorf("Update(fake) = %v, want ErrClusterNotFound", err)
+	fake := &domain.Orch{ID: "fake"}
+	if err := repo.Update(ctx, fake); err != domain.ErrOrchNotFound {
+		t.Errorf("Update(fake) = %v, want ErrOrchNotFound", err)
 	}
 }
 
-func TestClusterRepository_GetByStatus(t *testing.T) {
+func TestOrchRepository_GetByStatus(t *testing.T) {
 	db := newTestDB(t)
-	repo := NewClusterRepository(db.db)
+	repo := NewOrchRepository(db.db)
 	ctx := context.Background()
 
-	c1 := domain.NewCluster("c1", "h1", nil)
-	c2 := domain.NewCluster("c2", "h2", nil)
-	c2.Status = domain.ClusterStatusRunning
+	c1 := domain.NewOrch("c1", "h1", nil)
+	c2 := domain.NewOrch("c2", "h2", nil)
+	c2.Status = domain.OrchStatusRunning
 	repo.Create(ctx, c1)
 	repo.Create(ctx, c2)
 
-	pending, _ := repo.GetByStatus(ctx, domain.ClusterStatusPending)
+	pending, _ := repo.GetByStatus(ctx, domain.OrchStatusPending)
 	if len(pending) != 1 {
-		t.Errorf("pending clusters = %d, want 1", len(pending))
+		t.Errorf("pending orchs = %d, want 1", len(pending))
 	}
 
-	running, _ := repo.GetByStatus(ctx, domain.ClusterStatusRunning)
+	running, _ := repo.GetByStatus(ctx, domain.OrchStatusRunning)
 	if len(running) != 1 {
-		t.Errorf("running clusters = %d, want 1", len(running))
+		t.Errorf("running orchs = %d, want 1", len(running))
 	}
 }
 
-func TestClusterRepository_Delete(t *testing.T) {
+func TestOrchRepository_Delete(t *testing.T) {
 	db := newTestDB(t)
-	repo := NewClusterRepository(db.db)
+	repo := NewOrchRepository(db.db)
 	ctx := context.Background()
 
-	cluster := domain.NewCluster("c1", "h1", nil)
-	repo.Create(ctx, cluster)
+	orch := domain.NewOrch("c1", "h1", nil)
+	repo.Create(ctx, orch)
 
-	if err := repo.Delete(ctx, cluster.ID); err != nil {
+	if err := repo.Delete(ctx, orch.ID); err != nil {
 		t.Fatalf("Delete error: %v", err)
 	}
 
-	_, err := repo.GetByID(ctx, cluster.ID)
-	if err != domain.ErrClusterNotFound {
-		t.Errorf("after delete, GetByID = %v, want ErrClusterNotFound", err)
+	_, err := repo.GetByID(ctx, orch.ID)
+	if err != domain.ErrOrchNotFound {
+		t.Errorf("after delete, GetByID = %v, want ErrOrchNotFound", err)
 	}
 
-	if err := repo.Delete(ctx, "fake"); err != domain.ErrClusterNotFound {
-		t.Errorf("Delete(fake) = %v, want ErrClusterNotFound", err)
+	if err := repo.Delete(ctx, "fake"); err != domain.ErrOrchNotFound {
+		t.Errorf("Delete(fake) = %v, want ErrOrchNotFound", err)
 	}
 }
 
-func TestClusterRepository_GetClusterByDeviceID(t *testing.T) {
+func TestOrchRepository_GetOrchByDeviceID(t *testing.T) {
 	db := newTestDB(t)
-	repo := NewClusterRepository(db.db)
+	repo := NewOrchRepository(db.db)
 	ctx := context.Background()
 
-	cluster := domain.NewCluster("c1", "head1", []string{"w1", "w2"})
-	repo.Create(ctx, cluster)
+	orch := domain.NewOrch("c1", "head1", []string{"w1", "w2"})
+	repo.Create(ctx, orch)
 
 	// Find by head node
-	got, err := repo.GetClusterByDeviceID(ctx, "head1")
+	got, err := repo.GetOrchByDeviceID(ctx, "head1")
 	if err != nil {
-		t.Fatalf("GetClusterByDeviceID(head1) error: %v", err)
+		t.Fatalf("GetOrchByDeviceID(head1) error: %v", err)
 	}
 	if got.Name != "c1" {
-		t.Errorf("found cluster = %q, want %q", got.Name, "c1")
+		t.Errorf("found orch = %q, want %q", got.Name, "c1")
 	}
 
 	// Find by worker
-	got, err = repo.GetClusterByDeviceID(ctx, "w1")
+	got, err = repo.GetOrchByDeviceID(ctx, "w1")
 	if err != nil {
-		t.Fatalf("GetClusterByDeviceID(w1) error: %v", err)
+		t.Fatalf("GetOrchByDeviceID(w1) error: %v", err)
 	}
 	if got.Name != "c1" {
-		t.Errorf("found cluster = %q, want %q", got.Name, "c1")
+		t.Errorf("found orch = %q, want %q", got.Name, "c1")
 	}
 
 	// Not found
-	_, err = repo.GetClusterByDeviceID(ctx, "unknown")
-	if err != domain.ErrClusterNotFound {
-		t.Errorf("GetClusterByDeviceID(unknown) = %v, want ErrClusterNotFound", err)
+	_, err = repo.GetOrchByDeviceID(ctx, "unknown")
+	if err != domain.ErrOrchNotFound {
+		t.Errorf("GetOrchByDeviceID(unknown) = %v, want ErrOrchNotFound", err)
 	}
 }
 
-// --- ClusterNode Repository Tests ---
+// --- OrchNode Repository Tests ---
 
-func TestClusterNodeRepository_SaveAndGet(t *testing.T) {
+func TestOrchNodeRepository_SaveAndGet(t *testing.T) {
 	db := newTestDB(t)
-	// Need a cluster first (foreign key)
-	clusterRepo := NewClusterRepository(db.db)
+	// Need a orch first (foreign key)
+	orchRepo := NewOrchRepository(db.db)
 	ctx := context.Background()
-	cluster := domain.NewCluster("c1", "h1", nil)
-	clusterRepo.Create(ctx, cluster)
+	orch := domain.NewOrch("c1", "h1", nil)
+	orchRepo.Create(ctx, orch)
 
-	nodeRepo := NewClusterNodeRepository(db.db)
+	nodeRepo := NewOrchNodeRepository(db.db)
 
-	node := &domain.ClusterNode{
+	node := &domain.OrchNode{
 		DeviceID:    "d1",
-		ClusterID:   cluster.ID,
+		OrchID:   orch.ID,
 		Role:        domain.NodeRoleHead,
 		Status:      domain.NodeStatusRunning,
 		RayAddress:  "100.64.0.1:6379",
@@ -382,9 +382,9 @@ func TestClusterNodeRepository_SaveAndGet(t *testing.T) {
 		t.Fatalf("Save error: %v", err)
 	}
 
-	got, err := nodeRepo.GetByDeviceAndCluster(ctx, "d1", cluster.ID)
+	got, err := nodeRepo.GetByDeviceAndOrch(ctx, "d1", orch.ID)
 	if err != nil {
-		t.Fatalf("GetByDeviceAndCluster error: %v", err)
+		t.Fatalf("GetByDeviceAndOrch error: %v", err)
 	}
 	if got == nil {
 		t.Fatal("expected non-nil node")
@@ -400,39 +400,39 @@ func TestClusterNodeRepository_SaveAndGet(t *testing.T) {
 	}
 }
 
-func TestClusterNodeRepository_GetByCluster(t *testing.T) {
+func TestOrchNodeRepository_GetByOrch(t *testing.T) {
 	db := newTestDB(t)
-	clusterRepo := NewClusterRepository(db.db)
+	orchRepo := NewOrchRepository(db.db)
 	ctx := context.Background()
-	cluster := domain.NewCluster("c1", "h1", nil)
-	clusterRepo.Create(ctx, cluster)
+	orch := domain.NewOrch("c1", "h1", nil)
+	orchRepo.Create(ctx, orch)
 
-	nodeRepo := NewClusterNodeRepository(db.db)
-	nodeRepo.Save(ctx, &domain.ClusterNode{DeviceID: "d1", ClusterID: cluster.ID, Role: domain.NodeRoleHead, Status: domain.NodeStatusRunning, JoinedAt: time.Now()})
-	nodeRepo.Save(ctx, &domain.ClusterNode{DeviceID: "d2", ClusterID: cluster.ID, Role: domain.NodeRoleWorker, Status: domain.NodeStatusRunning, JoinedAt: time.Now()})
+	nodeRepo := NewOrchNodeRepository(db.db)
+	nodeRepo.Save(ctx, &domain.OrchNode{DeviceID: "d1", OrchID: orch.ID, Role: domain.NodeRoleHead, Status: domain.NodeStatusRunning, JoinedAt: time.Now()})
+	nodeRepo.Save(ctx, &domain.OrchNode{DeviceID: "d2", OrchID: orch.ID, Role: domain.NodeRoleWorker, Status: domain.NodeStatusRunning, JoinedAt: time.Now()})
 
-	nodes, err := nodeRepo.GetByCluster(ctx, cluster.ID)
+	nodes, err := nodeRepo.GetByOrch(ctx, orch.ID)
 	if err != nil {
-		t.Fatalf("GetByCluster error: %v", err)
+		t.Fatalf("GetByOrch error: %v", err)
 	}
 	if len(nodes) != 2 {
 		t.Errorf("nodes = %d, want 2", len(nodes))
 	}
 }
 
-func TestClusterNodeRepository_Delete(t *testing.T) {
+func TestOrchNodeRepository_Delete(t *testing.T) {
 	db := newTestDB(t)
-	clusterRepo := NewClusterRepository(db.db)
+	orchRepo := NewOrchRepository(db.db)
 	ctx := context.Background()
-	cluster := domain.NewCluster("c1", "h1", nil)
-	clusterRepo.Create(ctx, cluster)
+	orch := domain.NewOrch("c1", "h1", nil)
+	orchRepo.Create(ctx, orch)
 
-	nodeRepo := NewClusterNodeRepository(db.db)
-	nodeRepo.Save(ctx, &domain.ClusterNode{DeviceID: "d1", ClusterID: cluster.ID, Role: domain.NodeRoleHead, Status: domain.NodeStatusRunning, JoinedAt: time.Now()})
+	nodeRepo := NewOrchNodeRepository(db.db)
+	nodeRepo.Save(ctx, &domain.OrchNode{DeviceID: "d1", OrchID: orch.ID, Role: domain.NodeRoleHead, Status: domain.NodeStatusRunning, JoinedAt: time.Now()})
 
-	nodeRepo.Delete(ctx, "d1", cluster.ID)
+	nodeRepo.Delete(ctx, "d1", orch.ID)
 
-	got, _ := nodeRepo.GetByDeviceAndCluster(ctx, "d1", cluster.ID)
+	got, _ := nodeRepo.GetByDeviceAndOrch(ctx, "d1", orch.ID)
 	if got != nil {
 		t.Error("node should be deleted")
 	}

@@ -8,13 +8,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// WorkerRef represents a reference to either a device or a sub-cluster.
-// Format: "device:<id>" or "cluster:<id>"
+// WorkerRef represents a reference to either a device or a sub-orch.
+// Format: "device:<id>" or "orch:<id>"
 type WorkerRef string
 
 const (
 	WorkerRefPrefixDevice  = "device:"
-	WorkerRefPrefixCluster = "cluster:"
+	WorkerRefPrefixOrch = "orch:"
 )
 
 // NewDeviceRef creates a WorkerRef for a device
@@ -22,9 +22,9 @@ func NewDeviceRef(deviceID string) WorkerRef {
 	return WorkerRef(WorkerRefPrefixDevice + deviceID)
 }
 
-// NewClusterRef creates a WorkerRef for a sub-cluster
-func NewClusterRef(clusterID string) WorkerRef {
-	return WorkerRef(WorkerRefPrefixCluster + clusterID)
+// NewOrchRef creates a WorkerRef for a sub-orch
+func NewOrchRef(orchID string) WorkerRef {
+	return WorkerRef(WorkerRefPrefixOrch + orchID)
 }
 
 // IsDevice returns true if this ref points to a device
@@ -32,12 +32,12 @@ func (r WorkerRef) IsDevice() bool {
 	return strings.HasPrefix(string(r), WorkerRefPrefixDevice)
 }
 
-// IsCluster returns true if this ref points to a sub-cluster
-func (r WorkerRef) IsCluster() bool {
-	return strings.HasPrefix(string(r), WorkerRefPrefixCluster)
+// IsOrch returns true if this ref points to a sub-orch
+func (r WorkerRef) IsOrch() bool {
+	return strings.HasPrefix(string(r), WorkerRefPrefixOrch)
 }
 
-// ID returns the underlying device or cluster ID
+// ID returns the underlying device or orch ID
 func (r WorkerRef) ID() string {
 	s := string(r)
 	if i := strings.Index(s, ":"); i >= 0 {
@@ -46,10 +46,10 @@ func (r WorkerRef) ID() string {
 	return s // legacy: plain ID treated as device
 }
 
-// Type returns "device" or "cluster"
+// Type returns "device" or "orch"
 func (r WorkerRef) Type() string {
-	if r.IsCluster() {
-		return "cluster"
+	if r.IsOrch() {
+		return "orch"
 	}
 	return "device"
 }
@@ -62,43 +62,43 @@ func (r WorkerRef) String() string {
 // ParseWorkerRef parses a string into a WorkerRef.
 // Plain IDs without prefix are treated as device refs for backward compatibility.
 func ParseWorkerRef(s string) WorkerRef {
-	if strings.HasPrefix(s, WorkerRefPrefixDevice) || strings.HasPrefix(s, WorkerRefPrefixCluster) {
+	if strings.HasPrefix(s, WorkerRefPrefixDevice) || strings.HasPrefix(s, WorkerRefPrefixOrch) {
 		return WorkerRef(s)
 	}
 	// Legacy: plain ID → device
 	return NewDeviceRef(s)
 }
 
-// ClusterGroup represents a federation of clusters
-type ClusterGroup struct {
+// OrchGroup represents a federation of orchs
+type OrchGroup struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
-	ClusterIDs  []string `json:"clusterIds"`
+	OrchIDs  []string `json:"orchIds"`
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// NewClusterGroup creates a new cluster group
-func NewClusterGroup(name string, clusterIDs []string) *ClusterGroup {
+// NewOrchGroup creates a new orch group
+func NewOrchGroup(name string, orchIDs []string) *OrchGroup {
 	now := time.Now()
-	return &ClusterGroup{
+	return &OrchGroup{
 		ID:         uuid.New().String(),
 		Name:       name,
-		ClusterIDs: clusterIDs,
+		OrchIDs: orchIDs,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
 }
 
-// Validate checks the cluster group configuration
-func (g *ClusterGroup) Validate() error {
+// Validate checks the orch group configuration
+func (g *OrchGroup) Validate() error {
 	if g.Name == "" {
-		return fmt.Errorf("cluster group name is required")
+		return fmt.Errorf("orch group name is required")
 	}
-	if len(g.ClusterIDs) == 0 {
-		return fmt.Errorf("cluster group must contain at least one cluster")
+	if len(g.OrchIDs) == 0 {
+		return fmt.Errorf("orch group must contain at least one orch")
 	}
 	return nil
 }

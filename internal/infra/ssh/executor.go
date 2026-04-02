@@ -3,8 +3,10 @@ package ssh
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +31,10 @@ type Executor struct {
 	// Connection pool
 	connPool   map[string]*ssh.Client
 	connPoolMu sync.RWMutex
+
+	// Tailscale auth state (checked once at startup)
+	tailscaleAuthed   bool
+	tailscaleCheckMu  sync.Once
 }
 
 // Config holds SSH executor configuration
@@ -67,8 +73,46 @@ func (e *Executor) Execute(ctx context.Context, device *domain.Device, command s
 	return e.executeRegularSSH(ctx, device, command)
 }
 
+// checkTailscaleAuth checks if Tailscale is authenticated (runs once).
+func (e *Executor) checkTailscaleAuth() bool {
+	e.tailscaleCheckMu.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, findTailscaleBinary(), "status", "--json")
+		out, err := cmd.Output()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[naga] tailscale status check failed: %v\n", err)
+			return
+		}
+		// If BackendState is "Running", we're authenticated
+		if bytes.Contains(out, []byte(`"BackendState":"Running"`)) {
+			e.tailscaleAuthed = true
+		} else {
+			fmt.Fprintln(os.Stderr, "[naga] tailscale is not authenticated — skipping tailscale ssh. Run 'tailscale login' to authenticate.")
+		}
+	})
+	return e.tailscaleAuthed
+}
+
+// findTailscaleBinary returns the path to the tailscale binary
+func findTailscaleBinary() string {
+	if path, err := exec.LookPath("tailscale"); err == nil {
+		return path
+	}
+	// macOS app bundle location
+	macOSPath := "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+	if _, err := os.Stat(macOSPath); err == nil {
+		return macOSPath
+	}
+	return "tailscale"
+}
+
 // executeTailscaleSSH uses the tailscale ssh command
 func (e *Executor) executeTailscaleSSH(ctx context.Context, device *domain.Device, command string) (string, error) {
+	if !e.checkTailscaleAuth() {
+		return "", fmt.Errorf("tailscale not authenticated — run 'tailscale login' first")
+	}
+
 	// Build target: user@device or just device
 	target := device.TailscaleIP
 	if device.Name != "" {
@@ -79,7 +123,7 @@ func (e *Executor) executeTailscaleSSH(ctx context.Context, device *domain.Devic
 	}
 
 	// Use tailscale ssh command
-	cmd := exec.CommandContext(ctx, "tailscale", "ssh", target, command)
+	cmd := exec.CommandContext(ctx, findTailscaleBinary(), "ssh", target, command)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -229,32 +273,49 @@ func (e *Executor) getSSHConfig() (*ssh.ClientConfig, error) {
 }
 
 func (e *Executor) getHostKeyCallback() (ssh.HostKeyCallback, error) {
-	var knownHostFiles []string
+	home, _ := os.UserHomeDir()
+	knownHostsPath := filepath.Join(home, ".ssh", "known_hosts")
 
 	if file := os.Getenv("CLUSTERCTL_SSH_KNOWN_HOSTS"); file != "" {
-		knownHostFiles = append(knownHostFiles, file)
-	} else {
-		home, _ := os.UserHomeDir()
-		candidates := []string{
-			filepath.Join(home, ".ssh", "known_hosts"),
-			"/etc/ssh/ssh_known_hosts",
-		}
-		for _, candidate := range candidates {
-			if _, err := os.Stat(candidate); err == nil {
-				knownHostFiles = append(knownHostFiles, candidate)
-			}
-		}
+		knownHostsPath = file
 	}
 
-	if len(knownHostFiles) == 0 {
-		return nil, fmt.Errorf("no known_hosts file found; set CLUSTERCTL_SSH_KNOWN_HOSTS or create ~/.ssh/known_hosts")
+	// Ensure known_hosts file exists
+	if _, err := os.Stat(knownHostsPath); os.IsNotExist(err) {
+		dir := filepath.Dir(knownHostsPath)
+		os.MkdirAll(dir, 0700)
+		os.WriteFile(knownHostsPath, nil, 0600)
 	}
 
-	callback, err := knownhosts.New(knownHostFiles...)
+	callback, err := knownhosts.New(knownHostsPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize SSH host key verification: %w", err)
 	}
-	return callback, nil
+
+	// Wrap callback to auto-accept and save unknown host keys (like StrictHostKeyChecking=accept-new)
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		err := callback(hostname, remote, key)
+		if err == nil {
+			return nil
+		}
+
+		// If it's a key-not-found error, auto-accept and save
+		var keyErr *knownhosts.KeyError
+		if errors.As(err, &keyErr) && len(keyErr.Want) == 0 {
+			// Unknown host — append key to known_hosts
+			line := knownhosts.Line([]string{knownhosts.Normalize(hostname)}, key)
+			f, appendErr := os.OpenFile(knownHostsPath, os.O_APPEND|os.O_WRONLY, 0600)
+			if appendErr != nil {
+				return fmt.Errorf("unknown host key and failed to save: %w", appendErr)
+			}
+			defer f.Close()
+			fmt.Fprintln(f, line)
+			return nil
+		}
+
+		// Key mismatch (possible MITM) — reject
+		return err
+	}, nil
 }
 
 // CopyFile copies a file to a remote device
@@ -266,6 +327,10 @@ func (e *Executor) CopyFile(ctx context.Context, device *domain.Device, localPat
 }
 
 func (e *Executor) copyFileTailscaleSSH(ctx context.Context, device *domain.Device, localPath, remotePath string) error {
+	if !e.checkTailscaleAuth() {
+		return fmt.Errorf("tailscale not authenticated — run 'tailscale login' first")
+	}
+
 	target := device.TailscaleIP
 	if device.Name != "" {
 		target = device.Name
@@ -275,7 +340,7 @@ func (e *Executor) copyFileTailscaleSSH(ctx context.Context, device *domain.Devi
 	}
 
 	// Use scp through tailscale
-	cmd := exec.CommandContext(ctx, "tailscale", "scp", localPath, target+":"+remotePath)
+	cmd := exec.CommandContext(ctx, findTailscaleBinary(), "scp", localPath, target+":"+remotePath)
 	return cmd.Run()
 }
 

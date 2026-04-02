@@ -66,7 +66,7 @@ func (m *HeartbeatMonitor) RecordHeartbeat(hb domain.Heartbeat) {
 	if !exists {
 		nh = &domain.NodeHealth{
 			NodeID:    hb.NodeID,
-			ClusterID: hb.ClusterID,
+			OrchID: hb.OrchID,
 			Role:      hb.Role,
 			Status:    domain.NodeStatusRunning,
 		}
@@ -88,24 +88,24 @@ func (m *HeartbeatMonitor) IsNodeHealthy(nodeID string) bool {
 	return nh.IsHealthy(m.timeout)
 }
 
-func (m *HeartbeatMonitor) GetFailedNodes(clusterID string) []domain.NodeHealth {
+func (m *HeartbeatMonitor) GetFailedNodes(orchID string) []domain.NodeHealth {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var failed []domain.NodeHealth
 	for _, nh := range m.nodeHealth {
-		if nh.ClusterID == clusterID && !nh.IsHealthy(m.timeout) {
+		if nh.OrchID == orchID && !nh.IsHealthy(m.timeout) {
 			failed = append(failed, *nh)
 		}
 	}
 	return failed
 }
 
-func (m *HeartbeatMonitor) GetHealthyWorkers(clusterID string) []domain.NodeHealth {
+func (m *HeartbeatMonitor) GetHealthyWorkers(orchID string) []domain.NodeHealth {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	var workers []domain.NodeHealth
 	for _, nh := range m.nodeHealth {
-		if nh.ClusterID == clusterID && nh.Role == domain.NodeRoleWorker && nh.IsHealthy(m.timeout) {
+		if nh.OrchID == orchID && nh.Role == domain.NodeRoleWorker && nh.IsHealthy(m.timeout) {
 			workers = append(workers, *nh)
 		}
 	}

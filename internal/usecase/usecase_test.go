@@ -81,11 +81,11 @@ func (m *mockRayManager) StopRay(ctx context.Context, device *domain.Device) err
 	return nil
 }
 
-func (m *mockRayManager) GetClusterInfo(ctx context.Context, headDevice *domain.Device) (*domain.RayClusterInfo, error) {
-	return &domain.RayClusterInfo{
+func (m *mockRayManager) GetOrchInfo(ctx context.Context, headDevice *domain.Device) (*domain.RayOrchInfo, error) {
+	return &domain.RayOrchInfo{
 		RayVersion: "2.9.0",
 		TotalCPUs:  12,
-		Nodes:      []domain.RayNodeInfo{{NodeID: "n1", IsHeadNode: true}},
+		Nodes:      []domain.RayNodeInfo{{NodeID: "n1", IsCoordinator: true}},
 	}, nil
 }
 
@@ -228,73 +228,73 @@ func TestDeviceUseCase_GetDeviceMap(t *testing.T) {
 	}
 }
 
-// --- ClusterUseCase Tests ---
+// --- OrchUseCase Tests ---
 
-func TestClusterUseCase_CreateCluster(t *testing.T) {
+func TestOrchUseCase_CreateOrch(t *testing.T) {
 	repos := setupTestRepos(t)
 	ray := &mockRayManager{}
-	uc := NewClusterUseCase(repos, ray)
+	uc := NewOrchUseCase(repos, ray)
 	ctx := context.Background()
 
-	cluster, err := uc.CreateCluster(ctx, "my-cluster", "d1", []string{"d2", "d3"})
+	orch, err := uc.CreateOrch(ctx, "my-orch", "d1", []string{"d2", "d3"})
 	if err != nil {
-		t.Fatalf("CreateCluster error: %v", err)
+		t.Fatalf("CreateOrch error: %v", err)
 	}
-	if cluster.Name != "my-cluster" {
-		t.Errorf("Name = %q", cluster.Name)
+	if orch.Name != "my-orch" {
+		t.Errorf("Name = %q", orch.Name)
 	}
-	if cluster.ID == "" {
+	if orch.ID == "" {
 		t.Error("ID should be generated")
 	}
 
 	// Duplicate name
-	_, err = uc.CreateCluster(ctx, "my-cluster", "d4", nil)
-	if err != domain.ErrClusterAlreadyExist {
-		t.Errorf("duplicate name error = %v, want ErrClusterAlreadyExist", err)
+	_, err = uc.CreateOrch(ctx, "my-orch", "d4", nil)
+	if err != domain.ErrOrchAlreadyExist {
+		t.Errorf("duplicate name error = %v, want ErrOrchAlreadyExist", err)
 	}
 
-	// Head already in cluster
-	_, err = uc.CreateCluster(ctx, "c2", "d1", nil)
+	// Head already in orch
+	_, err = uc.CreateOrch(ctx, "c2", "d1", nil)
 	if err == nil {
-		t.Error("head already in cluster should fail")
+		t.Error("head already in orch should fail")
 	}
 
-	// Worker already in cluster
-	_, err = uc.CreateCluster(ctx, "c3", "d5", []string{"d2"})
+	// Worker already in orch
+	_, err = uc.CreateOrch(ctx, "c3", "d5", []string{"d2"})
 	if err == nil {
-		t.Error("worker already in cluster should fail")
+		t.Error("worker already in orch should fail")
 	}
 }
 
-func TestClusterUseCase_ListClusters(t *testing.T) {
+func TestOrchUseCase_ListOrchs(t *testing.T) {
 	repos := setupTestRepos(t)
-	uc := NewClusterUseCase(repos, &mockRayManager{})
+	uc := NewOrchUseCase(repos, &mockRayManager{})
 	ctx := context.Background()
 
-	uc.CreateCluster(ctx, "c1", "d1", nil)
-	uc.CreateCluster(ctx, "c2", "d2", nil)
+	uc.CreateOrch(ctx, "c1", "d1", nil)
+	uc.CreateOrch(ctx, "c2", "d2", nil)
 
-	clusters, err := uc.ListClusters(ctx)
+	orchs, err := uc.ListOrchs(ctx)
 	if err != nil {
-		t.Fatalf("ListClusters error: %v", err)
+		t.Fatalf("ListOrchs error: %v", err)
 	}
-	if len(clusters) != 2 {
-		t.Errorf("clusters = %d, want 2", len(clusters))
+	if len(orchs) != 2 {
+		t.Errorf("orchs = %d, want 2", len(orchs))
 	}
 }
 
-func TestClusterUseCase_StartCluster(t *testing.T) {
+func TestOrchUseCase_StartOrch(t *testing.T) {
 	repos := setupTestRepos(t)
 	ray := &mockRayManager{}
-	uc := NewClusterUseCase(repos, ray)
+	uc := NewOrchUseCase(repos, ray)
 	ctx := context.Background()
 
-	cluster, _ := uc.CreateCluster(ctx, "my-cluster", "d1", []string{"d2", "d3"})
+	orch, _ := uc.CreateOrch(ctx, "my-orch", "d1", []string{"d2", "d3"})
 	devices := testDeviceMap()
 
-	err := uc.StartCluster(ctx, cluster.Name, devices)
+	err := uc.StartOrch(ctx, orch.Name, devices)
 	if err != nil {
-		t.Fatalf("StartCluster error: %v", err)
+		t.Fatalf("StartOrch error: %v", err)
 	}
 	if !ray.startHeadCalled {
 		t.Error("StartHead should be called")
@@ -304,156 +304,156 @@ func TestClusterUseCase_StartCluster(t *testing.T) {
 	}
 
 	// Verify status updated
-	got, _ := uc.GetCluster(ctx, "my-cluster")
-	if got.Status != domain.ClusterStatusRunning {
+	got, _ := uc.GetOrch(ctx, "my-orch")
+	if got.Status != domain.OrchStatusRunning {
 		t.Errorf("Status = %q, want running", got.Status)
 	}
 	if got.DashboardURL == "" {
 		t.Error("DashboardURL should be set")
 	}
 
-	// Starting already running cluster should fail
-	err = uc.StartCluster(ctx, "my-cluster", devices)
+	// Starting already running orch should fail
+	err = uc.StartOrch(ctx, "my-orch", devices)
 	if err == nil {
-		t.Error("starting running cluster should fail")
+		t.Error("starting running orch should fail")
 	}
 }
 
-func TestClusterUseCase_StopCluster(t *testing.T) {
+func TestOrchUseCase_StopOrch(t *testing.T) {
 	repos := setupTestRepos(t)
 	ray := &mockRayManager{}
-	uc := NewClusterUseCase(repos, ray)
+	uc := NewOrchUseCase(repos, ray)
 	ctx := context.Background()
 
-	cluster, _ := uc.CreateCluster(ctx, "my-cluster", "d1", []string{"d2"})
+	orch, _ := uc.CreateOrch(ctx, "my-orch", "d1", []string{"d2"})
 	devices := testDeviceMap()
-	uc.StartCluster(ctx, cluster.Name, devices)
+	uc.StartOrch(ctx, orch.Name, devices)
 
 	// Reset counters
 	ray.stopRayCalled = 0
 
-	err := uc.StopCluster(ctx, "my-cluster", devices, false)
+	err := uc.StopOrch(ctx, "my-orch", devices, false)
 	if err != nil {
-		t.Fatalf("StopCluster error: %v", err)
+		t.Fatalf("StopOrch error: %v", err)
 	}
 	// Should stop worker + head = 2
 	if ray.stopRayCalled != 2 {
 		t.Errorf("StopRay called %d times, want 2", ray.stopRayCalled)
 	}
 
-	got, _ := uc.GetCluster(ctx, "my-cluster")
-	if got.Status != domain.ClusterStatusStopped {
+	got, _ := uc.GetOrch(ctx, "my-orch")
+	if got.Status != domain.OrchStatusStopped {
 		t.Errorf("Status = %q, want stopped", got.Status)
 	}
 }
 
-func TestClusterUseCase_StopCluster_WithRunningJobs(t *testing.T) {
+func TestOrchUseCase_StopOrch_WithRunningJobs(t *testing.T) {
 	repos := setupTestRepos(t)
 	ray := &mockRayManager{hasRunningJobs: true}
-	uc := NewClusterUseCase(repos, ray)
+	uc := NewOrchUseCase(repos, ray)
 	ctx := context.Background()
 
-	cluster, _ := uc.CreateCluster(ctx, "my-cluster", "d1", nil)
+	orch, _ := uc.CreateOrch(ctx, "my-orch", "d1", nil)
 	devices := testDeviceMap()
-	uc.StartCluster(ctx, cluster.Name, devices)
+	uc.StartOrch(ctx, orch.Name, devices)
 
 	// Without force should fail
-	err := uc.StopCluster(ctx, "my-cluster", devices, false)
-	if err != domain.ErrClusterInUse {
-		t.Errorf("stop with running jobs = %v, want ErrClusterInUse", err)
+	err := uc.StopOrch(ctx, "my-orch", devices, false)
+	if err != domain.ErrOrchInUse {
+		t.Errorf("stop with running jobs = %v, want ErrOrchInUse", err)
 	}
 
 	// With force should succeed
-	err = uc.StopCluster(ctx, "my-cluster", devices, true)
+	err = uc.StopOrch(ctx, "my-orch", devices, true)
 	if err != nil {
 		t.Fatalf("force stop error: %v", err)
 	}
 }
 
-func TestClusterUseCase_AddWorker(t *testing.T) {
+func TestOrchUseCase_AddWorker(t *testing.T) {
 	repos := setupTestRepos(t)
 	ray := &mockRayManager{}
-	uc := NewClusterUseCase(repos, ray)
+	uc := NewOrchUseCase(repos, ray)
 	ctx := context.Background()
 	devices := testDeviceMap()
 
-	cluster, _ := uc.CreateCluster(ctx, "my-cluster", "d1", nil)
+	orch, _ := uc.CreateOrch(ctx, "my-orch", "d1", nil)
 
-	// Add worker to pending cluster (no Ray start)
-	err := uc.AddWorker(ctx, cluster.Name, "d2", devices["d2"], devices["d1"])
+	// Add worker to pending orch (no Ray start)
+	err := uc.AddWorker(ctx, orch.Name, "d2", devices["d2"], devices["d1"])
 	if err != nil {
 		t.Fatalf("AddWorker error: %v", err)
 	}
 
-	got, _ := uc.GetCluster(ctx, "my-cluster")
+	got, _ := uc.GetOrch(ctx, "my-orch")
 	if !got.HasWorker("d2") {
 		t.Error("d2 should be a worker")
 	}
 
 	// Add duplicate
-	err = uc.AddWorker(ctx, cluster.Name, "d2", devices["d2"], devices["d1"])
-	if err != domain.ErrNodeAlreadyInCluster {
-		t.Errorf("duplicate add = %v, want ErrNodeAlreadyInCluster", err)
+	err = uc.AddWorker(ctx, orch.Name, "d2", devices["d2"], devices["d1"])
+	if err != domain.ErrNodeAlreadyInOrch {
+		t.Errorf("duplicate add = %v, want ErrNodeAlreadyInOrch", err)
 	}
 }
 
-func TestClusterUseCase_RemoveWorker(t *testing.T) {
+func TestOrchUseCase_RemoveWorker(t *testing.T) {
 	repos := setupTestRepos(t)
 	ray := &mockRayManager{}
-	uc := NewClusterUseCase(repos, ray)
+	uc := NewOrchUseCase(repos, ray)
 	ctx := context.Background()
 
-	cluster, _ := uc.CreateCluster(ctx, "my-cluster", "d1", []string{"d2", "d3"})
+	orch, _ := uc.CreateOrch(ctx, "my-orch", "d1", []string{"d2", "d3"})
 
-	err := uc.RemoveWorker(ctx, cluster.Name, "d2", testDeviceMap()["d2"])
+	err := uc.RemoveWorker(ctx, orch.Name, "d2", testDeviceMap()["d2"])
 	if err != nil {
 		t.Fatalf("RemoveWorker error: %v", err)
 	}
 
-	got, _ := uc.GetCluster(ctx, "my-cluster")
+	got, _ := uc.GetOrch(ctx, "my-orch")
 	if got.HasWorker("d2") {
 		t.Error("d2 should be removed")
 	}
 
 	// Remove head should fail
-	err = uc.RemoveWorker(ctx, cluster.Name, "d1", nil)
+	err = uc.RemoveWorker(ctx, orch.Name, "d1", nil)
 	if err != domain.ErrCannotRemoveHead {
 		t.Errorf("remove head = %v, want ErrCannotRemoveHead", err)
 	}
 }
 
-func TestClusterUseCase_DeleteCluster(t *testing.T) {
+func TestOrchUseCase_DeleteOrch(t *testing.T) {
 	repos := setupTestRepos(t)
 	ray := &mockRayManager{}
-	uc := NewClusterUseCase(repos, ray)
+	uc := NewOrchUseCase(repos, ray)
 	ctx := context.Background()
 
-	uc.CreateCluster(ctx, "my-cluster", "d1", nil)
+	uc.CreateOrch(ctx, "my-orch", "d1", nil)
 
-	err := uc.DeleteCluster(ctx, "my-cluster", testDeviceMap(), false)
+	err := uc.DeleteOrch(ctx, "my-orch", testDeviceMap(), false)
 	if err != nil {
-		t.Fatalf("DeleteCluster error: %v", err)
+		t.Fatalf("DeleteOrch error: %v", err)
 	}
 
-	_, err = uc.GetCluster(ctx, "my-cluster")
-	if err != domain.ErrClusterNotFound {
-		t.Errorf("after delete = %v, want ErrClusterNotFound", err)
+	_, err = uc.GetOrch(ctx, "my-orch")
+	if err != domain.ErrOrchNotFound {
+		t.Errorf("after delete = %v, want ErrOrchNotFound", err)
 	}
 }
 
-func TestClusterUseCase_GetClusterStatus(t *testing.T) {
+func TestOrchUseCase_GetOrchStatus(t *testing.T) {
 	repos := setupTestRepos(t)
 	ray := &mockRayManager{}
-	uc := NewClusterUseCase(repos, ray)
+	uc := NewOrchUseCase(repos, ray)
 	ctx := context.Background()
 
-	cluster, _ := uc.CreateCluster(ctx, "my-cluster", "d1", nil)
+	orch, _ := uc.CreateOrch(ctx, "my-orch", "d1", nil)
 	devices := testDeviceMap()
-	uc.StartCluster(ctx, cluster.Name, devices)
+	uc.StartOrch(ctx, orch.Name, devices)
 
-	info, err := uc.GetClusterStatus(ctx, "my-cluster", devices["d1"])
+	info, err := uc.GetOrchStatus(ctx, "my-orch", devices["d1"])
 	if err != nil {
-		t.Fatalf("GetClusterStatus error: %v", err)
+		t.Fatalf("GetOrchStatus error: %v", err)
 	}
 	if info.RayVersion != "2.9.0" {
 		t.Errorf("RayVersion = %q", info.RayVersion)

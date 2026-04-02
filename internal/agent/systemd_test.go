@@ -8,10 +8,10 @@ import (
 func TestGenerateSystemdUnit(t *testing.T) {
 	cfg := SystemdConfig{
 		NodeID:     "worker1",
-		ClusterID:  "mycluster",
+		OrchID:  "myorch",
 		Role:       "worker",
 		Port:       9090,
-		BinaryPath: "/usr/local/bin/cluster-agent",
+		BinaryPath: "/usr/local/bin/orch-agent",
 		APIKey:     "sk-test-key",
 	}
 
@@ -27,13 +27,13 @@ func TestGenerateSystemdUnit(t *testing.T) {
 		{"has Unit section", "[Unit]"},
 		{"has Service section", "[Service]"},
 		{"has Install section", "[Install]"},
-		{"has ExecStart", "ExecStart=/usr/local/bin/cluster-agent"},
+		{"has ExecStart", "ExecStart=/usr/local/bin/orch-agent"},
 		{"has Restart=always", "Restart=always"},
 		{"has node-id flag", "--node-id worker1"},
-		{"has cluster-id flag", "--cluster-id mycluster"},
+		{"has orch-id flag", "--orch-id myorch"},
 		{"has role flag", "--role worker"},
 		{"has port flag", "--port 9090"},
-		{"has EnvironmentFile", "EnvironmentFile=/etc/cluster-agent/cluster-agent-mycluster-worker1.env"},
+		{"has EnvironmentFile", "EnvironmentFile=/etc/orch-agent/orch-agent-myorch-worker1.env"},
 	}
 
 	for _, c := range checks {
@@ -53,10 +53,10 @@ func TestGenerateSystemdUnit(t *testing.T) {
 func TestGenerateSystemdUnitNoAPIKey(t *testing.T) {
 	cfg := SystemdConfig{
 		NodeID:     "head1",
-		ClusterID:  "testcluster",
-		Role:       "head",
+		OrchID:  "testorch",
+		Role:       "coordinator",
 		Port:       8080,
-		BinaryPath: "/usr/bin/cluster-agent",
+		BinaryPath: "/usr/bin/orch-agent",
 	}
 
 	unit, err := GenerateSystemdUnit(cfg)
@@ -83,15 +83,15 @@ func TestGenerateEnvFile(t *testing.T) {
 }
 
 func TestServiceName(t *testing.T) {
-	name := ServiceName("mycluster", "worker1")
-	if name != "cluster-agent-mycluster-worker1" {
-		t.Errorf("expected cluster-agent-mycluster-worker1, got %s", name)
+	name := ServiceName("myorch", "worker1")
+	if name != "orch-agent-myorch-worker1" {
+		t.Errorf("expected orch-agent-myorch-worker1, got %s", name)
 	}
 }
 
 func TestUnitFilePath(t *testing.T) {
-	path := UnitFilePath("mycluster", "worker1")
-	expected := "/etc/systemd/system/cluster-agent-mycluster-worker1.service"
+	path := UnitFilePath("myorch", "worker1")
+	expected := "/etc/systemd/system/orch-agent-myorch-worker1.service"
 	if path != expected {
 		t.Errorf("expected %s, got %s", expected, path)
 	}
@@ -100,10 +100,10 @@ func TestUnitFilePath(t *testing.T) {
 func TestInstallCommands(t *testing.T) {
 	cfg := SystemdConfig{
 		NodeID:     "worker1",
-		ClusterID:  "mycluster",
+		OrchID:  "myorch",
 		Role:       "worker",
 		Port:       9090,
-		BinaryPath: "/usr/local/bin/cluster-agent",
+		BinaryPath: "/usr/local/bin/orch-agent",
 		APIKey:     "sk-test",
 	}
 
@@ -123,7 +123,7 @@ func TestInstallCommands(t *testing.T) {
 		if strings.Contains(cmd, "enable") {
 			hasEnable = true
 		}
-		if strings.Contains(cmd, "mkdir -p /etc/cluster-agent") {
+		if strings.Contains(cmd, "mkdir -p /etc/orch-agent") {
 			hasMkdir = true
 		}
 		if strings.Contains(cmd, "install -m 0600") {
@@ -146,7 +146,7 @@ func TestInstallCommands(t *testing.T) {
 }
 
 func TestUninstallCommands(t *testing.T) {
-	cmds := UninstallCommands("mycluster", "worker1")
+	cmds := UninstallCommands("myorch", "worker1")
 
 	hasStop := false
 	hasDisable := false
@@ -175,7 +175,7 @@ func TestUninstallCommands(t *testing.T) {
 }
 
 func TestValidateIdentifier(t *testing.T) {
-	valid := []string{"worker1", "my-cluster", "node.01", "head_2", "a"}
+	valid := []string{"worker1", "my-orch", "node.01", "head_2", "a"}
 	for _, s := range valid {
 		if err := ValidateIdentifier(s); err != nil {
 			t.Errorf("expected %q to be valid, got error: %v", s, err)
@@ -193,10 +193,10 @@ func TestValidateIdentifier(t *testing.T) {
 func TestGenerateSystemdUnitValidation(t *testing.T) {
 	cfg := SystemdConfig{
 		NodeID:     "worker1; rm -rf /",
-		ClusterID:  "mycluster",
+		OrchID:  "myorch",
 		Role:       "worker",
 		Port:       9090,
-		BinaryPath: "/usr/local/bin/cluster-agent",
+		BinaryPath: "/usr/local/bin/orch-agent",
 	}
 
 	_, err := GenerateSystemdUnit(cfg)
@@ -208,10 +208,10 @@ func TestGenerateSystemdUnitValidation(t *testing.T) {
 func TestInstallCommandsValidation(t *testing.T) {
 	cfg := SystemdConfig{
 		NodeID:     "$(evil)",
-		ClusterID:  "mycluster",
+		OrchID:  "myorch",
 		Role:       "worker",
 		Port:       9090,
-		BinaryPath: "/usr/local/bin/cluster-agent",
+		BinaryPath: "/usr/local/bin/orch-agent",
 	}
 
 	_, err := InstallCommands(cfg)
@@ -221,13 +221,13 @@ func TestInstallCommandsValidation(t *testing.T) {
 }
 
 func TestValidatedServiceName(t *testing.T) {
-	_, err := ValidatedServiceName("good-cluster", "good-node")
+	_, err := ValidatedServiceName("good-orch", "good-node")
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	_, err = ValidatedServiceName("bad cluster", "node")
+	_, err = ValidatedServiceName("bad orch", "node")
 	if err == nil {
-		t.Error("expected error for invalid clusterID")
+		t.Error("expected error for invalid orchID")
 	}
 }

@@ -18,7 +18,7 @@ struct ExecuteRequest: Encodable {
 }
 
 struct ExecuteResponse: Codable {
-    let cluster_id: String
+    let orch_id: String
     let command: String
     let worker_count: Int
     let results: [TaskResult]

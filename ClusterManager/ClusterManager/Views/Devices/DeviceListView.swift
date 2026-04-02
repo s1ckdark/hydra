@@ -2,12 +2,15 @@ import SwiftUI
 
 struct DeviceListView: View {
     @EnvironmentObject var dashboardVM: DashboardViewModel
+    @ObservedObject private var prefs = DevicePreferences.shared
     @State private var selectedDevice: Device?
     @State private var searchText = ""
+    @State private var isEditing = false
 
     var filteredDevices: [Device] {
-        if searchText.isEmpty { return dashboardVM.devices }
-        return dashboardVM.devices.filter {
+        let ordered = prefs.apply(to: dashboardVM.devices, id: \.id)
+        if searchText.isEmpty { return ordered }
+        return ordered.filter {
             $0.hostname.localizedCaseInsensitiveContains(searchText) ||
             $0.name.localizedCaseInsensitiveContains(searchText) ||
             $0.tailscaleIp.contains(searchText)
@@ -16,19 +19,38 @@ struct DeviceListView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(filteredDevices, selection: $selectedDevice) { device in
-                DeviceRowView(device: device)
-                    .tag(device)
+            Group {
+                if isEditing {
+                    DeviceEditList(prefs: prefs, devices: dashboardVM.devices)
+                } else {
+                    List(filteredDevices, selection: $selectedDevice) { device in
+                        DeviceRowView(device: device)
+                            .tag(device)
+                    }
+                    .searchable(text: $searchText, prompt: "Search devices")
+                }
             }
-            .searchable(text: $searchText, prompt: "Search devices")
             .navigationTitle("Devices")
             .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
             .toolbar {
                 ToolbarItem {
+                    Button(action: { withAnimation { isEditing.toggle() } }) {
+                        Image(systemName: isEditing ? "checkmark.circle.fill" : "list.bullet.indent")
+                    }
+                    .help(isEditing ? "Done editing" : "Edit device order & visibility")
+                }
+                ToolbarItem {
                     Button(action: { Task { await dashboardVM.load() } }) {
                         Image(systemName: "arrow.clockwise")
                     }
+                    .disabled(isEditing)
                 }
+            }
+            .onChange(of: dashboardVM.devices) {
+                prefs.merge(deviceIds: dashboardVM.devices.map(\.id))
+            }
+            .onAppear {
+                prefs.merge(deviceIds: dashboardVM.devices.map(\.id))
             }
         } detail: {
             if let device = selectedDevice {
@@ -36,6 +58,78 @@ struct DeviceListView: View {
             } else {
                 Text("Select a device")
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+// MARK: - Edit List
+
+struct DeviceEditList: View {
+    @ObservedObject var prefs: DevicePreferences
+    let devices: [Device]
+
+    private func device(for entry: DevicePreferences.Entry) -> Device? {
+        devices.first { $0.id == entry.deviceId }
+    }
+
+    var body: some View {
+        List {
+            ForEach(prefs.entries) { entry in
+                if let device = device(for: entry) {
+                    HStack(spacing: 10) {
+                        // Visibility toggle
+                        Button {
+                            withAnimation { prefs.setVisible(entry.deviceId, visible: !entry.visible) }
+                        } label: {
+                            Image(systemName: entry.visible ? "eye.fill" : "eye.slash")
+                                .foregroundStyle(entry.visible ? .primary : .tertiary)
+                        }
+                        .buttonStyle(.plain)
+
+                        // Device info
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(device.isOnline ? .green : .red)
+                                    .frame(width: 6, height: 6)
+                                Text(device.shortName)
+                                    .fontWeight(.medium)
+                                    .lineLimit(1)
+                            }
+                            Text(device.tailscaleIp)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .opacity(entry.visible ? 1 : 0.4)
+
+                        Spacer()
+
+                        // Move buttons
+                        VStack(spacing: 0) {
+                            Button {
+                                withAnimation { prefs.moveUp(entry.deviceId) }
+                            } label: {
+                                Image(systemName: "chevron.up")
+                                    .font(.caption2)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                withAnimation { prefs.moveDown(entry.deviceId) }
+                            } label: {
+                                Image(systemName: "chevron.down")
+                                    .font(.caption2)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+            .onMove { source, destination in
+                prefs.move(fromOffsets: source, toOffset: destination)
             }
         }
     }

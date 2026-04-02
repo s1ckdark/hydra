@@ -50,9 +50,9 @@ func (c *GPUCollector) CollectGPUMetrics(ctx context.Context, device *domain.Dev
 	return metrics
 }
 
-// CollectClusterGPUMetrics collects GPU metrics from multiple devices in parallel.
+// CollectOrchGPUMetrics collects GPU metrics from multiple devices in parallel.
 // Uses semaphore pattern like existing CollectMetricsParallel in collector.go.
-func (c *GPUCollector) CollectClusterGPUMetrics(ctx context.Context, devices []*domain.Device) []*domain.GPUNodeMetrics {
+func (c *GPUCollector) CollectOrchGPUMetrics(ctx context.Context, devices []*domain.Device) []*domain.GPUNodeMetrics {
 	results := make([]*domain.GPUNodeMetrics, len(devices))
 	var wg sync.WaitGroup
 

@@ -15,12 +15,12 @@ import (
 	"github.com/dave/naga/internal/domain"
 )
 
-// Agent runs on each cluster node as a systemd service.
+// Agent runs on each orch node as a systemd service.
 // It provides HTTP endpoints for heartbeat, health, and metrics,
 // sends periodic heartbeats, and watches for head node failure.
 type Agent struct {
 	nodeID            string
-	clusterID         string
+	orchID         string
 	role              domain.NodeRole
 	listenAddr        string
 	authToken         string
@@ -30,13 +30,13 @@ type Agent struct {
 	election          *Election
 	mu                sync.RWMutex
 	metrics           *domain.HeartbeatMetrics
-	onFailover        func(ctx context.Context, clusterID string, candidates []domain.ElectionCandidate) (*domain.ElectionResult, error)
+	onFailover        func(ctx context.Context, orchID string, candidates []domain.ElectionCandidate) (*domain.ElectionResult, error)
 }
 
 // AgentConfig holds configuration for creating a new Agent.
 type AgentConfig struct {
 	NodeID            string
-	ClusterID         string
+	OrchID         string
 	Role              domain.NodeRole
 	ListenAddr        string
 	AuthToken         string
@@ -52,7 +52,7 @@ func NewAgent(cfg AgentConfig) *Agent {
 
 	a := &Agent{
 		nodeID:            cfg.NodeID,
-		clusterID:         cfg.ClusterID,
+		orchID:         cfg.OrchID,
 		role:              cfg.Role,
 		listenAddr:        cfg.ListenAddr,
 		authToken:         cfg.AuthToken,
@@ -63,8 +63,8 @@ func NewAgent(cfg AgentConfig) *Agent {
 		metrics:           &domain.HeartbeatMetrics{},
 	}
 
-	a.onFailover = func(ctx context.Context, clusterID string, candidates []domain.ElectionCandidate) (*domain.ElectionResult, error) {
-		return election.Elect(ctx, clusterID, candidates)
+	a.onFailover = func(ctx context.Context, orchID string, candidates []domain.ElectionCandidate) (*domain.ElectionResult, error) {
+		return election.Elect(ctx, orchID, candidates)
 	}
 
 	return a
@@ -94,8 +94,8 @@ func (a *Agent) Run(ctx context.Context) error {
 
 	// Start HTTP server
 	go func() {
-		log.Printf("agent %s starting HTTP server on %s (role=%s, cluster=%s)",
-			a.nodeID, a.listenAddr, a.role, a.clusterID)
+		log.Printf("agent %s starting HTTP server on %s (role=%s, orch=%s)",
+			a.nodeID, a.listenAddr, a.role, a.orchID)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errCh <- fmt.Errorf("http server error: %w", err)
 		}
@@ -137,7 +137,7 @@ func (a *Agent) sendHeartbeats(ctx context.Context) {
 
 			hb := domain.Heartbeat{
 				NodeID:    a.nodeID,
-				ClusterID: a.clusterID,
+				OrchID: a.orchID,
 				Role:      a.role,
 				Timestamp: time.Now(),
 				Metrics:   metrics,
@@ -157,14 +157,14 @@ func (a *Agent) watchHead(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			failed := a.monitor.GetFailedNodes(a.clusterID)
+			failed := a.monitor.GetFailedNodes(a.orchID)
 			for _, nh := range failed {
 				if nh.Role == domain.NodeRoleHead {
 					log.Printf("agent %s detected head node %s failure",
 						a.nodeID, nh.NodeID)
 
 					// Deduplication: only the worker with the lowest ID triggers the election
-					workers := a.monitor.GetHealthyWorkers(a.clusterID)
+					workers := a.monitor.GetHealthyWorkers(a.orchID)
 					if len(workers) == 0 {
 						continue
 					}
@@ -194,7 +194,7 @@ func (a *Agent) watchHead(ctx context.Context) {
 						candidates = append(candidates, c)
 					}
 					if len(candidates) > 0 {
-						result, err := a.onFailover(ctx, a.clusterID, candidates)
+						result, err := a.onFailover(ctx, a.orchID, candidates)
 						if err != nil {
 							log.Printf("election failed: %v", err)
 						} else {
@@ -265,7 +265,7 @@ func (a *Agent) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"nodeId":    a.nodeID,
-		"clusterId": a.clusterID,
+		"orchId": a.orchID,
 		"role":      a.role,
 		"status":    "healthy",
 	})

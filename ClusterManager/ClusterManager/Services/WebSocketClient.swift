@@ -29,7 +29,7 @@ struct WSMessage: Codable {
     }
 }
 
-/// Manages WebSocket connection to cluster server
+/// Manages WebSocket connection to orch server
 @MainActor
 class WebSocketClient: ObservableObject {
     @Published var isConnected = false

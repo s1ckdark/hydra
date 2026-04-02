@@ -20,7 +20,7 @@ import (
 
 func main() {
 	nodeID := flag.String("node-id", "", "Node ID (required)")
-	clusterID := flag.String("cluster-id", "", "Cluster ID (required)")
+	orchID := flag.String("orch-id", "", "Orch ID (required)")
 	role := flag.String("role", "worker", "Node role: head or worker")
 	port := flag.Int("port", 9090, "HTTP listen port")
 	heartbeat := flag.Duration("heartbeat", 3*time.Second, "Heartbeat interval")
@@ -59,15 +59,15 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	if *clusterID == "" {
-		fmt.Fprintln(os.Stderr, "error: --cluster-id is required")
+	if *orchID == "" {
+		fmt.Fprintln(os.Stderr, "error: --orch-id is required")
 		flag.Usage()
 		os.Exit(1)
 	}
 
 	var nodeRole domain.NodeRole
 	switch *role {
-	case "head":
+	case "coordinator":
 		nodeRole = domain.NodeRoleHead
 	case "worker":
 		nodeRole = domain.NodeRoleWorker
@@ -78,7 +78,7 @@ func main() {
 
 	cfg := agent.AgentConfig{
 		NodeID:            *nodeID,
-		ClusterID:         *clusterID,
+		OrchID:         *orchID,
 		Role:              nodeRole,
 		ListenAddr:        fmt.Sprintf(":%d", *port),
 		HeartbeatInterval: *heartbeat,

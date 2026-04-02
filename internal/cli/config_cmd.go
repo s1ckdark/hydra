@@ -13,7 +13,7 @@ func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
 		Short: "Manage configuration",
-		Long:  "View and modify clusterctl configuration",
+		Long:  "View and modify orchctl configuration",
 	}
 
 	cmd.AddCommand(newConfigShowCmd())
@@ -142,7 +142,7 @@ func newConfigInitCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.DefaultConfig()
 
-			fmt.Println("Cluster Manager Configuration")
+			fmt.Println("Orch Manager Configuration")
 			fmt.Println("=============================")
 			fmt.Println()
 
@@ -178,9 +178,9 @@ func newConfigInitCmd() *cobra.Command {
 			fmt.Println()
 			fmt.Printf("Configuration saved to %s/config.yaml\n", config.GetConfigDir())
 			fmt.Println()
-			fmt.Println("You can now use clusterctl:")
-			fmt.Println("  clusterctl device list")
-			fmt.Println("  clusterctl cluster create my-cluster --head node1 --workers node2")
+			fmt.Println("You can now use orchctl:")
+			fmt.Println("  orchctl device list")
+			fmt.Println("  orchctl orch create my-orch --head node1 --workers node2")
 
 			return nil
 		},

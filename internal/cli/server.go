@@ -15,7 +15,7 @@ func newServerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "server",
 		Short: "Start the web server",
-		Long:  "Start the clusterctl web server with dashboard UI",
+		Long:  "Start the orchctl web server with dashboard UI",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := getConfig()
 			if err != nil {

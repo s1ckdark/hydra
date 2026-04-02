@@ -27,46 +27,46 @@ type DeviceRepository interface {
 	SaveMany(ctx context.Context, devices []*domain.Device) error
 }
 
-// ClusterRepository defines operations for cluster persistence
-type ClusterRepository interface {
-	// Create creates a new cluster
-	Create(ctx context.Context, cluster *domain.Cluster) error
+// OrchRepository defines operations for orch persistence
+type OrchRepository interface {
+	// Create creates a new orch
+	Create(ctx context.Context, orch *domain.Orch) error
 
-	// Update updates an existing cluster
-	Update(ctx context.Context, cluster *domain.Cluster) error
+	// Update updates an existing orch
+	Update(ctx context.Context, orch *domain.Orch) error
 
-	// GetByID retrieves a cluster by its ID
-	GetByID(ctx context.Context, id string) (*domain.Cluster, error)
+	// GetByID retrieves a orch by its ID
+	GetByID(ctx context.Context, id string) (*domain.Orch, error)
 
-	// GetByName retrieves a cluster by its name
-	GetByName(ctx context.Context, name string) (*domain.Cluster, error)
+	// GetByName retrieves a orch by its name
+	GetByName(ctx context.Context, name string) (*domain.Orch, error)
 
-	// GetAll retrieves all clusters
-	GetAll(ctx context.Context) ([]*domain.Cluster, error)
+	// GetAll retrieves all orchs
+	GetAll(ctx context.Context) ([]*domain.Orch, error)
 
-	// GetByStatus retrieves clusters by status
-	GetByStatus(ctx context.Context, status domain.ClusterStatus) ([]*domain.Cluster, error)
+	// GetByStatus retrieves orchs by status
+	GetByStatus(ctx context.Context, status domain.OrchStatus) ([]*domain.Orch, error)
 
-	// Delete removes a cluster by ID
+	// Delete removes a orch by ID
 	Delete(ctx context.Context, id string) error
 
-	// GetClusterByDeviceID finds the cluster that contains a device
-	GetClusterByDeviceID(ctx context.Context, deviceID string) (*domain.Cluster, error)
+	// GetOrchByDeviceID finds the orch that contains a device
+	GetOrchByDeviceID(ctx context.Context, deviceID string) (*domain.Orch, error)
 }
 
-// ClusterNodeRepository defines operations for cluster node persistence
-type ClusterNodeRepository interface {
-	// Save creates or updates a cluster node
-	Save(ctx context.Context, node *domain.ClusterNode) error
+// OrchNodeRepository defines operations for orch node persistence
+type OrchNodeRepository interface {
+	// Save creates or updates a orch node
+	Save(ctx context.Context, node *domain.OrchNode) error
 
-	// GetByDeviceAndCluster retrieves a node by device and cluster IDs
-	GetByDeviceAndCluster(ctx context.Context, deviceID, clusterID string) (*domain.ClusterNode, error)
+	// GetByDeviceAndOrch retrieves a node by device and orch IDs
+	GetByDeviceAndOrch(ctx context.Context, deviceID, orchID string) (*domain.OrchNode, error)
 
-	// GetByCluster retrieves all nodes for a cluster
-	GetByCluster(ctx context.Context, clusterID string) ([]*domain.ClusterNode, error)
+	// GetByOrch retrieves all nodes for a orch
+	GetByOrch(ctx context.Context, orchID string) ([]*domain.OrchNode, error)
 
-	// Delete removes a node from a cluster
-	Delete(ctx context.Context, deviceID, clusterID string) error
+	// Delete removes a node from a orch
+	Delete(ctx context.Context, deviceID, orchID string) error
 }
 
 // MetricsRepository defines operations for metrics persistence
@@ -104,11 +104,11 @@ type Transaction interface {
 	// Devices returns the device repository for this transaction
 	Devices() DeviceRepository
 
-	// Clusters returns the cluster repository for this transaction
-	Clusters() ClusterRepository
+	// Orchs returns the orch repository for this transaction
+	Orchs() OrchRepository
 
-	// ClusterNodes returns the cluster node repository for this transaction
-	ClusterNodes() ClusterNodeRepository
+	// OrchNodes returns the orch node repository for this transaction
+	OrchNodes() OrchNodeRepository
 
 	// Metrics returns the metrics repository for this transaction
 	Metrics() MetricsRepository
@@ -117,8 +117,8 @@ type Transaction interface {
 // Repositories provides access to all repositories
 type Repositories struct {
 	Devices      DeviceRepository
-	Clusters     ClusterRepository
-	ClusterNodes ClusterNodeRepository
+	Orchs     OrchRepository
+	OrchNodes OrchNodeRepository
 	Metrics      MetricsRepository
 	UnitOfWork   UnitOfWork
 }

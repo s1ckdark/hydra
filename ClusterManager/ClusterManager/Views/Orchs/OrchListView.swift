@@ -1,62 +1,70 @@
 import SwiftUI
 
-struct ClusterListView: View {
-    @StateObject private var vm = ClusterViewModel()
-    @State private var selectedCluster: Cluster?
+struct OrchListView: View {
+    @StateObject private var vm = OrchViewModel()
+    @State private var selectedOrch: Orch?
     @State private var command = ""
 
     var body: some View {
         NavigationSplitView {
-            List(vm.clusters, selection: $selectedCluster) { cluster in
-                ClusterRowView(cluster: cluster)
-                    .tag(cluster)
+            List(vm.orchs, selection: $selectedOrch) { orch in
+                OrchRowView(orch: orch)
+                    .tag(orch)
                     .contextMenu {
                         Button("Delete", role: .destructive) {
-                            Task { await vm.deleteCluster(id: cluster.id) }
+                            Task { await vm.deleteOrch(id: orch.id) }
                         }
                     }
             }
-            .navigationTitle("Clusters")
+            .navigationTitle("Orchestrations")
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: { vm.showCreateSheet = true }) {
+                        Image(systemName: "plus")
+                    }
+                }
                 ToolbarItem {
-                    Button(action: { Task { await vm.loadClusters() } }) {
+                    Button(action: { Task { await vm.loadOrchs() } }) {
                         Image(systemName: "arrow.clockwise")
                     }
                 }
             }
-            .task {
-                await vm.loadClusters()
+            .sheet(isPresented: $vm.showCreateSheet) {
+                CreateOrchView(vm: vm)
             }
-            .onChange(of: selectedCluster) { _, newValue in
-                if let cluster = newValue {
-                    Task { await vm.selectCluster(cluster) }
+            .task {
+                await vm.loadOrchs()
+            }
+            .onChange(of: selectedOrch) { _, newValue in
+                if let orch = newValue {
+                    Task { await vm.selectOrch(orch) }
                 }
             }
         } detail: {
-            if let cluster = vm.selectedCluster {
-                ClusterDetailView(cluster: cluster, vm: vm)
+            if let orch = vm.selectedOrch {
+                OrchDetailView(orch: orch, vm: vm)
             } else {
-                Text("Select a cluster")
+                Text("Select a orch")
                     .foregroundStyle(.secondary)
             }
         }
     }
 }
 
-struct ClusterRowView: View {
-    let cluster: Cluster
+struct OrchRowView: View {
+    let orch: Orch
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(cluster.name)
+                Text(orch.name)
                     .fontWeight(.medium)
-                Text("\(cluster.workerCount) workers")
+                Text("\(orch.workerCount) workers")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Text(cluster.status)
+            Text(orch.status)
                 .font(.caption.bold())
                 .foregroundStyle(statusColor)
                 .padding(.horizontal, 6)
@@ -67,7 +75,7 @@ struct ClusterRowView: View {
     }
 
     var statusColor: Color {
-        switch cluster.status {
+        switch orch.status {
         case "running": return .green
         case "starting": return .yellow
         case "error": return .red
@@ -76,9 +84,9 @@ struct ClusterRowView: View {
     }
 }
 
-struct ClusterDetailView: View {
-    let cluster: Cluster
-    @ObservedObject var vm: ClusterViewModel
+struct OrchDetailView: View {
+    let orch: Orch
+    @ObservedObject var vm: OrchViewModel
     @State private var command = "nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total --format=csv,noheader"
 
     var body: some View {
@@ -86,22 +94,22 @@ struct ClusterDetailView: View {
             VStack(alignment: .leading, spacing: 16) {
                 // Header
                 HStack {
-                    Text(cluster.name)
+                    Text(orch.name)
                         .font(.title2.bold())
                     Spacer()
-                    Text(cluster.status)
+                    Text(orch.status)
                         .font(.caption.bold())
-                        .foregroundStyle(cluster.isRunning ? .green : .gray)
+                        .foregroundStyle(orch.isRunning ? .green : .gray)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(cluster.isRunning ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
+                        .background(orch.isRunning ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
                         .clipShape(Capsule())
                 }
 
                 // Info
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    InfoField(label: "Head Node", value: cluster.headNodeId)
-                    InfoField(label: "Workers", value: "\(cluster.workerCount)")
+                    InfoField(label: "Head Node", value: orch.coordinatorId)
+                    InfoField(label: "Workers", value: "\(orch.workerCount)")
                 }
 
                 // Health
@@ -263,7 +271,7 @@ struct ClusterDetailView: View {
     }
 }
 
-extension Cluster: Hashable {
-    static func == (lhs: Cluster, rhs: Cluster) -> Bool { lhs.id == rhs.id }
+extension Orch: Hashable {
+    static func == (lhs: Orch, rhs: Orch) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }

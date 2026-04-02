@@ -36,7 +36,7 @@ func (m Model) View() string {
 	var b strings.Builder
 
 	// Header
-	title := fmt.Sprintf(" GPU Monitor: %s ", m.clusterName)
+	title := fmt.Sprintf(" GPU Monitor: %s ", m.orchName)
 	if m.width > 0 {
 		title = headerStyle.Width(m.width).Render(title)
 	} else {

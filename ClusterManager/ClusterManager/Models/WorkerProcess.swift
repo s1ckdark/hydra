@@ -1,7 +1,7 @@
 import Foundation
 
-struct ClusterProcessesResponse: Codable {
-    let cluster_id: String
+struct OrchProcessesResponse: Codable {
+    let orch_id: String
     let timestamp: Date
     let worker_count: Int
     let workers: [WorkerStatus]

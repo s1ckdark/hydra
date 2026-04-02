@@ -21,9 +21,9 @@ func NewElection(ai HeadSelector) *Election {
 	return &Election{ai: ai}
 }
 
-func (e *Election) Elect(ctx context.Context, clusterID string, candidates []domain.ElectionCandidate) (*domain.ElectionResult, error) {
+func (e *Election) Elect(ctx context.Context, orchID string, candidates []domain.ElectionCandidate) (*domain.ElectionResult, error) {
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("no candidates available for election in cluster %s", clusterID)
+		return nil, fmt.Errorf("no candidates available for election in orch %s", orchID)
 	}
 
 	result := &domain.ElectionResult{

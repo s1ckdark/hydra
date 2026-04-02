@@ -50,7 +50,7 @@ type SSHConfig struct {
 	UseTailscaleSSH bool  `mapstructure:"use_tailscale_ssh"`
 }
 
-// RayConfig holds Ray cluster settings
+// RayConfig holds Ray orch settings
 type RayConfig struct {
 	DefaultPort          int    `mapstructure:"default_port"`
 	DefaultDashboardPort int    `mapstructure:"default_dashboard_port"`
@@ -116,7 +116,7 @@ func DefaultConfig() *Config {
 			DefaultVersion:       "2.9.0",
 		},
 		Server: ServerConfig{
-			Host:        "0.0.0.0",
+			Host:        "127.0.0.1",
 			Port:        8080,
 			CORSOrigins: []string{"http://localhost:8080"},
 		},

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/grandcat/zeroconf"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
@@ -99,7 +100,7 @@ func main() {
 	// Initialize use cases
 	deviceUC := usecase.NewDeviceUseCase(repos, tsClient, sshCollector)
 	deviceUC.SetGPUChecker(gpuCollector)
-	clusterUC := usecase.NewClusterUseCase(repos, nil) // ray manager set later when needed
+	orchUC := usecase.NewOrchUseCase(repos, nil) // ray manager set later when needed
 	monitorUC := usecase.NewMonitorUseCase(repos, sshCollector, deviceUC)
 
 	// Initialize Echo
@@ -124,7 +125,7 @@ func main() {
 	e.Static("/static", "internal/web/static")
 
 	// Initialize handlers
-	h := handler.NewHandler(deviceUC, clusterUC, monitorUC, nil, cfg)
+	h := handler.NewHandler(deviceUC, orchUC, monitorUC, nil, cfg)
 
 	// Initialize WebSocket hub
 	wsHub := ws.NewHub()
@@ -164,42 +165,87 @@ func main() {
 	e.GET("/htmx/device-count", h.HTMXDeviceCount)
 	e.GET("/htmx/device-options", h.HTMXDeviceOptions)
 	e.GET("/htmx/device-checkboxes", h.HTMXDeviceCheckboxes)
-	e.GET("/htmx/clusters", h.HTMXClusterList)
-	e.GET("/htmx/clusters/:id", h.HTMXClusterDetail)
+	e.GET("/htmx/orchs", h.HTMXOrchList)
+	e.GET("/htmx/orchs/:id", h.HTMXOrchDetail)
 	e.GET("/monitor", h.MonitorPage)
 	e.GET("/htmx/gpu-monitor", h.HTMXGPUMonitor)
-	e.GET("/clusters", h.ClusterList)
-	e.GET("/clusters/new", h.ClusterNew)
-	e.POST("/clusters", h.ClusterCreate)
-	e.GET("/clusters/:id", h.ClusterDetail)
-	e.GET("/clusters/:id/execute", h.ClusterExecutePage)
-	e.POST("/clusters/:id/execute", h.ClusterExecuteTask)
-	e.DELETE("/clusters/:id", h.ClusterDelete)
+	e.GET("/orchs", h.OrchList)
+	e.GET("/orchs/new", h.OrchNew)
+	e.POST("/orchs", h.OrchCreate)
+	e.GET("/orchs/:id", h.OrchDetail)
+	e.GET("/orchs/:id/execute", h.OrchExecutePage)
+	e.POST("/orchs/:id/execute", h.OrchExecuteTask)
+	e.DELETE("/orchs/:id", h.OrchDelete)
 
 	// API routes — read-only (no auth required)
 	api := e.Group("/api")
 	api.GET("/devices", h.APIDeviceList)
 	api.GET("/devices/:id", h.APIDeviceDetail)
 	api.GET("/devices/:id/metrics", h.APIDeviceMetrics)
-	api.GET("/clusters", h.APIClusterList)
-	api.GET("/clusters/:id", h.APIClusterDetail)
-	api.GET("/clusters/:id/health", h.APIClusterHealth)
+	api.GET("/orchs", h.APIOrchList)
+	api.GET("/orchs/:id", h.APIOrchDetail)
+	api.GET("/orchs/:id/health", h.APIOrchHealth)
 	api.GET("/monitor/gpu", h.APIGPUMonitor)
-	api.GET("/clusters/:id/processes", h.APIClusterProcesses)
+	api.GET("/orchs/:id/processes", h.APIOrchProcesses)
 	api.GET("/monitor/snapshot", h.APIMetricsSnapshot)
+
+	// Auth info endpoint
+	api.GET("/auth/me", func(c echo.Context) error {
+		host, _, _ := net.SplitHostPort(c.Request().RemoteAddr)
+		if host == "" {
+			host = c.Request().RemoteAddr
+		}
+
+		if !isTailscaleOrLocal(c.Request().RemoteAddr) {
+			return c.JSON(http.StatusForbidden, map[string]string{
+				"error": "not on Tailscale network",
+			})
+		}
+
+		// Find device matching this IP
+		devices, _ := deviceUC.ListDevices(c.Request().Context(), false)
+		var matchedDevice *domain.Device
+		for _, d := range devices {
+			for _, ip := range d.IPAddresses {
+				if ip == host {
+					matchedDevice = d
+					break
+				}
+			}
+			if d.TailscaleIP == host {
+				matchedDevice = d
+			}
+			if matchedDevice != nil {
+				break
+			}
+		}
+
+		result := map[string]interface{}{
+			"authenticated": true,
+			"ip":            host,
+			"network":       "tailscale",
+		}
+
+		if matchedDevice != nil {
+			result["device"] = matchedDevice
+			result["user"] = matchedDevice.User
+		}
+
+		return c.JSON(http.StatusOK, result)
+	})
 
 	// API routes — mutating (Tailscale network auth)
 	apiWrite := api.Group("")
 	apiWrite.Use(tailscaleAuthMiddleware)
-	apiWrite.POST("/clusters", h.APIClusterCreate)
-	apiWrite.DELETE("/clusters/:id", h.APIClusterDelete)
-	apiWrite.POST("/clusters/:id/start", h.APIClusterStart)
-	apiWrite.POST("/clusters/:id/stop", h.APIClusterStop)
-	apiWrite.POST("/clusters/:id/workers", h.APIClusterAddWorker)
-	apiWrite.DELETE("/clusters/:id/workers/:deviceId", h.APIClusterRemoveWorker)
-	apiWrite.PUT("/clusters/:id/head", h.APIClusterChangeHead)
-	apiWrite.POST("/clusters/:id/failover", h.APIClusterFailover)
-	apiWrite.POST("/clusters/:id/execute", h.APIClusterExecute)
+	apiWrite.POST("/orchs", h.APIOrchCreate)
+	apiWrite.DELETE("/orchs/:id", h.APIOrchDelete)
+	apiWrite.POST("/orchs/:id/start", h.APIOrchStart)
+	apiWrite.POST("/orchs/:id/stop", h.APIOrchStop)
+	apiWrite.POST("/orchs/:id/workers", h.APIOrchAddWorker)
+	apiWrite.DELETE("/orchs/:id/workers/:deviceId", h.APIOrchRemoveWorker)
+	apiWrite.PUT("/orchs/:id/head", h.APIOrchChangeHead)
+	apiWrite.POST("/orchs/:id/failover", h.APIOrchFailover)
+	apiWrite.POST("/orchs/:id/execute", h.APIOrchExecute)
 	apiWrite.POST("/devices/:id/execute", h.APIExecuteOnDevice)
 
 	// WebSocket endpoint
@@ -215,6 +261,10 @@ func main() {
 	// Capability routes
 	api.POST("/devices/:id/capabilities", h.APIRegisterCapabilities)
 	api.GET("/devices/:id/capabilities", h.APIGetCapabilities)
+
+	// Config routes (Tailscale network auth required)
+	apiWrite.GET("/config/tailscale", h.APIGetTailscaleConfig)
+	apiWrite.PUT("/config/tailscale", h.APIPutTailscaleConfig)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {
@@ -235,6 +285,22 @@ func main() {
 			log.Fatalf("Server error: %v", err)
 		}
 	}()
+
+	// Register mDNS/Bonjour service for auto-discovery
+	mdnsServer, err := zeroconf.Register(
+		"naga-server",      // service instance name
+		"_naga._tcp",       // service type
+		"local.",           // domain
+		cfg.Server.Port,    // port
+		[]string{"version=" + Version}, // TXT records
+		nil,                // interfaces (nil = all)
+	)
+	if err != nil {
+		log.Printf("Warning: failed to register mDNS service: %v", err)
+	} else {
+		log.Printf("mDNS: registered _naga._tcp on port %d", cfg.Server.Port)
+		defer mdnsServer.Shutdown()
+	}
 
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)

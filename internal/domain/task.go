@@ -35,7 +35,7 @@ type ResourceRequirements struct {
 type Task struct {
 	ID                   string                 `json:"id"`
 	ParentID             string                 `json:"parentId,omitempty"`        // for sub-tasks split by head
-	ClusterID            string                 `json:"clusterId,omitempty"`
+	OrchID            string                 `json:"orchId,omitempty"`
 	Type                 string                 `json:"type"`                      // "command", "gps", "camera", "sms", "phone", "sensor"
 	Status               TaskStatus             `json:"status"`
 	Priority             TaskPriority           `json:"priority"`

@@ -35,7 +35,7 @@ func ValidatePath(s string) error {
 // SystemdConfig holds configuration for generating a systemd unit file.
 type SystemdConfig struct {
 	NodeID     string
-	ClusterID  string
+	OrchID  string
 	Role       string
 	Port       int
 	BinaryPath string
@@ -46,7 +46,7 @@ type SystemdConfig struct {
 func GenerateSystemdUnit(cfg SystemdConfig) (string, error) {
 	for _, pair := range []struct{ name, value string }{
 		{"NodeID", cfg.NodeID},
-		{"ClusterID", cfg.ClusterID},
+		{"OrchID", cfg.OrchID},
 		{"Role", cfg.Role},
 	} {
 		if err := ValidateIdentifier(pair.value); err != nil {
@@ -57,24 +57,24 @@ func GenerateSystemdUnit(cfg SystemdConfig) (string, error) {
 		return "", fmt.Errorf("invalid BinaryPath: %w", err)
 	}
 
-	svcName := ServiceName(cfg.ClusterID, cfg.NodeID)
+	svcName := ServiceName(cfg.OrchID, cfg.NodeID)
 
 	lines := []string{
 		"[Unit]",
-		fmt.Sprintf("Description=Cluster Agent for %s node %s", cfg.ClusterID, cfg.NodeID),
+		fmt.Sprintf("Description=Orch Agent for %s node %s", cfg.OrchID, cfg.NodeID),
 		"After=network-online.target",
 		"Wants=network-online.target",
 		"",
 		"[Service]",
 		"Type=simple",
-		fmt.Sprintf("ExecStart=%s --node-id %s --cluster-id %s --role %s --port %d",
-			cfg.BinaryPath, cfg.NodeID, cfg.ClusterID, cfg.Role, cfg.Port),
+		fmt.Sprintf("ExecStart=%s --node-id %s --orch-id %s --role %s --port %d",
+			cfg.BinaryPath, cfg.NodeID, cfg.OrchID, cfg.Role, cfg.Port),
 		"Restart=always",
 		"RestartSec=5",
 	}
 
 	if cfg.APIKey != "" {
-		lines = append(lines, fmt.Sprintf("EnvironmentFile=/etc/cluster-agent/%s.env", svcName))
+		lines = append(lines, fmt.Sprintf("EnvironmentFile=/etc/orch-agent/%s.env", svcName))
 	}
 
 	lines = append(lines,
@@ -95,32 +95,32 @@ func GenerateEnvFile(cfg SystemdConfig) string {
 	return fmt.Sprintf("ANTHROPIC_API_KEY=%s\n", cfg.APIKey)
 }
 
-// ServiceName returns the systemd service name for a given cluster and node.
-func ServiceName(clusterID, nodeID string) string {
-	return fmt.Sprintf("cluster-agent-%s-%s", clusterID, nodeID)
+// ServiceName returns the systemd service name for a given orch and node.
+func ServiceName(orchID, nodeID string) string {
+	return fmt.Sprintf("orch-agent-%s-%s", orchID, nodeID)
 }
 
 // ValidatedServiceName returns the systemd service name after validating inputs.
-func ValidatedServiceName(clusterID, nodeID string) (string, error) {
-	if err := ValidateIdentifier(clusterID); err != nil {
-		return "", fmt.Errorf("invalid ClusterID: %w", err)
+func ValidatedServiceName(orchID, nodeID string) (string, error) {
+	if err := ValidateIdentifier(orchID); err != nil {
+		return "", fmt.Errorf("invalid OrchID: %w", err)
 	}
 	if err := ValidateIdentifier(nodeID); err != nil {
 		return "", fmt.Errorf("invalid NodeID: %w", err)
 	}
-	return ServiceName(clusterID, nodeID), nil
+	return ServiceName(orchID, nodeID), nil
 }
 
 // UnitFilePath returns the path to the systemd unit file.
-func UnitFilePath(clusterID, nodeID string) string {
-	return fmt.Sprintf("/etc/systemd/system/%s.service", ServiceName(clusterID, nodeID))
+func UnitFilePath(orchID, nodeID string) string {
+	return fmt.Sprintf("/etc/systemd/system/%s.service", ServiceName(orchID, nodeID))
 }
 
 // InstallCommands returns the shell commands to install and start the systemd service.
 func InstallCommands(cfg SystemdConfig) ([]string, error) {
 	for _, pair := range []struct{ name, value string }{
 		{"NodeID", cfg.NodeID},
-		{"ClusterID", cfg.ClusterID},
+		{"OrchID", cfg.OrchID},
 		{"Role", cfg.Role},
 	} {
 		if err := ValidateIdentifier(pair.value); err != nil {
@@ -131,16 +131,16 @@ func InstallCommands(cfg SystemdConfig) ([]string, error) {
 		return nil, fmt.Errorf("invalid BinaryPath: %w", err)
 	}
 
-	name := ServiceName(cfg.ClusterID, cfg.NodeID)
-	unitPath := UnitFilePath(cfg.ClusterID, cfg.NodeID)
+	name := ServiceName(cfg.OrchID, cfg.NodeID)
+	unitPath := UnitFilePath(cfg.OrchID, cfg.NodeID)
 
 	var cmds []string
 
 	// Create env file directory and write env file before the unit file
 	if cfg.APIKey != "" {
 		cmds = append(cmds,
-			"mkdir -p /etc/cluster-agent",
-			fmt.Sprintf("install -m 0600 /dev/stdin /etc/cluster-agent/%s.env", name),
+			"mkdir -p /etc/orch-agent",
+			fmt.Sprintf("install -m 0600 /dev/stdin /etc/orch-agent/%s.env", name),
 		)
 	}
 
@@ -154,9 +154,9 @@ func InstallCommands(cfg SystemdConfig) ([]string, error) {
 }
 
 // UninstallCommands returns the shell commands to stop, disable, and remove the systemd service.
-func UninstallCommands(clusterID, nodeID string) []string {
-	name := ServiceName(clusterID, nodeID)
-	unitPath := UnitFilePath(clusterID, nodeID)
+func UninstallCommands(orchID, nodeID string) []string {
+	name := ServiceName(orchID, nodeID)
+	unitPath := UnitFilePath(orchID, nodeID)
 	return []string{
 		fmt.Sprintf("systemctl stop %s", name),
 		fmt.Sprintf("systemctl disable %s", name),

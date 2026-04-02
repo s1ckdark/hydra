@@ -11,7 +11,7 @@ import (
 	"github.com/dave/naga/internal/infra/ssh"
 )
 
-// Manager manages Ray cluster operations
+// Manager manages Ray orch operations
 type Manager struct {
 	executor    *ssh.Executor
 	pythonPath  string
@@ -131,16 +131,16 @@ func (m *Manager) StopRay(ctx context.Context, device *domain.Device) error {
 	return err
 }
 
-// GetClusterInfo gets Ray cluster information from head node
-func (m *Manager) GetClusterInfo(ctx context.Context, headDevice *domain.Device) (*domain.RayClusterInfo, error) {
-	// Use ray status to get cluster info
+// GetOrchInfo gets Ray orch information from head node
+func (m *Manager) GetOrchInfo(ctx context.Context, headDevice *domain.Device) (*domain.RayOrchInfo, error) {
+	// Use ray status to get orch info
 	cmd := fmt.Sprintf(`%s -c "
 import ray
 import json
 
 ray.init(address='auto')
 nodes = ray.nodes()
-resources = ray.cluster_resources()
+resources = ray.orch_resources()
 available = ray.available_resources()
 
 info = {
@@ -157,7 +157,7 @@ for node in nodes:
     info['nodes'].append({
         'nodeId': node['NodeID'],
         'nodeIp': node['NodeManagerAddress'].split(':')[0] if 'NodeManagerAddress' in node else '',
-        'isHeadNode': node.get('MetricsExportPort', 0) > 0,
+        'isCoordinator': node.get('MetricsExportPort', 0) > 0,
         'state': node['State'],
         'nodeName': node.get('NodeName', ''),
         'resourcesTotal': node.get('Resources', {}),
@@ -170,12 +170,12 @@ ray.shutdown()
 
 	output, err := m.executor.Execute(ctx, headDevice, cmd)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get cluster info: %w", err)
+		return nil, fmt.Errorf("failed to get orch info: %w", err)
 	}
 
-	var info domain.RayClusterInfo
+	var info domain.RayOrchInfo
 	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &info); err != nil {
-		return nil, fmt.Errorf("failed to parse cluster info: %w", err)
+		return nil, fmt.Errorf("failed to parse orch info: %w", err)
 	}
 
 	info.DashboardURL = fmt.Sprintf("http://%s:8265", headDevice.TailscaleIP)
@@ -222,7 +222,7 @@ func (m *Manager) InstallRay(ctx context.Context, device *domain.Device, version
 	return nil
 }
 
-// HasRunningJobs checks if there are running jobs on the cluster
+// HasRunningJobs checks if there are running jobs on the orch
 func (m *Manager) HasRunningJobs(ctx context.Context, headDevice *domain.Device) (bool, error) {
 	cmd := fmt.Sprintf(`%s -c "
 import ray

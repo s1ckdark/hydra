@@ -48,7 +48,7 @@ func internalError(c echo.Context, msg string, err error) error {
 // Handler handles HTTP requests
 type Handler struct {
 	deviceUC   *usecase.DeviceUseCase
-	clusterUC  *usecase.ClusterUseCase
+	orchUC  *usecase.OrchUseCase
 	monitorUC  *usecase.MonitorUseCase
 	failoverUC *usecase.FailoverUseCase
 	executor   RemoteExecutor
@@ -60,14 +60,14 @@ type Handler struct {
 // NewHandler creates a new Handler
 func NewHandler(
 	deviceUC *usecase.DeviceUseCase,
-	clusterUC *usecase.ClusterUseCase,
+	orchUC *usecase.OrchUseCase,
 	monitorUC *usecase.MonitorUseCase,
 	failoverUC *usecase.FailoverUseCase,
 	cfg *config.Config,
 ) *Handler {
 	return &Handler{
 		deviceUC:   deviceUC,
-		clusterUC:  clusterUC,
+		orchUC:  orchUC,
 		monitorUC:  monitorUC,
 		failoverUC: failoverUC,
 		cfg:        cfg,
@@ -91,7 +91,48 @@ func (h *Handler) SetTaskQueue(queue *domain.TaskQueue) {
 
 // Dashboard renders the main dashboard
 func (h *Handler) Dashboard(c echo.Context) error {
-	return c.HTML(http.StatusOK, `<!DOCTYPE html>
+	ctx := c.Request().Context()
+
+	// Gather stats
+	var onlineCount, totalCount, gpuNodeCount, totalGPUs, orchCount, orchRunning int
+	type gpuDevice struct {
+		ID, Name, IP, GPUModel string
+		GPUCount               int
+		Online                 bool
+	}
+	var gpuDevices []gpuDevice
+
+	if h.deviceUC != nil {
+		if devices, err := h.deviceUC.ListDevices(ctx, false); err == nil {
+			totalCount = len(devices)
+			for _, d := range devices {
+				if d.IsOnline() {
+					onlineCount++
+				}
+				if d.HasGPU {
+					gpuNodeCount++
+					totalGPUs += d.GPUCount
+					gpuDevices = append(gpuDevices, gpuDevice{
+						ID: d.ID, Name: d.GetDisplayName(), IP: d.TailscaleIP,
+						GPUModel: d.GPUModel, GPUCount: d.GPUCount, Online: d.IsOnline(),
+					})
+				}
+			}
+		}
+	}
+	if h.orchUC != nil {
+		if orchs, err := h.orchUC.ListOrchs(ctx); err == nil {
+			orchCount = len(orchs)
+			for _, o := range orchs {
+				if o.IsRunning() {
+					orchRunning++
+				}
+			}
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString(`<!DOCTYPE html>
 <html>
 <head>
 	<title>Naga</title>
@@ -105,47 +146,81 @@ func (h *Handler) Dashboard(c echo.Context) error {
 				<h1 class="text-xl font-bold text-gray-800">Naga</h1>
 				<div class="space-x-4">
 					<a href="/devices" class="text-gray-600 hover:text-gray-900">Devices</a>
-					<a href="/clusters" class="text-gray-600 hover:text-gray-900">Clusters</a>
+					<a href="/orchs" class="text-gray-600 hover:text-gray-900">Orchs</a>
+					<a href="/monitor" class="text-gray-600 hover:text-gray-900">GPU Monitor</a>
 				</div>
 			</div>
 		</div>
 	</nav>
 	<main class="max-w-7xl mx-auto px-4 py-8">
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+		<div class="grid grid-cols-1 md:grid-cols-3 gap-6">`)
+
+	// Card 1: Devices
+	b.WriteString(fmt.Sprintf(`
 			<div class="bg-white rounded-lg shadow p-6">
 				<h2 class="text-lg font-semibold text-gray-700">Devices</h2>
-				<p class="text-3xl font-bold text-blue-600 mt-2" hx-get="/htmx/device-count" hx-trigger="load" hx-swap="innerHTML">Loading...</p>
+				<p class="text-3xl font-bold text-blue-600 mt-2">%d <span class="text-lg text-gray-400">/ %d</span></p>
+				<p class="text-sm text-gray-500 mt-1">online</p>
 				<a href="/devices" class="text-blue-500 text-sm">View all →</a>
-			</div>
-			<div class="bg-white rounded-lg shadow p-6">
-				<h2 class="text-lg font-semibold text-gray-700">Clusters</h2>
-				<p class="text-3xl font-bold text-green-600 mt-2">0</p>
-				<a href="/clusters" class="text-blue-500 text-sm">View all →</a>
-			</div>
-			<div class="bg-white rounded-lg shadow p-6">
-				<h2 class="text-lg font-semibold text-gray-700">Status</h2>
-				<p class="text-lg text-green-600 mt-2">All systems operational</p>
-			</div>
-		</div>
+			</div>`, onlineCount, totalCount))
 
+	// Card 2: GPU Nodes
+	b.WriteString(fmt.Sprintf(`
+			<div class="bg-white rounded-lg shadow p-6">
+				<h2 class="text-lg font-semibold text-gray-700">GPU Nodes</h2>
+				<p class="text-3xl font-bold text-purple-600 mt-2">%d <span class="text-lg text-gray-400">nodes</span></p>
+				<p class="text-sm text-gray-500 mt-1">%d GPUs total</p>
+				<a href="/monitor" class="text-purple-500 text-sm">Monitor →</a>
+			</div>`, gpuNodeCount, totalGPUs))
+
+	// Card 3: Orchs
+	b.WriteString(fmt.Sprintf(`
+			<div class="bg-white rounded-lg shadow p-6">
+				<h2 class="text-lg font-semibold text-gray-700">Orchestrations</h2>
+				<p class="text-3xl font-bold text-green-600 mt-2">%d <span class="text-lg text-gray-400">total</span></p>
+				<p class="text-sm text-gray-500 mt-1">%d running</p>
+				<a href="/orchs" class="text-green-500 text-sm">View all →</a>
+			</div>`, orchCount, orchRunning))
+
+	b.WriteString(`
+		</div>`)
+
+	// GPU Devices section
+	if len(gpuDevices) > 0 {
+		b.WriteString(`
 		<div class="mt-8 bg-white rounded-lg shadow">
 			<div class="px-6 py-4 border-b">
-				<h2 class="text-lg font-semibold text-gray-700">Quick Actions</h2>
+				<h2 class="text-lg font-semibold text-gray-700">GPU Devices</h2>
 			</div>
-			<div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-				<a href="/clusters/new" class="block p-4 bg-blue-50 rounded-lg hover:bg-blue-100">
-					<h3 class="font-semibold text-blue-700">Create Cluster</h3>
-					<p class="text-sm text-gray-600">Set up a new Ray cluster</p>
-				</a>
-				<a href="/devices" class="block p-4 bg-green-50 rounded-lg hover:bg-green-100">
-					<h3 class="font-semibold text-green-700">Monitor Devices</h3>
-					<p class="text-sm text-gray-600">View resource usage</p>
-				</a>
+			<div class="divide-y">`)
+		for _, gd := range gpuDevices {
+			statusDot := `<span class="inline-block w-2.5 h-2.5 rounded-full bg-green-500"></span>`
+			if !gd.Online {
+				statusDot = `<span class="inline-block w-2.5 h-2.5 rounded-full bg-red-500"></span>`
+			}
+			b.WriteString(fmt.Sprintf(`
+				<a href="/devices/%s" class="flex items-center justify-between px-6 py-4 hover:bg-gray-50">
+					<div class="flex items-center gap-3">
+						%s
+						<span class="font-medium text-gray-800">%s</span>
+					</div>
+					<div class="flex items-center gap-6">
+						<span class="text-sm text-purple-600 font-medium">%dx %s</span>
+						<span class="text-sm text-gray-400 font-mono">%s</span>
+					</div>
+				</a>`, url.PathEscape(gd.ID), statusDot, esc(gd.Name), gd.GPUCount, esc(gd.GPUModel), esc(gd.IP)))
+		}
+		b.WriteString(`
 			</div>
-		</div>
+		</div>`)
+	}
+
+	b.WriteString(`
 	</main>
 </body>
 </html>`)
+
+	return c.HTML(http.StatusOK, b.String())
 }
 
 // DeviceList renders the device list page
@@ -164,7 +239,7 @@ func (h *Handler) DeviceList(c echo.Context) error {
 				<h1 class="text-xl font-bold text-gray-800"><a href="/">Naga</a></h1>
 				<div class="space-x-4">
 					<a href="/devices" class="text-blue-600 font-semibold">Devices</a>
-					<a href="/clusters" class="text-gray-600 hover:text-gray-900">Clusters</a>
+					<a href="/orchs" class="text-gray-600 hover:text-gray-900">Orchs</a>
 				</div>
 			</div>
 		</div>
@@ -210,12 +285,12 @@ func (h *Handler) DeviceDetail(c echo.Context) error {
 </html>`)
 }
 
-// ClusterList renders the cluster list page
-func (h *Handler) ClusterList(c echo.Context) error {
+// OrchList renders the orch list page
+func (h *Handler) OrchList(c echo.Context) error {
 	return c.HTML(http.StatusOK, `<!DOCTYPE html>
 <html>
 <head>
-	<title>Clusters - Naga</title>
+	<title>Orchs - Naga</title>
 	<script src="https://unpkg.com/htmx.org@1.9.10"></script>
 	<script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -226,32 +301,32 @@ func (h *Handler) ClusterList(c echo.Context) error {
 				<h1 class="text-xl font-bold text-gray-800"><a href="/">Naga</a></h1>
 				<div class="space-x-4">
 					<a href="/devices" class="text-gray-600 hover:text-gray-900">Devices</a>
-					<a href="/clusters" class="text-blue-600 font-semibold">Clusters</a>
+					<a href="/orchs" class="text-blue-600 font-semibold">Orchs</a>
 				</div>
 			</div>
 		</div>
 	</nav>
 	<main class="max-w-7xl mx-auto px-4 py-8">
 		<div class="flex justify-between items-center mb-6">
-			<h2 class="text-2xl font-bold text-gray-800">Clusters</h2>
-			<a href="/clusters/new" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-				Create Cluster
+			<h2 class="text-2xl font-bold text-gray-800">Orchs</h2>
+			<a href="/orchs/new" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+				Create Orch
 			</a>
 		</div>
-		<div id="cluster-list" hx-get="/htmx/clusters" hx-trigger="load" hx-swap="innerHTML">
-			<p class="text-gray-500">Loading clusters...</p>
+		<div id="orch-list" hx-get="/htmx/orchs" hx-trigger="load" hx-swap="innerHTML">
+			<p class="text-gray-500">Loading orchs...</p>
 		</div>
 	</main>
 </body>
 </html>`)
 }
 
-// ClusterNew renders the new cluster form
-func (h *Handler) ClusterNew(c echo.Context) error {
+// OrchNew renders the new orch form
+func (h *Handler) OrchNew(c echo.Context) error {
 	return c.HTML(http.StatusOK, `<!DOCTYPE html>
 <html>
 <head>
-	<title>Create Cluster - Naga</title>
+	<title>Create Orch - Naga</title>
 	<script src="https://unpkg.com/htmx.org@1.9.10"></script>
 	<script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -263,10 +338,10 @@ func (h *Handler) ClusterNew(c echo.Context) error {
 	</nav>
 	<main class="max-w-7xl mx-auto px-4 py-8">
 		<div class="bg-white rounded-lg shadow p-6 max-w-2xl">
-			<h2 class="text-2xl font-bold text-gray-800 mb-6">Create New Cluster</h2>
-			<form hx-post="/clusters" hx-target="#result" class="space-y-4">
+			<h2 class="text-2xl font-bold text-gray-800 mb-6">Create New Orch</h2>
+			<form hx-post="/orchs" hx-target="#result" class="space-y-4">
 				<div>
-					<label class="block text-sm font-medium text-gray-700">Cluster Name</label>
+					<label class="block text-sm font-medium text-gray-700">Orch Name</label>
 					<input type="text" name="name" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
 				</div>
 				<div>
@@ -274,8 +349,8 @@ func (h *Handler) ClusterNew(c echo.Context) error {
 					<textarea name="description" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border"></textarea>
 				</div>
 				<div>
-					<label class="block text-sm font-medium text-gray-700">Step 1: Select Cluster Nodes</label>
-					<p class="text-xs text-gray-500 mb-2">GPU nodes are shown first. Select the nodes for your cluster.</p>
+					<label class="block text-sm font-medium text-gray-700">Step 1: Select Orch Nodes</label>
+					<p class="text-xs text-gray-500 mb-2">GPU nodes are shown first. Select the nodes for your orch.</p>
 					<div id="worker-select" hx-get="/htmx/device-checkboxes" hx-trigger="load" hx-swap="innerHTML">
 						<p class="text-gray-400 text-sm animate-pulse">Loading devices and checking GPU availability...</p>
 					</div>
@@ -283,15 +358,15 @@ func (h *Handler) ClusterNew(c echo.Context) error {
 				<div>
 					<label class="block text-sm font-medium text-gray-700">Step 2: Select Head Node</label>
 					<p class="text-xs text-gray-500 mb-2">Choose a head node from your selected nodes. Head node is a scheduler — GPU is not required.</p>
-					<select name="head" id="head-select" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+					<select name="coordinator" id="head-select" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
 						<option value="">Select nodes first...</option>
 					</select>
 				</div>
 				<div class="pt-4">
 					<button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-						Create Cluster
+						Create Orch
 					</button>
-					<a href="/clusters" class="ml-4 text-gray-600 hover:text-gray-800">Cancel</a>
+					<a href="/orchs" class="ml-4 text-gray-600 hover:text-gray-800">Cancel</a>
 				</div>
 			</form>
 			<script>
@@ -318,22 +393,22 @@ func (h *Handler) ClusterNew(c echo.Context) error {
 </html>`)
 }
 
-// ClusterCreate handles cluster creation (form submission)
-func (h *Handler) ClusterCreate(c echo.Context) error {
+// OrchCreate handles orch creation (form submission)
+func (h *Handler) OrchCreate(c echo.Context) error {
 	name := c.FormValue("name")
 	if name == "" {
-		return c.HTML(http.StatusBadRequest, `<p class="text-red-500">Cluster name is required</p>`)
+		return c.HTML(http.StatusBadRequest, `<p class="text-red-500">Orch name is required</p>`)
 	}
 
-	headID := c.FormValue("head")
+	headID := c.FormValue("coordinator")
 	if headID == "" {
 		return c.HTML(http.StatusBadRequest, `<p class="text-red-500">Head node is required</p>`)
 	}
 
 	workerIDs := c.Request().Form["workers"]
 
-	if h.clusterUC == nil {
-		return c.HTML(http.StatusServiceUnavailable, `<p class="text-red-500">Cluster service not available</p>`)
+	if h.orchUC == nil {
+		return c.HTML(http.StatusServiceUnavailable, `<p class="text-red-500">Orch service not available</p>`)
 	}
 
 	// Remove head from workers list (head is selected from workers)
@@ -344,26 +419,26 @@ func (h *Handler) ClusterCreate(c echo.Context) error {
 		}
 	}
 
-	cluster, err := h.clusterUC.CreateCluster(c.Request().Context(), name, headID, filteredWorkers)
+	orch, err := h.orchUC.CreateOrch(c.Request().Context(), name, headID, filteredWorkers)
 	if err != nil {
-		log.Printf("internal error: create cluster: %v", err)
-		return c.HTML(http.StatusOK, fmt.Sprintf(`<p class="text-red-500">Failed to create cluster: %s</p>`, esc(err.Error())))
+		log.Printf("internal error: create orch: %v", err)
+		return c.HTML(http.StatusOK, fmt.Sprintf(`<p class="text-red-500">Failed to create orch: %s</p>`, esc(err.Error())))
 	}
 
 	return c.HTML(http.StatusOK, fmt.Sprintf(`<div class="bg-green-50 border border-green-200 rounded p-4">
-		<p class="text-green-700 font-medium">Cluster "%s" created successfully!</p>
-		<a href="/clusters/%s" class="text-blue-500 hover:underline text-sm">View cluster →</a>
-	</div>`, cluster.Name, cluster.ID))
+		<p class="text-green-700 font-medium">Orch "%s" created successfully!</p>
+		<a href="/orchs/%s" class="text-blue-500 hover:underline text-sm">View orch →</a>
+	</div>`, orch.Name, orch.ID))
 }
 
-// ClusterDetail renders the cluster detail page
-func (h *Handler) ClusterDetail(c echo.Context) error {
+// OrchDetail renders the orch detail page
+func (h *Handler) OrchDetail(c echo.Context) error {
 	id := c.Param("id")
 	escapedID := url.PathEscape(id)
 	return c.HTML(http.StatusOK, `<!DOCTYPE html>
 <html>
 <head>
-	<title>Cluster Details - Naga</title>
+	<title>Orch Details - Naga</title>
 	<script src="https://unpkg.com/htmx.org@1.9.10"></script>
 	<script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -374,66 +449,66 @@ func (h *Handler) ClusterDetail(c echo.Context) error {
 		</div>
 	</nav>
 		<main class="max-w-7xl mx-auto px-4 py-8">
-			<div hx-get="/htmx/clusters/`+escapedID+`" hx-trigger="load" hx-swap="innerHTML">
-				Loading cluster details...
+			<div hx-get="/htmx/orchs/`+escapedID+`" hx-trigger="load" hx-swap="innerHTML">
+				Loading orch details...
 			</div>
 		</main>
 </body>
 </html>`)
 }
 
-// ClusterDelete handles cluster deletion (form submission)
-func (h *Handler) ClusterDelete(c echo.Context) error {
-	return h.APIClusterDelete(c)
+// OrchDelete handles orch deletion (form submission)
+func (h *Handler) OrchDelete(c echo.Context) error {
+	return h.APIOrchDelete(c)
 }
 
-// APIClusterCreate handles cluster creation API
-func (h *Handler) APIClusterCreate(c echo.Context) error {
+// APIOrchCreate handles orch creation API
+func (h *Handler) APIOrchCreate(c echo.Context) error {
 	var req struct {
 		Name      string   `json:"name"`
-		HeadID    string   `json:"head_id"`
+		HeadID    string   `json:"coordinator_id"`
 		WorkerIDs []string `json:"worker_ids"`
 		Mode      string   `json:"mode"` // "basic" or "ray"
 	}
 	if err := c.Bind(&req); err != nil {
 		// Fallback to form values for HTMX compatibility
 		req.Name = c.FormValue("name")
-		req.HeadID = c.FormValue("head")
+		req.HeadID = c.FormValue("coordinator")
 	}
 	if req.Name == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "name is required"})
 	}
 	if req.HeadID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "head_id is required"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "coordinator_id is required"})
 	}
 
-	if h.clusterUC == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "cluster service not available"})
+	if h.orchUC == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "orch service not available"})
 	}
 
-	mode := domain.ClusterModeBasic
+	mode := domain.OrchModeBasic
 	if req.Mode == "ray" {
-		mode = domain.ClusterModeRay
+		mode = domain.OrchModeRay
 	}
 
-	cluster, err := h.clusterUC.CreateCluster(c.Request().Context(), req.Name, req.HeadID, req.WorkerIDs, mode)
+	orch, err := h.orchUC.CreateOrch(c.Request().Context(), req.Name, req.HeadID, req.WorkerIDs, mode)
 	if err != nil {
-		return internalError(c, "failed to create cluster", err)
+		return internalError(c, "failed to create orch", err)
 	}
 
-	return c.JSON(http.StatusOK, cluster)
+	return c.JSON(http.StatusOK, orch)
 }
 
-// APIClusterDelete handles cluster deletion API
-func (h *Handler) APIClusterDelete(c echo.Context) error {
+// APIOrchDelete handles orch deletion API
+func (h *Handler) APIOrchDelete(c echo.Context) error {
 	id := c.Param("id")
 	if id == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "cluster id is required"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "orch id is required"})
 	}
 	force := c.QueryParam("force") == "true"
 
-	if h.clusterUC == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "cluster service not available"})
+	if h.orchUC == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "orch service not available"})
 	}
 
 	devices, err := h.deviceUC.GetDeviceMap(c.Request().Context())
@@ -441,8 +516,8 @@ func (h *Handler) APIClusterDelete(c echo.Context) error {
 		return internalError(c, "failed to get devices", err)
 	}
 
-	if err := h.clusterUC.DeleteCluster(c.Request().Context(), id, devices, force); err != nil {
-		return internalError(c, "failed to delete cluster", err)
+	if err := h.orchUC.DeleteOrch(c.Request().Context(), id, devices, force); err != nil {
+		return internalError(c, "failed to delete orch", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "deleted", "id": id})
@@ -698,22 +773,22 @@ func (h *Handler) HTMXDeviceDetail(c echo.Context) error {
 	return c.HTML(http.StatusOK, b.String())
 }
 
-// HTMXClusterList returns cluster list as HTML fragment
-func (h *Handler) HTMXClusterList(c echo.Context) error {
+// HTMXOrchList returns orch list as HTML fragment
+func (h *Handler) HTMXOrchList(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	if h.clusterUC == nil {
-		return c.HTML(http.StatusOK, `<p class="text-gray-500">No clusters yet. <a href="/clusters/new" class="text-blue-500 hover:underline">Create one</a></p>`)
+	if h.orchUC == nil {
+		return c.HTML(http.StatusOK, `<p class="text-gray-500">No orchs yet. <a href="/orchs/new" class="text-blue-500 hover:underline">Create one</a></p>`)
 	}
 
-	clusters, err := h.clusterUC.ListClusters(ctx)
+	orchs, err := h.orchUC.ListOrchs(ctx)
 	if err != nil {
-		log.Printf("internal error: list clusters: %v", err)
-		return c.HTML(http.StatusInternalServerError, `<p class="text-red-500">Failed to load clusters</p>`)
+		log.Printf("internal error: list orchs: %v", err)
+		return c.HTML(http.StatusInternalServerError, `<p class="text-red-500">Failed to load orchs</p>`)
 	}
 
-	if len(clusters) == 0 {
-		return c.HTML(http.StatusOK, `<p class="text-gray-500">No clusters yet. <a href="/clusters/new" class="text-blue-500 hover:underline">Create one</a></p>`)
+	if len(orchs) == 0 {
+		return c.HTML(http.StatusOK, `<p class="text-gray-500">No orchs yet. <a href="/orchs/new" class="text-blue-500 hover:underline">Create one</a></p>`)
 	}
 
 	var b strings.Builder
@@ -729,7 +804,7 @@ func (h *Handler) HTMXClusterList(c echo.Context) error {
 </thead>
 <tbody class="bg-white divide-y divide-gray-200">`)
 
-	for _, cl := range clusters {
+	for _, cl := range orchs {
 		statusColor := "gray"
 		switch cl.Status {
 		case "running":
@@ -739,33 +814,33 @@ func (h *Handler) HTMXClusterList(c echo.Context) error {
 		case "error":
 			statusColor = "red"
 		}
-		b.WriteString(fmt.Sprintf(`<tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='/clusters/%s'">
+		b.WriteString(fmt.Sprintf(`<tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='/orchs/%s'">
 	<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">%s</td>
 	<td class="px-6 py-4 whitespace-nowrap">
 		<span class="px-2 py-1 text-xs rounded-full bg-%s-100 text-%s-800">%s</span>
 	</td>
 	<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">%s</td>
 	<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">%d</td>
-</tr>`, url.PathEscape(cl.ID), esc(cl.Name), statusColor, statusColor, esc(string(cl.Status)), esc(cl.HeadNodeID), len(cl.WorkerIDs)))
+</tr>`, url.PathEscape(cl.ID), esc(cl.Name), statusColor, statusColor, esc(string(cl.Status)), esc(cl.CoordinatorID), len(cl.WorkerIDs)))
 	}
 	b.WriteString(`</tbody></table></div>`)
 
 	return c.HTML(http.StatusOK, b.String())
 }
 
-// HTMXClusterDetail returns cluster detail as HTML fragment
-func (h *Handler) HTMXClusterDetail(c echo.Context) error {
+// HTMXOrchDetail returns orch detail as HTML fragment
+func (h *Handler) HTMXOrchDetail(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
 
-	if h.clusterUC == nil {
-		return c.HTML(http.StatusServiceUnavailable, `<p class="text-red-500">Cluster service not available</p>`)
+	if h.orchUC == nil {
+		return c.HTML(http.StatusServiceUnavailable, `<p class="text-red-500">Orch service not available</p>`)
 	}
 
-	cluster, err := h.clusterUC.GetCluster(ctx, id)
+	orch, err := h.orchUC.GetOrch(ctx, id)
 	if err != nil {
-		log.Printf("internal error: get cluster %s: %v", id, err)
-		return c.HTML(http.StatusNotFound, `<p class="text-red-500">Cluster not found</p>`)
+		log.Printf("internal error: get orch %s: %v", id, err)
+		return c.HTML(http.StatusNotFound, `<p class="text-red-500">Orch not found</p>`)
 	}
 
 	var b strings.Builder
@@ -776,17 +851,20 @@ func (h *Handler) HTMXClusterDetail(c echo.Context) error {
 	<div><span class="text-sm text-gray-500">Head Node</span><p class="font-medium">%s</p></div>
 	<div><span class="text-sm text-gray-500">Workers</span><p class="font-medium">%d nodes</p></div>
 	<div><span class="text-sm text-gray-500">Dashboard</span><p class="font-medium">%s</p></div>
-</div>`, esc(cluster.Name), esc(string(cluster.Status)), esc(cluster.HeadNodeID), len(cluster.WorkerIDs), esc(cluster.DashboardURL)))
+</div>`, esc(orch.Name), esc(string(orch.Status)), esc(orch.CoordinatorID), len(orch.WorkerIDs), esc(orch.DashboardURL)))
 
-	if len(cluster.WorkerIDs) > 0 {
+	if len(orch.WorkerIDs) > 0 {
 		b.WriteString(`<div class="mt-4"><h3 class="text-lg font-semibold text-gray-700 mb-2">Worker Nodes</h3><ul class="list-disc list-inside">`)
-		for _, wid := range cluster.WorkerIDs {
+		for _, wid := range orch.WorkerIDs {
 			b.WriteString(fmt.Sprintf(`<li class="text-sm text-gray-600">%s</li>`, esc(wid)))
 		}
 		b.WriteString(`</ul></div>`)
 	}
 
-	b.WriteString(`<div class="mt-4"><a href="/clusters" class="text-blue-500 hover:underline">← Back to clusters</a></div>`)
+	b.WriteString(fmt.Sprintf(`<div class="mt-4 flex items-center gap-4">
+<a href="/orchs" class="text-blue-500 hover:underline">← Back to orchs</a>
+<button hx-delete="/api/orchs/%s?force=true" hx-confirm="Are you sure you want to delete this orch?" hx-target="body" hx-swap="innerHTML" class="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600" onclick="event.preventDefault(); if(confirm('Delete this orch?')){fetch('/api/orchs/%s?force=true',{method:'DELETE'}).then(()=>window.location.href='/orchs')}">Delete Orch</button>
+</div>`, url.PathEscape(orch.ID), url.PathEscape(orch.ID)))
 	b.WriteString(`</div>`)
 
 	return c.HTML(http.StatusOK, b.String())
@@ -919,71 +997,74 @@ func (h *Handler) APIDeviceMetrics(c echo.Context) error {
 	return c.JSON(http.StatusOK, metrics)
 }
 
-// APIClusterList returns list of clusters as JSON
-func (h *Handler) APIClusterList(c echo.Context) error {
+// APIOrchList returns list of orchs as JSON
+func (h *Handler) APIOrchList(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	if h.clusterUC == nil {
+	if h.orchUC == nil {
 		return c.JSON(http.StatusOK, []interface{}{})
 	}
 
-	clusters, err := h.clusterUC.ListClusters(ctx)
+	orchs, err := h.orchUC.ListOrchs(ctx)
 	if err != nil {
-		return internalError(c, "failed to list clusters", err)
+		return internalError(c, "failed to list orchs", err)
+	}
+	if orchs == nil {
+		orchs = []*domain.Orch{}
 	}
 
-	return c.JSON(http.StatusOK, clusters)
+	return c.JSON(http.StatusOK, orchs)
 }
 
-// APIClusterDetail returns cluster details as JSON
-func (h *Handler) APIClusterDetail(c echo.Context) error {
+// APIOrchDetail returns orch details as JSON
+func (h *Handler) APIOrchDetail(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
 
-	if h.clusterUC == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "cluster service not available"})
+	if h.orchUC == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "orch service not available"})
 	}
 
-	cluster, err := h.clusterUC.GetCluster(ctx, id)
+	orch, err := h.orchUC.GetOrch(ctx, id)
 	if err != nil {
-		log.Printf("internal error: get cluster %s: %v", id, err)
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "cluster not found"})
+		log.Printf("internal error: get orch %s: %v", id, err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "orch not found"})
 	}
 
-	return c.JSON(http.StatusOK, cluster)
+	return c.JSON(http.StatusOK, orch)
 }
 
-// APIClusterStart starts a cluster
-func (h *Handler) APIClusterStart(c echo.Context) error {
+// APIOrchStart starts a orch
+func (h *Handler) APIOrchStart(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
 
-	if h.clusterUC == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "cluster service not available"})
+	if h.orchUC == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "orch service not available"})
 	}
 
-	// Get device map for cluster operations
+	// Get device map for orch operations
 	devices, err := h.deviceUC.GetDeviceMap(ctx)
 	if err != nil {
 		return internalError(c, "failed to get devices", err)
 	}
 
-	err = h.clusterUC.StartCluster(ctx, id, devices)
+	err = h.orchUC.StartOrch(ctx, id, devices)
 	if err != nil {
-		return internalError(c, "failed to start cluster", err)
+		return internalError(c, "failed to start orch", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "started", "id": id})
 }
 
-// APIClusterStop stops a cluster
-func (h *Handler) APIClusterStop(c echo.Context) error {
+// APIOrchStop stops a orch
+func (h *Handler) APIOrchStop(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
 	force := c.QueryParam("force") == "true"
 
-	if h.clusterUC == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "cluster service not available"})
+	if h.orchUC == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "orch service not available"})
 	}
 
 	devices, err := h.deviceUC.GetDeviceMap(ctx)
@@ -991,16 +1072,16 @@ func (h *Handler) APIClusterStop(c echo.Context) error {
 		return internalError(c, "failed to get devices", err)
 	}
 
-	err = h.clusterUC.StopCluster(ctx, id, devices, force)
+	err = h.orchUC.StopOrch(ctx, id, devices, force)
 	if err != nil {
-		return internalError(c, "failed to stop cluster", err)
+		return internalError(c, "failed to stop orch", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "stopped", "id": id})
 }
 
-// APIClusterAddWorker adds a worker to a cluster
-func (h *Handler) APIClusterAddWorker(c echo.Context) error {
+// APIOrchAddWorker adds a worker to a orch
+func (h *Handler) APIOrchAddWorker(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
 
@@ -1011,8 +1092,8 @@ func (h *Handler) APIClusterAddWorker(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	if h.clusterUC == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "cluster service not available"})
+	if h.orchUC == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "orch service not available"})
 	}
 
 	devices, err := h.deviceUC.GetDeviceMap(ctx)
@@ -1020,38 +1101,38 @@ func (h *Handler) APIClusterAddWorker(c echo.Context) error {
 		return internalError(c, "failed to get devices", err)
 	}
 
-	// Get the cluster to find head device
-	cluster, err := h.clusterUC.GetCluster(ctx, id)
+	// Get the orch to find head device
+	orch, err := h.orchUC.GetOrch(ctx, id)
 	if err != nil {
-		log.Printf("internal error: get cluster %s: %v", id, err)
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "cluster not found"})
+		log.Printf("internal error: get orch %s: %v", id, err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "orch not found"})
 	}
 
 	device := devices[req.DeviceID]
 	if device == nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "device not found: " + req.DeviceID})
 	}
-	headDevice := devices[cluster.HeadNodeID]
+	headDevice := devices[orch.CoordinatorID]
 	if headDevice == nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "head device not found: " + cluster.HeadNodeID})
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "head device not found: " + orch.CoordinatorID})
 	}
 
-	err = h.clusterUC.AddWorker(ctx, id, req.DeviceID, device, headDevice)
+	err = h.orchUC.AddWorker(ctx, id, req.DeviceID, device, headDevice)
 	if err != nil {
 		return internalError(c, "failed to add worker", err)
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"status": "worker_added", "cluster_id": id, "device_id": req.DeviceID})
+	return c.JSON(http.StatusOK, map[string]string{"status": "worker_added", "orch_id": id, "device_id": req.DeviceID})
 }
 
-// APIClusterRemoveWorker removes a worker from a cluster
-func (h *Handler) APIClusterRemoveWorker(c echo.Context) error {
+// APIOrchRemoveWorker removes a worker from a orch
+func (h *Handler) APIOrchRemoveWorker(c echo.Context) error {
 	id := c.Param("id")
 	deviceID := c.Param("deviceId")
 	ctx := c.Request().Context()
 
-	if h.clusterUC == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "cluster service not available"})
+	if h.orchUC == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "orch service not available"})
 	}
 
 	devices, err := h.deviceUC.GetDeviceMap(ctx)
@@ -1064,34 +1145,34 @@ func (h *Handler) APIClusterRemoveWorker(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "device not found: " + deviceID})
 	}
 
-	err = h.clusterUC.RemoveWorker(ctx, id, deviceID, device)
+	err = h.orchUC.RemoveWorker(ctx, id, deviceID, device)
 	if err != nil {
 		return internalError(c, "failed to remove worker", err)
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"status": "worker_removed", "cluster_id": id, "device_id": deviceID})
+	return c.JSON(http.StatusOK, map[string]string{"status": "worker_removed", "orch_id": id, "device_id": deviceID})
 }
 
-// APIClusterChangeHead changes the head node of a cluster.
-// For running Ray clusters, performs a graceful head transfer via failoverUC.TransferHead.
-// For basic-mode or stopped clusters, delegates to clusterUC.ChangeHead.
-func (h *Handler) APIClusterChangeHead(c echo.Context) error {
+// APIOrchChangeHead changes the head node of a orch.
+// For running Ray orchs, performs a graceful head transfer via failoverUC.TransferCoordinator.
+// For basic-mode or stopped orchs, delegates to orchUC.ChangeHead.
+func (h *Handler) APIOrchChangeHead(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
 
 	var req struct {
-		NewHeadID string `json:"new_head_id"`
+		NewHeadID string `json:"new_coordinator_id"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
 	if req.NewHeadID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "new_head_id is required"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "new_coordinator_id is required"})
 	}
 
-	if h.clusterUC == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "cluster service not available"})
+	if h.orchUC == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "orch service not available"})
 	}
 
 	devices, err := h.deviceUC.GetDeviceMap(ctx)
@@ -1099,38 +1180,38 @@ func (h *Handler) APIClusterChangeHead(c echo.Context) error {
 		return internalError(c, "failed to get devices", err)
 	}
 
-	// Use graceful TransferHead for running Ray clusters when failoverUC is available
+	// Use graceful TransferCoordinator for running Ray orchs when failoverUC is available
 	if h.failoverUC != nil {
-		cluster, err := h.clusterUC.GetCluster(ctx, id)
-		if err == nil && cluster.IsRunning() && cluster.IsRayMode() {
-			if err := h.failoverUC.TransferHead(ctx, cluster, req.NewHeadID, devices, ""); err != nil {
+		orch, err := h.orchUC.GetOrch(ctx, id)
+		if err == nil && orch.IsRunning() && orch.IsRayMode() {
+			if err := h.failoverUC.TransferCoordinator(ctx, orch, req.NewHeadID, devices, ""); err != nil {
 				return internalError(c, "failed to transfer head node", err)
 			}
-			return c.JSON(http.StatusOK, map[string]string{"status": "head_transferred", "cluster_id": id, "new_head_id": req.NewHeadID})
+			return c.JSON(http.StatusOK, map[string]string{"status": "head_transferred", "orch_id": id, "new_coordinator_id": req.NewHeadID})
 		}
 	}
 
-	// Fallback: stop/reconfigure/restart via clusterUC (basic mode or stopped clusters)
-	if err := h.clusterUC.ChangeHead(ctx, id, req.NewHeadID, devices); err != nil {
+	// Fallback: stop/reconfigure/restart via orchUC (basic mode or stopped orchs)
+	if err := h.orchUC.ChangeHead(ctx, id, req.NewHeadID, devices); err != nil {
 		return internalError(c, "failed to change head node", err)
 	}
 
-	return c.JSON(http.StatusOK, map[string]string{"status": "head_changed", "cluster_id": id, "new_head_id": req.NewHeadID})
+	return c.JSON(http.StatusOK, map[string]string{"status": "head_changed", "orch_id": id, "new_coordinator_id": req.NewHeadID})
 }
 
-// APIClusterHealth returns health status of all nodes in a cluster
-func (h *Handler) APIClusterHealth(c echo.Context) error {
+// APIOrchHealth returns health status of all nodes in a orch
+func (h *Handler) APIOrchHealth(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
 
-	if h.clusterUC == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "cluster service not available"})
+	if h.orchUC == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "orch service not available"})
 	}
 
-	cluster, err := h.clusterUC.GetCluster(ctx, id)
+	orch, err := h.orchUC.GetOrch(ctx, id)
 	if err != nil {
-		log.Printf("internal error: get cluster %s: %v", id, err)
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "cluster not found"})
+		log.Printf("internal error: get orch %s: %v", id, err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "orch not found"})
 	}
 
 	// Check each node's agent health endpoint
@@ -1143,47 +1224,59 @@ func (h *Handler) APIClusterHealth(c echo.Context) error {
 
 	var statuses []nodeStatus
 
+	// Check node health based on device online status
+	isNodeHealthy := func(deviceID string) bool {
+		if h.deviceUC == nil {
+			return false
+		}
+		device, err := h.deviceUC.GetDevice(ctx, deviceID)
+		if err != nil {
+			return false
+		}
+		return device.Status == "online"
+	}
+
 	// Head node
 	statuses = append(statuses, nodeStatus{
-		NodeID:  cluster.HeadNodeID,
-		Role:    "head",
-		Healthy: cluster.IsRunning(),
+		NodeID:  orch.CoordinatorID,
+		Role:    "coordinator",
+		Healthy: isNodeHealthy(orch.CoordinatorID),
 	})
 
 	// Workers
-	for _, wid := range cluster.WorkerIDs {
+	for _, wid := range orch.WorkerIDs {
 		statuses = append(statuses, nodeStatus{
 			NodeID:  wid,
 			Role:    "worker",
-			Healthy: true, // TODO: actual health check via agent HTTP
+			Healthy: isNodeHealthy(wid),
 		})
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"clusterId": cluster.ID,
-		"name":      cluster.Name,
-		"status":    cluster.Status,
+		"orchId": orch.ID,
+		"name":      orch.Name,
+		"status":    orch.Status,
 		"nodes":     statuses,
 	})
 }
 
-// APIClusterFailover manually triggers a failover
-func (h *Handler) APIClusterFailover(c echo.Context) error {
+// APIOrchFailover manually triggers a failover
+func (h *Handler) APIOrchFailover(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
 
-	if h.clusterUC == nil || h.failoverUC == nil {
+	if h.orchUC == nil || h.failoverUC == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "service not available"})
 	}
 
-	cluster, err := h.clusterUC.GetCluster(ctx, id)
+	orch, err := h.orchUC.GetOrch(ctx, id)
 	if err != nil {
-		log.Printf("internal error: get cluster %s: %v", id, err)
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "cluster not found"})
+		log.Printf("internal error: get orch %s: %v", id, err)
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "orch not found"})
 	}
 
 	var req struct {
-		NewHeadID string `json:"new_head_id"`
+		NewHeadID string `json:"new_coordinator_id"`
 		Reason    string `json:"reason"`
 	}
 	if err := c.Bind(&req); err != nil {
@@ -1191,7 +1284,7 @@ func (h *Handler) APIClusterFailover(c echo.Context) error {
 	}
 
 	if req.NewHeadID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "new_head_id is required"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "new_coordinator_id is required"})
 	}
 
 	devices, err := h.deviceUC.GetDeviceMap(ctx)
@@ -1205,19 +1298,19 @@ func (h *Handler) APIClusterFailover(c echo.Context) error {
 		AIDecision: false,
 	}
 
-	if err := h.failoverUC.ExecuteFailover(ctx, cluster, election, devices, ""); err != nil {
+	if err := h.failoverUC.ExecuteFailover(ctx, orch, election, devices, ""); err != nil {
 		return internalError(c, "failover failed", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status":     "failover_complete",
-		"cluster_id": cluster.ID,
+		"orch_id": orch.ID,
 		"new_head":   req.NewHeadID,
 	})
 }
 
-// ClusterExecutePage renders the distributed task execution page
-func (h *Handler) ClusterExecutePage(c echo.Context) error {
+// OrchExecutePage renders the distributed task execution page
+func (h *Handler) OrchExecutePage(c echo.Context) error {
 	id := url.PathEscape(c.Param("id"))
 	return c.HTML(http.StatusOK, `<!DOCTYPE html>
 <html>
@@ -1232,8 +1325,8 @@ func (h *Handler) ClusterExecutePage(c echo.Context) error {
 			<div class="flex justify-between items-center">
 				<a href="/" class="text-xl font-bold text-gray-800">Naga</a>
 				<div class="space-x-4">
-					<a href="/clusters" class="text-gray-600 hover:text-gray-900">Clusters</a>
-					<a href="/clusters/`+id+`" class="text-gray-600 hover:text-gray-900">Cluster Detail</a>
+					<a href="/orchs" class="text-gray-600 hover:text-gray-900">Orchs</a>
+					<a href="/orchs/`+id+`" class="text-gray-600 hover:text-gray-900">Orch Detail</a>
 				</div>
 			</div>
 		</div>
@@ -1251,7 +1344,7 @@ func (h *Handler) ClusterExecutePage(c echo.Context) error {
 						placeholder="e.g. nvidia-smi --query-gpu=name,memory.total --format=csv,noheader">nvidia-smi --query-gpu=name,memory.total,utilization.gpu --format=csv,noheader</textarea>
 				</div>
 				<div class="flex space-x-2">
-					<button hx-post="/clusters/`+id+`/execute" hx-include="#cmd-input" hx-target="#results" hx-swap="innerHTML"
+					<button hx-post="/orchs/`+id+`/execute" hx-include="#cmd-input" hx-target="#results" hx-swap="innerHTML"
 						hx-indicator="#spinner"
 						class="bg-purple-600 text-white px-6 py-2 rounded hover:bg-purple-700 font-medium">
 						Run on All Workers
@@ -1276,7 +1369,7 @@ func (h *Handler) ClusterExecutePage(c echo.Context) error {
 </html>`)
 }
 
-// ClusterExecuteTask runs a command on all cluster workers in parallel
+// OrchExecuteTask runs a command on all orch workers in parallel
 // dangerousPatterns are shell metacharacters and patterns that could enable command injection
 var dangerousPatterns = []string{";", "&&", "||", "|", "`", "$(", "${", ">", "<", "\n", "\r", "\\"}
 
@@ -1293,7 +1386,7 @@ func validateCommand(cmd string) error {
 	return nil
 }
 
-func (h *Handler) ClusterExecuteTask(c echo.Context) error {
+func (h *Handler) OrchExecuteTask(c echo.Context) error {
 	id := c.Param("id")
 	command := c.FormValue("command")
 	if command == "" {
@@ -1304,13 +1397,13 @@ func (h *Handler) ClusterExecuteTask(c echo.Context) error {
 		return c.HTML(http.StatusOK, fmt.Sprintf(`<p class="text-red-500">Invalid command: %s</p>`, err.Error()))
 	}
 
-	if h.clusterUC == nil || h.executor == nil {
+	if h.orchUC == nil || h.executor == nil {
 		return c.HTML(http.StatusOK, `<p class="text-red-500">Service not available</p>`)
 	}
 
-	cluster, err := h.clusterUC.GetCluster(c.Request().Context(), id)
+	orch, err := h.orchUC.GetOrch(c.Request().Context(), id)
 	if err != nil {
-		return c.HTML(http.StatusOK, `<p class="text-red-500">Cluster not found</p>`)
+		return c.HTML(http.StatusOK, `<p class="text-red-500">Orch not found</p>`)
 	}
 
 	// Get device map
@@ -1321,14 +1414,14 @@ func (h *Handler) ClusterExecuteTask(c echo.Context) error {
 
 	// Collect worker devices
 	var workers []*domain.Device
-	for _, wid := range cluster.WorkerIDs {
+	for _, wid := range orch.WorkerIDs {
 		if d, ok := devices[wid]; ok && d.IsOnline() {
 			workers = append(workers, d)
 		}
 	}
 
 	if len(workers) == 0 {
-		return c.HTML(http.StatusOK, `<p class="text-yellow-600">No online workers found in this cluster</p>`)
+		return c.HTML(http.StatusOK, `<p class="text-yellow-600">No online workers found in this orch</p>`)
 	}
 
 	// Execute on all workers in parallel
@@ -1399,8 +1492,8 @@ func (h *Handler) ClusterExecuteTask(c echo.Context) error {
 	return c.HTML(http.StatusOK, b.String())
 }
 
-// APIClusterExecute runs a command on all cluster workers and returns JSON results
-func (h *Handler) APIClusterExecute(c echo.Context) error {
+// APIOrchExecute runs a command on all orch workers and returns JSON results
+func (h *Handler) APIOrchExecute(c echo.Context) error {
 	id := c.Param("id")
 
 	var req struct {
@@ -1423,13 +1516,13 @@ func (h *Handler) APIClusterExecute(c echo.Context) error {
 		req.TimeoutSeconds = 300
 	}
 
-	if h.clusterUC == nil || h.executor == nil {
+	if h.orchUC == nil || h.executor == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "service not available"})
 	}
 
-	cluster, err := h.clusterUC.GetCluster(c.Request().Context(), id)
+	orch, err := h.orchUC.GetOrch(c.Request().Context(), id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "cluster not found"})
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "orch not found"})
 	}
 
 	devices, err := h.deviceUC.GetDeviceMap(c.Request().Context())
@@ -1437,44 +1530,44 @@ func (h *Handler) APIClusterExecute(c echo.Context) error {
 		return internalError(c, "failed to get devices", err)
 	}
 
-	// Resolve workers: devices execute directly, sub-clusters delegate
+	// Resolve workers: devices execute directly, sub-orchs delegate
 	var results []TaskResult
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	timeout := time.Duration(req.TimeoutSeconds) * time.Second
-	visited := map[string]bool{id: true} // track visited clusters to prevent cycles
+	visited := map[string]bool{id: true} // track visited orchs to prevent cycles
 
-	for _, ref := range cluster.WorkerRefs() {
+	for _, ref := range orch.WorkerRefs() {
 		wg.Add(1)
-		if ref.IsCluster() {
-			// Sub-cluster: execute on its device workers (max 1 level deep)
-			go func(clusterID string) {
+		if ref.IsOrch() {
+			// Sub-orch: execute on its device workers (max 1 level deep)
+			go func(orchID string) {
 				defer wg.Done()
 				start := time.Now()
 
 				// Cycle detection
-				if visited[clusterID] {
+				if visited[orchID] {
 					mu.Lock()
 					results = append(results, TaskResult{
-						DeviceID: clusterID, DeviceName: "cluster:" + clusterID,
+						DeviceID: orchID, DeviceName: "orch:" + orchID,
 						Error: "circular reference detected", Duration: float64(time.Since(start).Milliseconds()),
 					})
 					mu.Unlock()
 					return
 				}
 
-				subCluster, err := h.clusterUC.GetCluster(c.Request().Context(), clusterID)
+				subOrch, err := h.orchUC.GetOrch(c.Request().Context(), orchID)
 				if err != nil {
 					mu.Lock()
 					results = append(results, TaskResult{
-						DeviceID: clusterID, DeviceName: "cluster:" + clusterID,
-						Error: "sub-cluster not found", Duration: float64(time.Since(start).Milliseconds()),
+						DeviceID: orchID, DeviceName: "orch:" + orchID,
+						Error: "sub-orch not found", Duration: float64(time.Since(start).Milliseconds()),
 					})
 					mu.Unlock()
 					return
 				}
-				// Execute on sub-cluster's device workers only (no deeper nesting)
-				for _, subRef := range subCluster.WorkerRefs() {
+				// Execute on sub-orch's device workers only (no deeper nesting)
+				for _, subRef := range subOrch.WorkerRefs() {
 					if !subRef.IsDevice() {
 						continue
 					}
@@ -1483,7 +1576,7 @@ func (h *Handler) APIClusterExecute(c echo.Context) error {
 						defer wg.Done()
 						s := time.Now()
 						r := h.executeOnDeviceByID(devID, req.Command, timeout, devices)
-						r.DeviceName = subCluster.Name + "/" + r.DeviceName
+						r.DeviceName = subOrch.Name + "/" + r.DeviceName
 						r.Duration = float64(time.Since(s).Milliseconds())
 						mu.Lock()
 						results = append(results, r)
@@ -1507,7 +1600,7 @@ func (h *Handler) APIClusterExecute(c echo.Context) error {
 	wg.Wait()
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"cluster_id":   id,
+		"orch_id":   id,
 		"command":      req.Command,
 		"worker_count": len(results),
 		"results":      results,
@@ -1592,11 +1685,12 @@ func (h *Handler) APIExecuteOnDevice(c echo.Context) error {
 	return c.JSON(http.StatusOK, r)
 }
 
-// APIGPUMonitor returns live GPU metrics from all GPU nodes
+// APIGPUMonitor returns GPU metrics from all GPU nodes.
+// By default returns cached device info (no SSH). Use ?refresh=true for live SSH probe.
 func (h *Handler) APIGPUMonitor(c echo.Context) error {
 	ctx := c.Request().Context()
 
-	if h.deviceUC == nil || h.executor == nil {
+	if h.deviceUC == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "service not available"})
 	}
 
@@ -1623,8 +1717,12 @@ func (h *Handler) APIGPUMonitor(c echo.Context) error {
 	}
 
 	results := make([]GPUNodeStatus, len(gpuDevices))
-	var wg sync.WaitGroup
 
+	if h.executor == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "executor not available"})
+	}
+
+	var wg sync.WaitGroup
 	for i, d := range gpuDevices {
 		wg.Add(1)
 		go func(idx int, dev *domain.Device) {
@@ -1692,7 +1790,7 @@ func (h *Handler) MonitorPage(c echo.Context) error {
 				<h1 class="text-xl font-bold text-gray-800"><a href="/">Naga</a></h1>
 				<div class="space-x-4">
 					<a href="/devices" class="text-gray-600 hover:text-gray-900">Devices</a>
-					<a href="/clusters" class="text-gray-600 hover:text-gray-900">Clusters</a>
+					<a href="/orchs" class="text-gray-600 hover:text-gray-900">Orchs</a>
 					<a href="/monitor" class="text-purple-600 font-semibold">GPU Monitor</a>
 				</div>
 			</div>
@@ -1861,17 +1959,17 @@ type WorkerStatus struct {
 	Error      string          `json:"error,omitempty"`
 }
 
-// APIClusterProcesses returns running processes on all cluster workers
-func (h *Handler) APIClusterProcesses(c echo.Context) error {
+// APIOrchProcesses returns running processes on all orch workers
+func (h *Handler) APIOrchProcesses(c echo.Context) error {
 	id := c.Param("id")
 
-	if h.clusterUC == nil || h.executor == nil {
+	if h.orchUC == nil || h.executor == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "service not available"})
 	}
 
-	cluster, err := h.clusterUC.GetCluster(c.Request().Context(), id)
+	orch, err := h.orchUC.GetOrch(c.Request().Context(), id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "cluster not found"})
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "orch not found"})
 	}
 
 	devices, err := h.deviceUC.GetDeviceMap(c.Request().Context())
@@ -1880,7 +1978,7 @@ func (h *Handler) APIClusterProcesses(c echo.Context) error {
 	}
 
 	var workers []*domain.Device
-	for _, wid := range cluster.WorkerIDs {
+	for _, wid := range orch.WorkerIDs {
 		if d, ok := devices[wid]; ok && d.IsOnline() {
 			workers = append(workers, d)
 		}
@@ -1955,7 +2053,7 @@ func (h *Handler) APIClusterProcesses(c echo.Context) error {
 	wg.Wait()
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"cluster_id": id, "timestamp": time.Now(),
+		"orch_id": id, "timestamp": time.Now(),
 		"worker_count": len(workers), "workers": statuses,
 	})
 }

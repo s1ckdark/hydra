@@ -32,7 +32,7 @@ const (
 
 // Model is the Bubble Tea model for the GPU monitor TUI.
 type Model struct {
-	clusterName string
+	orchName string
 	devices     []*domain.Device
 	collector   *ssh.GPUCollector
 	interval    time.Duration
@@ -48,9 +48,9 @@ type Model struct {
 }
 
 // NewModel creates a new GPU monitor TUI model.
-func NewModel(clusterName string, devices []*domain.Device, collector *ssh.GPUCollector, interval time.Duration) Model {
+func NewModel(orchName string, devices []*domain.Device, collector *ssh.GPUCollector, interval time.Duration) Model {
 	return Model{
-		clusterName: clusterName,
+		orchName: orchName,
 		devices:     devices,
 		collector:   collector,
 		interval:    interval,
@@ -75,7 +75,7 @@ func (m Model) collectMetrics() tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), m.interval)
 		defer cancel()
-		results := m.collector.CollectClusterGPUMetrics(ctx, m.devices)
+		results := m.collector.CollectOrchGPUMetrics(ctx, m.devices)
 		return metricsMsg{metrics: results}
 	}
 }

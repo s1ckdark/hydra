@@ -6,7 +6,7 @@ struct MenuBarView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("GPU Cluster Manager")
+            Text("GPU Orch Manager")
                 .font(.headline)
 
             Divider()
@@ -91,7 +91,7 @@ struct MenuBarView: View {
 
             HStack {
                 Image(systemName: "server.rack")
-                Text("\(vm.clusters.count) clusters")
+                Text("\(vm.orchs.count) orchs")
                     .font(.caption)
             }
 

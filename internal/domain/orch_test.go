@@ -4,28 +4,28 @@ import (
 	"testing"
 )
 
-func TestNewCluster(t *testing.T) {
+func TestNewOrch(t *testing.T) {
 	workers := []string{"w1", "w2"}
-	c := NewCluster("test-cluster", "head1", workers)
+	c := NewOrch("test-orch", "head1", workers)
 
-	if c.Name != "test-cluster" {
-		t.Errorf("Name = %q, want %q", c.Name, "test-cluster")
+	if c.Name != "test-orch" {
+		t.Errorf("Name = %q, want %q", c.Name, "test-orch")
 	}
-	if c.HeadNodeID != "head1" {
-		t.Errorf("HeadNodeID = %q, want %q", c.HeadNodeID, "head1")
+	if c.CoordinatorID != "head1" {
+		t.Errorf("CoordinatorID = %q, want %q", c.CoordinatorID, "head1")
 	}
-	if c.Status != ClusterStatusPending {
-		t.Errorf("Status = %q, want %q", c.Status, ClusterStatusPending)
+	if c.Status != OrchStatusPending {
+		t.Errorf("Status = %q, want %q", c.Status, OrchStatusPending)
 	}
-	if c.Mode != ClusterModeBasic {
-		t.Errorf("Mode = %q, want %q", c.Mode, ClusterModeBasic)
+	if c.Mode != OrchModeBasic {
+		t.Errorf("Mode = %q, want %q", c.Mode, OrchModeBasic)
 	}
 	// Basic mode should not set Ray ports
 	if c.RayPort != 0 {
 		t.Errorf("RayPort = %d, want 0 for basic mode", c.RayPort)
 	}
 	// Ray mode should set ports
-	rc := NewClusterWithMode("ray-test", "head1", []string{"w1"}, ClusterModeRay)
+	rc := NewOrchWithMode("ray-test", "head1", []string{"w1"}, OrchModeRay)
 	if rc.RayPort != 6379 {
 		t.Errorf("Ray mode RayPort = %d, want 6379", rc.RayPort)
 	}
@@ -40,7 +40,7 @@ func TestNewCluster(t *testing.T) {
 	}
 }
 
-func TestCluster_TotalNodes(t *testing.T) {
+func TestOrch_TotalNodes(t *testing.T) {
 	tests := []struct {
 		name    string
 		workers []string
@@ -53,7 +53,7 @@ func TestCluster_TotalNodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := NewCluster("c", "h", tt.workers)
+			c := NewOrch("c", "h", tt.workers)
 			if got := c.TotalNodes(); got != tt.want {
 				t.Errorf("TotalNodes() = %d, want %d", got, tt.want)
 			}
@@ -61,8 +61,8 @@ func TestCluster_TotalNodes(t *testing.T) {
 	}
 }
 
-func TestCluster_AllNodeIDs(t *testing.T) {
-	c := NewCluster("c", "head1", []string{"w1", "w2"})
+func TestOrch_AllNodeIDs(t *testing.T) {
+	c := NewOrch("c", "head1", []string{"w1", "w2"})
 	ids := c.AllNodeIDs()
 
 	if len(ids) != 3 {
@@ -76,8 +76,8 @@ func TestCluster_AllNodeIDs(t *testing.T) {
 	}
 }
 
-func TestCluster_HasWorker(t *testing.T) {
-	c := NewCluster("c", "head1", []string{"w1", "w2"})
+func TestOrch_HasWorker(t *testing.T) {
+	c := NewOrch("c", "head1", []string{"w1", "w2"})
 
 	if !c.HasWorker("w1") {
 		t.Error("HasWorker(w1) = false, want true")
@@ -90,35 +90,35 @@ func TestCluster_HasWorker(t *testing.T) {
 	}
 }
 
-func TestCluster_IsRunning(t *testing.T) {
-	c := NewCluster("c", "h", nil)
+func TestOrch_IsRunning(t *testing.T) {
+	c := NewOrch("c", "h", nil)
 
 	if c.IsRunning() {
-		t.Error("pending cluster should not be running")
+		t.Error("pending orch should not be running")
 	}
 
-	c.Status = ClusterStatusRunning
+	c.Status = OrchStatusRunning
 	if !c.IsRunning() {
-		t.Error("running cluster should be running")
+		t.Error("running orch should be running")
 	}
 }
 
-func TestCluster_CanModify(t *testing.T) {
+func TestOrch_CanModify(t *testing.T) {
 	tests := []struct {
-		status ClusterStatus
+		status OrchStatus
 		want   bool
 	}{
-		{ClusterStatusPending, true},
-		{ClusterStatusStopped, true},
-		{ClusterStatusRunning, true},
-		{ClusterStatusStarting, false},
-		{ClusterStatusStopping, false},
-		{ClusterStatusError, false},
+		{OrchStatusPending, true},
+		{OrchStatusStopped, true},
+		{OrchStatusRunning, true},
+		{OrchStatusStarting, false},
+		{OrchStatusStopping, false},
+		{OrchStatusError, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(string(tt.status), func(t *testing.T) {
-			c := NewCluster("c", "h", nil)
+			c := NewOrch("c", "h", nil)
 			c.Status = tt.status
 			if got := c.CanModify(); got != tt.want {
 				t.Errorf("CanModify() = %v, want %v", got, tt.want)
@@ -127,8 +127,8 @@ func TestCluster_CanModify(t *testing.T) {
 	}
 }
 
-func TestCluster_AddWorker(t *testing.T) {
-	c := NewCluster("c", "head1", []string{"w1"})
+func TestOrch_AddWorker(t *testing.T) {
+	c := NewOrch("c", "head1", []string{"w1"})
 
 	// Add new worker
 	if err := c.AddWorker("w2"); err != nil {
@@ -139,8 +139,8 @@ func TestCluster_AddWorker(t *testing.T) {
 	}
 
 	// Duplicate worker
-	if err := c.AddWorker("w1"); err != ErrNodeAlreadyInCluster {
-		t.Errorf("AddWorker(w1) = %v, want ErrNodeAlreadyInCluster", err)
+	if err := c.AddWorker("w1"); err != ErrNodeAlreadyInOrch {
+		t.Errorf("AddWorker(w1) = %v, want ErrNodeAlreadyInOrch", err)
 	}
 
 	// Add head as worker
@@ -149,8 +149,8 @@ func TestCluster_AddWorker(t *testing.T) {
 	}
 }
 
-func TestCluster_RemoveWorker(t *testing.T) {
-	c := NewCluster("c", "head1", []string{"w1", "w2", "w3"})
+func TestOrch_RemoveWorker(t *testing.T) {
+	c := NewOrch("c", "head1", []string{"w1", "w2", "w3"})
 
 	// Remove existing worker
 	if err := c.RemoveWorker("w2"); err != nil {
@@ -164,8 +164,8 @@ func TestCluster_RemoveWorker(t *testing.T) {
 	}
 
 	// Remove non-existent worker
-	if err := c.RemoveWorker("w99"); err != ErrNodeNotInCluster {
-		t.Errorf("RemoveWorker(w99) = %v, want ErrNodeNotInCluster", err)
+	if err := c.RemoveWorker("w99"); err != ErrNodeNotInOrch {
+		t.Errorf("RemoveWorker(w99) = %v, want ErrNodeNotInOrch", err)
 	}
 
 	// Cannot remove head
@@ -174,15 +174,15 @@ func TestCluster_RemoveWorker(t *testing.T) {
 	}
 }
 
-func TestCluster_ChangeHead(t *testing.T) {
-	c := NewCluster("c", "head1", []string{"w1", "w2"})
+func TestOrch_ChangeHead(t *testing.T) {
+	c := NewOrch("c", "head1", []string{"w1", "w2"})
 
 	// Change to existing worker
 	if err := c.ChangeHead("w1", "manual"); err != nil {
 		t.Fatalf("ChangeHead(w1) error: %v", err)
 	}
-	if c.HeadNodeID != "w1" {
-		t.Errorf("HeadNodeID = %q, want %q", c.HeadNodeID, "w1")
+	if c.CoordinatorID != "w1" {
+		t.Errorf("CoordinatorID = %q, want %q", c.CoordinatorID, "w1")
 	}
 	// Old head should become worker
 	if !c.HasWorker("head1") {
@@ -206,8 +206,8 @@ func TestCluster_ChangeHead(t *testing.T) {
 	if err := c.ChangeHead("external1", "manual"); err != nil {
 		t.Fatalf("ChangeHead(external1) error: %v", err)
 	}
-	if c.HeadNodeID != "external1" {
-		t.Errorf("HeadNodeID = %q, want %q", c.HeadNodeID, "external1")
+	if c.CoordinatorID != "external1" {
+		t.Errorf("CoordinatorID = %q, want %q", c.CoordinatorID, "external1")
 	}
 	// Total nodes should increase by 1 (old head added as worker, external was not removed from workers)
 	if c.TotalNodes() != 4 {
@@ -215,14 +215,14 @@ func TestCluster_ChangeHead(t *testing.T) {
 	}
 }
 
-func TestCluster_SetError(t *testing.T) {
-	c := NewCluster("c", "h", nil)
-	c.Status = ClusterStatusRunning
+func TestOrch_SetError(t *testing.T) {
+	c := NewOrch("c", "h", nil)
+	c.Status = OrchStatusRunning
 
 	c.SetError("connection failed")
 
-	if c.Status != ClusterStatusError {
-		t.Errorf("Status = %q, want %q", c.Status, ClusterStatusError)
+	if c.Status != OrchStatusError {
+		t.Errorf("Status = %q, want %q", c.Status, OrchStatusError)
 	}
 	if c.LastError != "connection failed" {
 		t.Errorf("LastError = %q, want %q", c.LastError, "connection failed")

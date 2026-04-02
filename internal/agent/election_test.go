@@ -29,7 +29,7 @@ func TestElection_RuleBasedFallback(t *testing.T) {
 	}
 
 	e := NewElection(&mockHeadSelector{shouldErr: true})
-	result, err := e.Elect(context.Background(), "cluster-1", candidates)
+	result, err := e.Elect(context.Background(), "orch-1", candidates)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestElection_AIDecision(t *testing.T) {
 
 	ai := &mockHeadSelector{result: "worker-1", reason: "better network position"}
 	e := NewElection(ai)
-	result, err := e.Elect(context.Background(), "cluster-1", candidates)
+	result, err := e.Elect(context.Background(), "orch-1", candidates)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestElection_AIDecision(t *testing.T) {
 
 func TestElection_NoCandidates(t *testing.T) {
 	e := NewElection(&mockHeadSelector{shouldErr: true})
-	_, err := e.Elect(context.Background(), "cluster-1", nil)
+	_, err := e.Elect(context.Background(), "orch-1", nil)
 	if err == nil {
 		t.Error("expected error for empty candidates")
 	}

@@ -5,7 +5,7 @@ import "time"
 // Heartbeat represents a heartbeat message between nodes
 type Heartbeat struct {
 	NodeID    string            `json:"nodeId"`
-	ClusterID string            `json:"clusterId"`
+	OrchID string            `json:"orchId"`
 	Role      NodeRole          `json:"role"`
 	Timestamp time.Time         `json:"timestamp"`
 	Metrics   *HeartbeatMetrics `json:"metrics,omitempty"`
@@ -26,7 +26,7 @@ func (hb *Heartbeat) IsExpired(timeout time.Duration) bool {
 // NodeHealth tracks a node's health state based on heartbeats
 type NodeHealth struct {
 	NodeID        string            `json:"nodeId"`
-	ClusterID     string            `json:"clusterId"`
+	OrchID     string            `json:"orchId"`
 	Role          NodeRole          `json:"role"`
 	Status        NodeStatus        `json:"status"`
 	LastHeartbeat time.Time         `json:"lastHeartbeat"`
