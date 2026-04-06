@@ -13,7 +13,7 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Naga",
-            path: "ClusterManager"
+            path: "Naga"
         ),
     ]
 )

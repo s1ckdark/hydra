@@ -132,9 +132,9 @@ clusterManager/
 │   ├── package.json
 │   └── node_modules/
 │
-├── ClusterManager/               # macOS SwiftUI 앱
-│   └── ClusterManager/
-│       ├── ClusterManagerApp.swift      # App 진입점
+├── Naga/                         # macOS/iOS SwiftUI 앱
+│   └── Naga/
+│       ├── NagaApp.swift                # App 진입점
 │       ├── Models/
 │       │   ├── Device.swift
 │       │   ├── Cluster.swift
@@ -251,11 +251,11 @@ make serve
 ### macOS 앱 빌드
 
 ```bash
-cd ClusterManager
-open ClusterManager.xcodeproj
+cd Naga
+open Package.swift
 # Xcode에서 빌드 및 실행
 # 또는 CLI:
-xcodebuild -scheme ClusterManager -configuration Release
+xcodebuild -scheme Naga -configuration Release
 ```
 
 ## 기능 목록
