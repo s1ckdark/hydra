@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/dave/naga/internal/domain"
@@ -10,9 +11,12 @@ import (
 
 // MonitorUseCase handles monitoring-related business logic
 type MonitorUseCase struct {
-	repos        *repository.Repositories
-	collector    MetricsCollector
-	deviceUC     *DeviceUseCase
+	repos     *repository.Repositories
+	collector MetricsCollector
+	deviceUC  *DeviceUseCase
+
+	latestMu sync.RWMutex
+	latest   map[string]*domain.DeviceMetrics
 }
 
 // NewMonitorUseCase creates a new MonitorUseCase
@@ -21,6 +25,25 @@ func NewMonitorUseCase(repos *repository.Repositories, collector MetricsCollecto
 		repos:     repos,
 		collector: collector,
 		deviceUC:  deviceUC,
+		latest:    make(map[string]*domain.DeviceMetrics),
+	}
+}
+
+// GetLatestCached returns the most recently collected metrics for a device
+// from the background collection loop, or nil if none are cached yet.
+// Reads are lock-free fast path for schedulers that tick more often than
+// the collection interval.
+func (uc *MonitorUseCase) GetLatestCached(deviceID string) *domain.DeviceMetrics {
+	uc.latestMu.RLock()
+	defer uc.latestMu.RUnlock()
+	return uc.latest[deviceID]
+}
+
+func (uc *MonitorUseCase) cacheLatest(snapshot *domain.MetricsSnapshot) {
+	uc.latestMu.Lock()
+	defer uc.latestMu.Unlock()
+	for id, m := range snapshot.Devices {
+		uc.latest[id] = m
 	}
 }
 
@@ -144,6 +167,8 @@ func (uc *MonitorUseCase) StartBackgroundCollection(ctx context.Context, interva
 			if err != nil {
 				continue
 			}
+
+			uc.cacheLatest(snapshot)
 
 			// Save all metrics
 			for _, m := range snapshot.Devices {

@@ -202,6 +202,44 @@ func (q *TaskQueue) ReassignTasksFromDevice(deviceID string) []*Task {
 	return reassigned
 }
 
+// ListQueuedByPriority returns a snapshot of tasks currently in TaskStatusQueued,
+// already ordered by priority (insertByPriority maintains ordering on enqueue).
+// The returned slice is a copy; mutating it does not affect the queue.
+func (q *TaskQueue) ListQueuedByPriority() []*Task {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+	result := make([]*Task, 0, len(q.queue))
+	for _, t := range q.queue {
+		if t.Status == TaskStatusQueued {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+// AssignToDevice atomically removes a queued task from the queue and marks it
+// assigned to deviceID. Returns nil if the task is unknown or no longer queued
+// (e.g. another scheduler pass already claimed it).
+func (q *TaskQueue) AssignToDevice(taskID, deviceID string) *Task {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	task, ok := q.tasks[taskID]
+	if !ok || task.Status != TaskStatusQueued {
+		return nil
+	}
+	for i, t := range q.queue {
+		if t.ID == taskID {
+			q.queue = append(q.queue[:i], q.queue[i+1:]...)
+			break
+		}
+	}
+	now := time.Now()
+	task.Status = TaskStatusAssigned
+	task.AssignedDeviceID = deviceID
+	task.AssignedAt = &now
+	return task
+}
+
 // appendUnique appends id to list only if not already present.
 func appendUnique(list []string, id string) []string {
 	for _, existing := range list {

@@ -152,7 +152,7 @@ func main() {
 	go monitorUC.StartBackgroundCollection(monitorCtx, 30*time.Second)
 
 	// Start task supervisor (periodic health check + timeout detection)
-	taskSupervisor := usecase.NewTaskSupervisor(taskQueue, wsHub, deviceUC)
+	taskSupervisor := usecase.NewTaskSupervisor(taskQueue, wsHub, deviceUC, monitorUC)
 	go taskSupervisor.Start(monitorCtx)
 	h.SetExecutor(sshExecutor)
 
