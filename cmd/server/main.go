@@ -153,6 +153,10 @@ func main() {
 
 	// Start task supervisor (periodic health check + timeout detection)
 	taskSupervisor := usecase.NewTaskSupervisor(taskQueue, wsHub, deviceUC, monitorUC)
+	if arbiter := buildAITaskScheduler(cfg.Agent); arbiter != nil {
+		taskSupervisor.SetAIArbiter(arbiter, 0.10, 5, 3*time.Second)
+		log.Printf("[supervisor] AI tiebreaker enabled (provider=%s, epsilon=0.10, budget=5/tick, timeout=3s)", cfg.Agent.AIProvider)
+	}
 	go taskSupervisor.Start(monitorCtx)
 	h.SetExecutor(sshExecutor)
 

@@ -22,6 +22,15 @@ type TaskSupervisor struct {
 	mu           sync.Mutex
 	knownWorkers map[string]time.Time // deviceID -> last seen time
 	interval     time.Duration
+
+	// AI tiebreaker (optional). When aiArbiter is non-nil, the scheduler
+	// asks it to pick between workers whose scores are within tiebreakEpsilon
+	// of each other. aiCallBudget caps the arbiter calls per scheduling tick
+	// so a flood of near-ties cannot blow past the tick deadline.
+	aiArbiter       ai.TaskScheduler
+	tiebreakEpsilon float64
+	aiCallBudget    int
+	aiCallTimeout   time.Duration
 }
 
 func NewTaskSupervisor(taskQueue *domain.TaskQueue, wsHub *ws.Hub, deviceUC *DeviceUseCase, monitorUC *MonitorUseCase) *TaskSupervisor {
@@ -33,6 +42,17 @@ func NewTaskSupervisor(taskQueue *domain.TaskQueue, wsHub *ws.Hub, deviceUC *Dev
 		knownWorkers: make(map[string]time.Time),
 		interval:     10 * time.Second,
 	}
+}
+
+// SetAIArbiter enables AI tiebreaking between workers whose rule-based
+// scores are within epsilon of each other (e.g. 0.10 = 10%). budget caps
+// AI calls per scheduling tick; timeout caps an individual arbiter call.
+// Passing a nil arbiter disables tiebreaking.
+func (s *TaskSupervisor) SetAIArbiter(arbiter ai.TaskScheduler, epsilon float64, budget int, timeout time.Duration) {
+	s.aiArbiter = arbiter
+	s.tiebreakEpsilon = epsilon
+	s.aiCallBudget = budget
+	s.aiCallTimeout = timeout
 }
 
 // Start begins the supervision loop
@@ -117,8 +137,21 @@ func (s *TaskSupervisor) scheduleQueue(ctx context.Context) {
 		return
 	}
 
+	aiCallsRemaining := s.aiCallBudget
 	for _, task := range s.taskQueue.ListQueuedByPriority() {
-		best := ai.PickBestWorker(task, snaps)
+		var best *ai.WorkerSnapshot
+		if s.aiArbiter != nil && aiCallsRemaining > 0 {
+			tied := ai.PickTopKEligible(task, snaps, 5, s.tiebreakEpsilon)
+			if len(tied) > 1 {
+				best = ai.ScheduleWithTiebreak(ctx, task, snaps, s.aiArbiter, s.tiebreakEpsilon, s.aiCallTimeout)
+				aiCallsRemaining--
+			} else if len(tied) == 1 {
+				w := tied[0]
+				best = &w
+			}
+		} else {
+			best = ai.PickBestWorker(task, snaps)
+		}
 		if best == nil {
 			continue
 		}

@@ -1,8 +1,11 @@
 package ai
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"time"
 
 	"github.com/dave/naga/internal/domain"
 )
@@ -109,6 +112,85 @@ func priorityMultiplier(p domain.TaskPriority) float64 {
 	default:
 		return 1.0
 	}
+}
+
+// PickTopKEligible returns workers whose rule-based score is within
+// epsilonRatio of the top score, up to k entries. Returns nil if no worker
+// is eligible. The returned slice is always ordered by score descending,
+// and includes the top worker even if k == 0 (k is a soft cap, 0 disables).
+func PickTopKEligible(task *domain.Task, workers []WorkerSnapshot, k int, epsilonRatio float64) []WorkerSnapshot {
+	type scored struct {
+		w WorkerSnapshot
+		s float64
+	}
+	scoredWorkers := make([]scored, 0, len(workers))
+	for _, w := range workers {
+		s := ScoreForTask(task, w)
+		if s <= ineligible {
+			continue
+		}
+		scoredWorkers = append(scoredWorkers, scored{w, s})
+	}
+	if len(scoredWorkers) == 0 {
+		return nil
+	}
+	sort.Slice(scoredWorkers, func(i, j int) bool {
+		return scoredWorkers[i].s > scoredWorkers[j].s
+	})
+	top := scoredWorkers[0].s
+	cutoff := top * (1 - epsilonRatio)
+	var out []WorkerSnapshot
+	for i, sw := range scoredWorkers {
+		if sw.s < cutoff {
+			break
+		}
+		if k > 0 && i >= k {
+			break
+		}
+		out = append(out, sw.w)
+	}
+	return out
+}
+
+// ScheduleWithTiebreak picks the best worker for task. When more than one
+// worker scores within epsilonRatio of the top, arbiter (AI provider) is
+// asked to pick. Any arbiter error, nil arbiter, or decision that does not
+// match a tied candidate falls back to the top rule-based candidate.
+// timeout caps the arbiter call; 0 disables the timeout.
+func ScheduleWithTiebreak(
+	ctx context.Context,
+	task *domain.Task,
+	workers []WorkerSnapshot,
+	arbiter TaskScheduler,
+	epsilonRatio float64,
+	timeout time.Duration,
+) *WorkerSnapshot {
+	tied := PickTopKEligible(task, workers, 5, epsilonRatio)
+	if len(tied) == 0 {
+		return nil
+	}
+	if len(tied) == 1 || arbiter == nil {
+		top := tied[0]
+		return &top
+	}
+	callCtx := ctx
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		callCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	decision, err := arbiter.ScheduleTask(callCtx, task, tied)
+	if err != nil || decision == nil || decision.DeviceID == "" {
+		top := tied[0]
+		return &top
+	}
+	for i := range tied {
+		if tied[i].DeviceID == decision.DeviceID {
+			return &tied[i]
+		}
+	}
+	top := tied[0]
+	return &top
 }
 
 func hasAllCapabilities(have, need []string) bool {

@@ -1,10 +1,27 @@
 package ai
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/dave/naga/internal/domain"
 )
+
+type fakeArbiter struct {
+	decisionDeviceID string
+	err              error
+	called           int
+}
+
+func (f *fakeArbiter) ScheduleTask(_ context.Context, _ *domain.Task, _ []WorkerSnapshot) (*ScheduleDecision, error) {
+	f.called++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &ScheduleDecision{DeviceID: f.decisionDeviceID, Confidence: 0.9}, nil
+}
 
 func fullyLoaded(id string) WorkerSnapshot {
 	return WorkerSnapshot{
@@ -104,5 +121,95 @@ func TestPickBestWorker_SkipsBlockedPicksOther(t *testing.T) {
 	got := PickBestWorker(task, []WorkerSnapshot{a, b})
 	if got == nil || got.DeviceID != "b" {
 		t.Fatalf("expected b, got %+v", got)
+	}
+}
+
+func TestPickTopKEligible_ReturnsSingleWhenClearWinner(t *testing.T) {
+	strong := fullyLoaded("strong")
+	weak := fullyLoaded("weak")
+	weak.GPUUtilization = 90
+	weak.MemoryFreeGB = 2
+	weak.CPUUsage = 80
+	task := &domain.Task{Priority: domain.TaskPriorityNormal}
+
+	got := PickTopKEligible(task, []WorkerSnapshot{strong, weak}, 5, 0.10)
+	if len(got) != 1 || got[0].DeviceID != "strong" {
+		t.Fatalf("expected only strong within epsilon, got %+v", got)
+	}
+}
+
+func TestPickTopKEligible_ReturnsMultipleWhenClose(t *testing.T) {
+	a := fullyLoaded("a")
+	b := fullyLoaded("b")
+	b.GPUUtilization = 22
+	task := &domain.Task{Priority: domain.TaskPriorityNormal}
+
+	got := PickTopKEligible(task, []WorkerSnapshot{a, b}, 5, 0.10)
+	if len(got) != 2 {
+		t.Fatalf("expected both within 10%% of top, got %+v", got)
+	}
+}
+
+func TestScheduleWithTiebreak_UsesArbiterOnTie(t *testing.T) {
+	a := fullyLoaded("a")
+	b := fullyLoaded("b")
+	arb := &fakeArbiter{decisionDeviceID: "b"}
+	task := &domain.Task{Priority: domain.TaskPriorityNormal}
+
+	got := ScheduleWithTiebreak(context.Background(), task, []WorkerSnapshot{a, b}, arb, 0.10, time.Second)
+	if got == nil || got.DeviceID != "b" {
+		t.Fatalf("expected arbiter to pick b, got %+v", got)
+	}
+	if arb.called != 1 {
+		t.Fatalf("arbiter should be called exactly once on tie, got %d", arb.called)
+	}
+}
+
+func TestScheduleWithTiebreak_SkipsArbiterWhenNoTie(t *testing.T) {
+	strong := fullyLoaded("strong")
+	weak := fullyLoaded("weak")
+	weak.GPUUtilization = 90
+	weak.MemoryFreeGB = 2
+	weak.CPUUsage = 80
+	arb := &fakeArbiter{decisionDeviceID: "weak"}
+	task := &domain.Task{Priority: domain.TaskPriorityNormal}
+
+	got := ScheduleWithTiebreak(context.Background(), task, []WorkerSnapshot{strong, weak}, arb, 0.10, time.Second)
+	if got == nil || got.DeviceID != "strong" {
+		t.Fatalf("expected rule-based strong, got %+v", got)
+	}
+	if arb.called != 0 {
+		t.Fatalf("arbiter should not be called without a tie, got %d calls", arb.called)
+	}
+}
+
+func TestScheduleWithTiebreak_FallsBackOnArbiterError(t *testing.T) {
+	a := fullyLoaded("a")
+	b := fullyLoaded("b")
+	arb := &fakeArbiter{err: errors.New("boom")}
+	task := &domain.Task{Priority: domain.TaskPriorityNormal}
+
+	got := ScheduleWithTiebreak(context.Background(), task, []WorkerSnapshot{a, b}, arb, 0.10, time.Second)
+	if got == nil {
+		t.Fatal("expected rule-based fallback, got nil")
+	}
+	// Either tied candidate is acceptable; rule-based ordering determines top.
+	if got.DeviceID != "a" && got.DeviceID != "b" {
+		t.Fatalf("expected one of the tied candidates, got %+v", got)
+	}
+}
+
+func TestScheduleWithTiebreak_RejectsUnknownDeviceFromArbiter(t *testing.T) {
+	a := fullyLoaded("a")
+	b := fullyLoaded("b")
+	arb := &fakeArbiter{decisionDeviceID: "phantom"}
+	task := &domain.Task{Priority: domain.TaskPriorityNormal}
+
+	got := ScheduleWithTiebreak(context.Background(), task, []WorkerSnapshot{a, b}, arb, 0.10, time.Second)
+	if got == nil {
+		t.Fatal("expected fallback to top, got nil")
+	}
+	if got.DeviceID != "a" && got.DeviceID != "b" {
+		t.Fatalf("expected a tied candidate, got %+v", got)
 	}
 }
