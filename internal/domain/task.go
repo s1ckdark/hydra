@@ -54,6 +54,7 @@ type Task struct {
 	MaxRetries           int                    `json:"maxRetries"`
 	CreatedBy            string                 `json:"createdBy,omitempty"`       // device ID of creator/head
 	ResourceReqs         *ResourceRequirements  `json:"resourceReqs,omitempty"`
+	BlockedDeviceIDs     []string               `json:"blockedDeviceIds,omitempty"` // workers excluded after failure; prevents flapping on retry
 }
 
 // TaskResult holds the output of a completed task

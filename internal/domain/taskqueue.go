@@ -188,6 +188,7 @@ func (q *TaskQueue) ReassignTasksFromDevice(deviceID string) []*Task {
 				task.CompletedAt = &now
 				task.Error = fmt.Sprintf("worker %s failed, max retries exceeded", deviceID)
 			} else {
+				task.BlockedDeviceIDs = appendUnique(task.BlockedDeviceIDs, deviceID)
 				task.Status = TaskStatusQueued
 				task.AssignedDeviceID = ""
 				task.AssignedAt = nil
@@ -199,6 +200,16 @@ func (q *TaskQueue) ReassignTasksFromDevice(deviceID string) []*Task {
 		}
 	}
 	return reassigned
+}
+
+// appendUnique appends id to list only if not already present.
+func appendUnique(list []string, id string) []string {
+	for _, existing := range list {
+		if existing == id {
+			return list
+		}
+	}
+	return append(list, id)
 }
 
 // WorkerCandidate wraps a Device with current resource metrics for AI scheduling.
@@ -282,6 +293,9 @@ func (q *TaskQueue) CheckTimeouts() []*Task {
 					task.CompletedAt = &now
 					task.Error = "task timed out, max retries exceeded"
 				} else {
+					if task.AssignedDeviceID != "" {
+						task.BlockedDeviceIDs = appendUnique(task.BlockedDeviceIDs, task.AssignedDeviceID)
+					}
 					task.Status = TaskStatusQueued
 					task.AssignedDeviceID = ""
 					task.AssignedAt = nil
