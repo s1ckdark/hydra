@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"github.com/dave/naga/internal/domain"
+	"github.com/s1ckdark/hydra/internal/domain"
 )
 
 // DeviceRepository defines operations for device persistence

@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct NagaApp: App {
+struct HydraApp: App {
     @StateObject private var dashboardVM = DashboardViewModel()
 
     var body: some Scene {

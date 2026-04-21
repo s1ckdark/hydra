@@ -15,14 +15,14 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
-	"github.com/dave/naga/config"
-	"github.com/dave/naga/internal/domain"
-	"github.com/dave/naga/internal/infra/ssh"
-	"github.com/dave/naga/internal/infra/tailscale"
-	"github.com/dave/naga/internal/repository/sqlite"
-	"github.com/dave/naga/internal/usecase"
-	"github.com/dave/naga/internal/web/handler"
-	"github.com/dave/naga/internal/web/ws"
+	"github.com/s1ckdark/hydra/config"
+	"github.com/s1ckdark/hydra/internal/domain"
+	"github.com/s1ckdark/hydra/internal/infra/ssh"
+	"github.com/s1ckdark/hydra/internal/infra/tailscale"
+	"github.com/s1ckdark/hydra/internal/repository/sqlite"
+	"github.com/s1ckdark/hydra/internal/usecase"
+	"github.com/s1ckdark/hydra/internal/web/handler"
+	"github.com/s1ckdark/hydra/internal/web/ws"
 )
 
 var (
@@ -292,8 +292,8 @@ func main() {
 
 	// Register mDNS/Bonjour service for auto-discovery
 	mdnsServer, err := zeroconf.Register(
-		"naga-server",      // service instance name
-		"_naga._tcp",       // service type
+		"hydra-server",      // service instance name
+		"_hydra._tcp",       // service type
 		"local.",           // domain
 		cfg.Server.Port,    // port
 		[]string{"version=" + Version}, // TXT records
@@ -302,7 +302,7 @@ func main() {
 	if err != nil {
 		log.Printf("Warning: failed to register mDNS service: %v", err)
 	} else {
-		log.Printf("mDNS: registered _naga._tcp on port %d", cfg.Server.Port)
+		log.Printf("mDNS: registered _hydra._tcp on port %d", cfg.Server.Port)
 		defer mdnsServer.Shutdown()
 	}
 

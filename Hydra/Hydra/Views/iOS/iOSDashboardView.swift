@@ -66,7 +66,7 @@ struct iOSDashboardView: View {
                 }
                 .padding(.vertical)
             }
-            .navigationTitle("Naga")
+            .navigationTitle("Hydra")
             .task {
                 await viewModel.loadDashboard()
             }

@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/dave/naga/internal/domain"
-	ai "github.com/dave/naga/internal/infra/ai"
+	"github.com/s1ckdark/hydra/internal/domain"
+	ai "github.com/s1ckdark/hydra/internal/infra/ai"
 )
 
 const defaultModel    = "gpt-4o"

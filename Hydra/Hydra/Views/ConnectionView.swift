@@ -21,7 +21,7 @@ struct ConnectionView: View {
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
 
-            Text("Naga")
+            Text("Hydra")
                 .font(.largeTitle.bold())
 
             switch connectionState {

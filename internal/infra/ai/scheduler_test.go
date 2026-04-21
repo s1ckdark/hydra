@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dave/naga/internal/domain"
+	"github.com/s1ckdark/hydra/internal/domain"
 )
 
 type fakeArbiter struct {

@@ -32,11 +32,11 @@ private struct ServerSettingsTab: View {
                 SecureField("API Key (optional)", text: $apiKey)
                     .textFieldStyle(.roundedBorder)
 
-                Text("Only needed when connecting from outside the Tailscale network. On localhost or Tailscale, requests are authenticated automatically.\n\nTo generate a key: run `naga config set api-key <your-key>` on the server, then enter the same key here.")
+                Text("Only needed when connecting from outside the Tailscale network. On localhost or Tailscale, requests are authenticated automatically.\n\nTo generate a key: run `hydra config set api-key <your-key>` on the server, then enter the same key here.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } header: {
-                Text("Naga Server Connection")
+                Text("Hydra Server Connection")
             }
 
             Section {
@@ -222,7 +222,7 @@ private struct TailscaleSettingsTab: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!connectionVerified || saveStatus.isSaving)
-                    .help("Save locally and send credentials to the naga server")
+                    .help("Save locally and send credentials to the hydra server")
                 }
 
                 if !connectionVerified {

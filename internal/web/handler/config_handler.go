@@ -5,7 +5,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/dave/naga/config"
+	"github.com/s1ckdark/hydra/config"
 )
 
 // TailscaleConfigRequest is the payload for updating Tailscale credentials.

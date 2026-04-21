@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dave/naga/internal/infra/tailscale"
+	"github.com/s1ckdark/hydra/internal/infra/tailscale"
 )
 
 func newMonitorCmd() *cobra.Command {

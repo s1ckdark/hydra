@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/dave/naga/internal/domain"
-	"github.com/dave/naga/internal/infra/ai"
+	"github.com/s1ckdark/hydra/internal/domain"
+	"github.com/s1ckdark/hydra/internal/infra/ai"
 )
 
 // Provider implements ai.TaskScheduler using the Z.AI API (OpenAI-compatible).

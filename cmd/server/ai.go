@@ -3,12 +3,12 @@ package main
 import (
 	"log"
 
-	"github.com/dave/naga/config"
-	"github.com/dave/naga/internal/infra/ai"
-	"github.com/dave/naga/internal/infra/ai/claude"
-	"github.com/dave/naga/internal/infra/ai/lmstudio"
-	"github.com/dave/naga/internal/infra/ai/ollama"
-	"github.com/dave/naga/internal/infra/ai/openai"
+	"github.com/s1ckdark/hydra/config"
+	"github.com/s1ckdark/hydra/internal/infra/ai"
+	"github.com/s1ckdark/hydra/internal/infra/ai/claude"
+	"github.com/s1ckdark/hydra/internal/infra/ai/lmstudio"
+	"github.com/s1ckdark/hydra/internal/infra/ai/ollama"
+	"github.com/s1ckdark/hydra/internal/infra/ai/openai"
 )
 
 // buildAITaskScheduler returns a configured ai.TaskScheduler based on the

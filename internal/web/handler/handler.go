@@ -13,10 +13,10 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/dave/naga/config"
-	"github.com/dave/naga/internal/domain"
-	"github.com/dave/naga/internal/usecase"
-	"github.com/dave/naga/internal/web/ws"
+	"github.com/s1ckdark/hydra/config"
+	"github.com/s1ckdark/hydra/internal/domain"
+	"github.com/s1ckdark/hydra/internal/usecase"
+	"github.com/s1ckdark/hydra/internal/web/ws"
 )
 
 // RemoteExecutor executes commands on remote devices

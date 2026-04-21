@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dave/naga/internal/domain"
-	"github.com/dave/naga/internal/infra/ai"
-	"github.com/dave/naga/internal/web/ws"
+	"github.com/s1ckdark/hydra/internal/domain"
+	"github.com/s1ckdark/hydra/internal/infra/ai"
+	"github.com/s1ckdark/hydra/internal/web/ws"
 )
 
 // TaskSupervisor periodically reassigns work from failed/timed-out workers

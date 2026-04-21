@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dave/naga/internal/cli"
+	"github.com/s1ckdark/hydra/internal/cli"
 )
 
 var (

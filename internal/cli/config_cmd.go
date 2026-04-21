@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/dave/naga/config"
+	"github.com/s1ckdark/hydra/config"
 )
 
 func newConfigCmd() *cobra.Command {

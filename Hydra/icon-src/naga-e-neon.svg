@@ -1,0 +1,301 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Background: deep navy radial -->
+    <radialGradient id="bg" cx="50%" cy="55%" r="80%">
+      <stop offset="0%" stop-color="#0A1530"/>
+      <stop offset="55%" stop-color="#051024"/>
+      <stop offset="100%" stop-color="#01040F"/>
+    </radialGradient>
+
+    <!-- Neon cyan→green stroke gradient (peer heads) -->
+    <linearGradient id="neon" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00E5FF"/>
+      <stop offset="50%" stop-color="#00F5B8"/>
+      <stop offset="100%" stop-color="#3EF38F"/>
+    </linearGradient>
+
+    <!-- Golden leader stroke gradient -->
+    <linearGradient id="gold" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFF5B0"/>
+      <stop offset="45%" stop-color="#FFD24A"/>
+      <stop offset="100%" stop-color="#C97B0D"/>
+    </linearGradient>
+
+    <!-- Mesh / sacred-geometry line gradient -->
+    <linearGradient id="mesh" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00E5FF" stop-opacity="0.15"/>
+      <stop offset="50%" stop-color="#3EF38F" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#00E5FF" stop-opacity="0.15"/>
+    </linearGradient>
+
+    <!-- Outer neon glow filter (cyan) -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="b1"/>
+      <feGaussianBlur stdDeviation="14" result="b2" in="SourceGraphic"/>
+      <feMerge>
+        <feMergeNode in="b2"/>
+        <feMergeNode in="b1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Softer glow for mesh -->
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Strong golden glow for leader -->
+    <filter id="goldGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="b1"/>
+      <feGaussianBlur stdDeviation="18" result="b2" in="SourceGraphic"/>
+      <feMerge>
+        <feMergeNode in="b2"/>
+        <feMergeNode in="b1"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- =====================================================
+         GEOMETRIC DRAGON HEAD (side profile, stroke-only)
+         Local coords center ≈ (0,0), head spans roughly
+         x:[-60, 90], y:[-50, 50]. Snout faces +X (right).
+         Drawn as thin wireframe lines — no fill. Rotate/flip per use.
+         ===================================================== -->
+    <g id="dragonHead" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <!-- main head outline: angular polygonal profile -->
+      <path d="M -55 -8
+               L -38 -32
+               L -8 -42
+               L 28 -38
+               L 58 -22
+               L 82 -8
+               L 90 4
+               L 82 16
+               L 58 22
+               L 36 28
+               L 8 32
+               L -20 28
+               L -42 18
+               L -55 2 Z"
+            stroke="currentColor" stroke-width="4.5"/>
+      <!-- back crest / horn plates -->
+      <path d="M -38 -32 L -42 -48 L -22 -40"
+            stroke="currentColor" stroke-width="3.5"/>
+      <path d="M -22 -40 L -10 -52 L 4 -44"
+            stroke="currentColor" stroke-width="3.5"/>
+      <!-- brow ridge (the V above the eye) -->
+      <path d="M 20 -20 L 44 -28 L 50 -14"
+            stroke="currentColor" stroke-width="3"/>
+      <!-- eye (small triangle/slit) -->
+      <path d="M 42 -14 L 50 -10 L 44 -6 Z"
+            stroke="currentColor" stroke-width="2.5"/>
+      <!-- cheek plate line (diagonal under eye to jaw) -->
+      <path d="M 30 -4 L 58 8 L 38 20"
+            stroke="currentColor" stroke-width="2.8"/>
+      <!-- snout ridge line (top of snout) -->
+      <path d="M 28 -38 L 50 -26 L 72 -16"
+            stroke="currentColor" stroke-width="2.5"/>
+      <!-- nostril triangle near snout tip -->
+      <path d="M 76 -6 L 82 -2 L 78 4"
+            stroke="currentColor" stroke-width="2.2"/>
+      <!-- mouth / jaw split line -->
+      <path d="M 36 16 L 62 14 L 82 6"
+            stroke="currentColor" stroke-width="2.5"/>
+      <!-- under-jaw plate -->
+      <path d="M -20 28 L 0 38 L 22 34"
+            stroke="currentColor" stroke-width="2.5"/>
+      <!-- neck scale division lines (suggest polygonal body) -->
+      <path d="M -38 -8 L -42 18" stroke="currentColor" stroke-width="2" opacity="0.75"/>
+      <path d="M -18 -26 L -8 18" stroke="currentColor" stroke-width="2" opacity="0.75"/>
+      <path d="M 8 -40 L 12 24" stroke="currentColor" stroke-width="2" opacity="0.6"/>
+    </g>
+  </defs>
+
+  <!-- ========== Background squircle ========== -->
+  <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="url(#bg)"/>
+
+  <!-- Subtle inner border ring to echo the reference's inner squircle -->
+  <rect x="60" y="60" width="904" height="904" rx="190" ry="190"
+        fill="none" stroke="#0B1A40" stroke-width="2" opacity="0.9"/>
+
+  <!-- ========== Particle field (scattered glowing specks) ========== -->
+  <g filter="url(#softGlow)">
+    <g fill="#3EF38F">
+      <rect x="150" y="260" width="4" height="4" rx="1"/>
+      <rect x="210" y="340" width="3" height="3" rx="1"/>
+      <rect x="170" y="440" width="5" height="5" rx="1"/>
+      <rect x="840" y="300" width="4" height="4" rx="1"/>
+      <rect x="880" y="420" width="3" height="3" rx="1"/>
+      <rect x="820" y="500" width="5" height="5" rx="1"/>
+      <rect x="200" y="620" width="3" height="3" rx="1"/>
+      <rect x="820" y="640" width="4" height="4" rx="1"/>
+      <rect x="130" y="520" width="3" height="3" rx="1"/>
+      <rect x="880" y="560" width="3" height="3" rx="1"/>
+      <rect x="320" y="200" width="3" height="3" rx="1"/>
+      <rect x="720" y="200" width="3" height="3" rx="1"/>
+    </g>
+    <g fill="#00E5FF">
+      <circle cx="260" cy="520" r="2"/>
+      <circle cx="780" cy="480" r="2"/>
+      <circle cx="360" cy="700" r="2"/>
+      <circle cx="680" cy="720" r="2"/>
+      <circle cx="220" cy="380" r="1.6"/>
+      <circle cx="800" cy="380" r="1.6"/>
+      <circle cx="420" cy="250" r="1.6"/>
+      <circle cx="620" cy="250" r="1.6"/>
+      <circle cx="512" cy="800" r="2"/>
+      <circle cx="280" cy="260" r="1.4"/>
+      <circle cx="744" cy="260" r="1.4"/>
+    </g>
+  </g>
+
+  <!-- ========== SACRED-GEOMETRY MESH (background, behind heads) ==========
+       Hexagonal star + inner triangles + circumscribed ring.
+       Center (512, 560), radius ~260 for outer hex vertices. -->
+  <g stroke="url(#mesh)" stroke-width="2" fill="none" filter="url(#softGlow)"
+     stroke-linecap="round" stroke-linejoin="round">
+    <!-- Outer ring -->
+    <circle cx="512" cy="560" r="260"/>
+    <!-- Inner ring -->
+    <circle cx="512" cy="560" r="180" opacity="0.7"/>
+    <!-- Inner-inner ring -->
+    <circle cx="512" cy="560" r="90" opacity="0.5"/>
+
+    <!-- Hexagon vertices at 60° intervals, radius 260 around (512, 560).
+         Angles start at -90° (top): (512, 300), then 60° ticks.
+         Computed:
+           A (top)     : (512, 300)
+           B ( 30°→right-top): (512+260·cos(-30°)=512+225.17=737.17, 560+260·sin(-30°)=560-130=430)   → (737, 430)
+           C ( 30°→right-bot): (737, 690)
+           D (bottom)        : (512, 820)
+           E (left-bot)      : (287, 690)
+           F (left-top)      : (287, 430)
+     -->
+    <!-- Hexagon outline -->
+    <path d="M 512 300 L 737 430 L 737 690 L 512 820 L 287 690 L 287 430 Z"/>
+
+    <!-- Two overlapping triangles forming Star of David (Metatron-lite) -->
+    <path d="M 512 300 L 737 690 L 287 690 Z" opacity="0.85"/>
+    <path d="M 512 820 L 737 430 L 287 430 Z" opacity="0.85"/>
+
+    <!-- Spokes from center to hex vertices -->
+    <g opacity="0.55">
+      <line x1="512" y1="560" x2="512" y2="300"/>
+      <line x1="512" y1="560" x2="737" y2="430"/>
+      <line x1="512" y1="560" x2="737" y2="690"/>
+      <line x1="512" y1="560" x2="512" y2="820"/>
+      <line x1="512" y1="560" x2="287" y2="690"/>
+      <line x1="512" y1="560" x2="287" y2="430"/>
+    </g>
+
+    <!-- Micro grid inside the hexagon (subtle triangulation) -->
+    <g opacity="0.35">
+      <line x1="287" y1="430" x2="737" y2="690"/>
+      <line x1="737" y1="430" x2="287" y2="690"/>
+      <line x1="512" y1="300" x2="512" y2="820"/>
+    </g>
+  </g>
+
+  <!-- Mesh intersection nodes (glowing dots at the hex vertices + inner ring crossings) -->
+  <g filter="url(#softGlow)" fill="#00F5B8">
+    <circle cx="737" cy="430" r="3.5"/>
+    <circle cx="737" cy="690" r="3.5"/>
+    <circle cx="287" cy="430" r="3.5"/>
+    <circle cx="287" cy="690" r="3.5"/>
+    <circle cx="512" cy="820" r="3.5"/>
+    <circle cx="512" cy="560" r="4"/>
+  </g>
+
+  <!-- ========== SIX PEER HEADS (cyan-green, wireframe) ==========
+       Arrangement: radial around the hex, each head positioned near a hex vertex,
+       facing outward. The 7th (leader) will be gold at top.
+       We use the hex vertex coords as anchor points and rotate each head to face out.
+       Vertices used for peers:
+         B (right-top)   (737, 430) — face outward right-up
+         C (right-bot)   (737, 690) — face outward right-down
+         D (bottom)      (512, 820) — face outward down
+         E (left-bot)    (287, 690) — face outward left-down (mirror)
+         F (left-top)    (287, 430) — face outward left-up (mirror)
+         + two additional mid-tier heads flanking the top for density
+  -->
+  <g color="#00F5B8" filter="url(#glow)">
+    <!-- right-top head, facing up-right -->
+    <g transform="translate(737 430) rotate(-30)">
+      <g transform="scale(1.0)"><use href="#dragonHead" stroke="url(#neon)"/></g>
+    </g>
+    <!-- right-bot head, facing down-right -->
+    <g transform="translate(737 690) rotate(30)">
+      <use href="#dragonHead" stroke="url(#neon)"/>
+    </g>
+    <!-- bottom head, facing down (we flip by rotating 90°) -->
+    <g transform="translate(512 820) rotate(90)">
+      <use href="#dragonHead" stroke="url(#neon)"/>
+    </g>
+    <!-- left-bot head, mirrored to face down-left -->
+    <g transform="translate(287 690) scale(-1,1) rotate(-30)">
+      <use href="#dragonHead" stroke="url(#neon)"/>
+    </g>
+    <!-- left-top head, mirrored to face up-left -->
+    <g transform="translate(287 430) scale(-1,1) rotate(30)">
+      <use href="#dragonHead" stroke="url(#neon)"/>
+    </g>
+    <!-- mid-right flank (between leader and right-top) -->
+    <g transform="translate(630 340) rotate(-50) scale(0.85)">
+      <use href="#dragonHead" stroke="url(#neon)"/>
+    </g>
+    <!-- mid-left flank, mirrored -->
+    <g transform="translate(394 340) scale(-1,1) rotate(-50) scale(0.85)">
+      <use href="#dragonHead" stroke="url(#neon)"/>
+    </g>
+  </g>
+
+  <!-- ========== LEADER HEAD (gold, top-center, slightly larger) ==========
+       Drawn facing forward (we simulate frontal by keeping horizontal and centered).
+       Positioned above the sacred-geometry hex apex. -->
+  <g color="#FFD24A" filter="url(#goldGlow)">
+    <g transform="translate(512 220) scale(1.15)">
+      <!-- Use head twice mirrored to simulate frontal symmetry -->
+      <g transform="translate(-40 0) scale(-1,1)">
+        <use href="#dragonHead" stroke="url(#gold)"/>
+      </g>
+      <g transform="translate(40 0)">
+        <use href="#dragonHead" stroke="url(#gold)"/>
+      </g>
+      <!-- Central crown / third-eye diamond -->
+      <g stroke="url(#gold)" stroke-width="4" fill="none" stroke-linejoin="round">
+        <path d="M 0 -46 L 16 -26 L 0 -6 L -16 -26 Z"/>
+        <path d="M 0 -36 L 8 -26 L 0 -16 L -8 -26 Z"/>
+      </g>
+      <!-- Apex spark -->
+      <g fill="#FFF5B0">
+        <circle cx="0" cy="-60" r="6"/>
+        <path d="M 0 -80 L 4 -60 L 0 -40 L -4 -60 Z" opacity="0.85"/>
+        <path d="M -20 -60 L -4 -56 L 0 -60 L -4 -64 Z" opacity="0.85"/>
+        <path d="M 20 -60 L 4 -56 L 0 -60 L 4 -64 Z" opacity="0.85"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- ========== CONNECTION THREADS from peers to leader ==========
+       Thin cyan lines showing that the leader is elected from and reports to peers. -->
+  <g stroke="#00F5B8" stroke-width="1.8" fill="none" opacity="0.55"
+     stroke-linecap="round" filter="url(#softGlow)">
+    <line x1="512" y1="260" x2="737" y2="430"/>
+    <line x1="512" y1="260" x2="287" y2="430"/>
+    <line x1="512" y1="260" x2="630" y2="340"/>
+    <line x1="512" y1="260" x2="394" y2="340"/>
+  </g>
+  <!-- pulse dots along the leader-links -->
+  <g fill="#FFF5B0">
+    <circle cx="624" cy="345" r="2.5"/>
+    <circle cx="400" cy="345" r="2.5"/>
+  </g>
+
+  <!-- Outer frame squircle stroke (subtle inner bevel echoing reference) -->
+  <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229"
+        fill="none" stroke="#0A1530" stroke-width="6"/>
+</svg>

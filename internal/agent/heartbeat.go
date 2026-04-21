@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dave/naga/internal/domain"
+	"github.com/s1ckdark/hydra/internal/domain"
 )
 
 type HeartbeatMonitor struct {

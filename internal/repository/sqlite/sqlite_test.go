@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dave/naga/internal/domain"
+	"github.com/s1ckdark/hydra/internal/domain"
 )
 
 // newTestDB creates an in-memory SQLite DB for testing

@@ -17,7 +17,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 
-	"github.com/dave/naga/internal/domain"
+	"github.com/s1ckdark/hydra/internal/domain"
 )
 
 // Executor executes commands on remote machines via SSH
@@ -81,14 +81,14 @@ func (e *Executor) checkTailscaleAuth() bool {
 		cmd := exec.CommandContext(ctx, findTailscaleBinary(), "status", "--json")
 		out, err := cmd.Output()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[naga] tailscale status check failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[hydra] tailscale status check failed: %v\n", err)
 			return
 		}
 		// If BackendState is "Running", we're authenticated
 		if bytes.Contains(out, []byte(`"BackendState":"Running"`)) {
 			e.tailscaleAuthed = true
 		} else {
-			fmt.Fprintln(os.Stderr, "[naga] tailscale is not authenticated — skipping tailscale ssh. Run 'tailscale login' to authenticate.")
+			fmt.Fprintln(os.Stderr, "[hydra] tailscale is not authenticated — skipping tailscale ssh. Run 'tailscale login' to authenticate.")
 		}
 	})
 	return e.tailscaleAuthed

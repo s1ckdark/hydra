@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 
-	"github.com/dave/naga/config"
+	"github.com/s1ckdark/hydra/config"
 )
 
 var (
@@ -21,9 +21,9 @@ var (
 // NewRootCmd creates the root command
 func NewRootCmd(version, buildTime string) *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "naga",
+		Use:   "hydra",
 		Short: "Manage Tailscale devices and Ray orchs",
-		Long: `naga is a CLI tool for managing devices in your Tailscale network
+		Long: `hydra is a CLI tool for managing devices in your Tailscale network
 and creating/managing Ray orchs across those devices.
 
 It provides:
@@ -38,7 +38,7 @@ It provides:
 	}
 
 	// Persistent flags
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ~/.naga/config.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ~/.hydra/config.yaml)")
 	rootCmd.PersistentFlags().StringVar(&apiKey, "api-key", "", "Tailscale API key")
 	rootCmd.PersistentFlags().StringVarP(&outputFmt, "output", "o", "table", "Output format (table, json, yaml)")
 

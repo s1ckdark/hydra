@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dave/naga/internal/domain"
+	"github.com/s1ckdark/hydra/internal/domain"
 )
 
 // Agent runs on each orch node as a systemd service.

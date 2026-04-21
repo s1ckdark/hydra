@@ -24,7 +24,7 @@ final class ServerDiscovery: ObservableObject {
         let params = NWParameters()
         params.includePeerToPeer = true
 
-        browser = NWBrowser(for: .bonjour(type: "_naga._tcp", domain: nil), using: params)
+        browser = NWBrowser(for: .bonjour(type: "_hydra._tcp", domain: nil), using: params)
 
         browser?.browseResultsChangedHandler = { [weak self] results, _ in
             Task { @MainActor in

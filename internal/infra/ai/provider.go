@@ -3,7 +3,7 @@ package ai
 import (
 	"context"
 
-	"github.com/dave/naga/internal/domain"
+	"github.com/s1ckdark/hydra/internal/domain"
 )
 
 // HeadSelector selects the best head node from candidates.

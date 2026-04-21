@@ -1,0 +1,527 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bgC" cx="50%" cy="55%" r="78%">
+      <stop offset="0%" stop-color="#1F2B52"/>
+      <stop offset="60%" stop-color="#121A33"/>
+      <stop offset="100%" stop-color="#05091A"/>
+    </radialGradient>
+
+    <!-- GPU PCB gradient -->
+    <linearGradient id="pcb" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0B3A2F"/>
+      <stop offset="60%" stop-color="#0A2A26"/>
+      <stop offset="100%" stop-color="#06201C"/>
+    </linearGradient>
+    <linearGradient id="pcbFace" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2A3A66"/>
+      <stop offset="100%" stop-color="#18223F"/>
+    </linearGradient>
+    <linearGradient id="shroud" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0E1528"/>
+      <stop offset="100%" stop-color="#060A18"/>
+    </linearGradient>
+    <linearGradient id="heatsink" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3A4466"/>
+      <stop offset="100%" stop-color="#1C2240"/>
+    </linearGradient>
+    <linearGradient id="pcieGold" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFE4A3"/>
+      <stop offset="50%" stop-color="#F5B642"/>
+      <stop offset="100%" stop-color="#7A4D10"/>
+    </linearGradient>
+
+    <!-- Naga spine gradient -->
+    <linearGradient id="spineC" x1="50%" y1="100%" x2="50%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="45%" stop-color="#7B6CFF"/>
+      <stop offset="100%" stop-color="#C4B5FD"/>
+    </linearGradient>
+    <linearGradient id="hoodSide" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C4B5FD"/>
+      <stop offset="100%" stop-color="#6D5EDB"/>
+    </linearGradient>
+    <linearGradient id="hoodCenter" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#D4C6FD"/>
+      <stop offset="100%" stop-color="#6D5EDB"/>
+    </linearGradient>
+    <linearGradient id="headFace" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#C4B5FD"/>
+      <stop offset="100%" stop-color="#7C6AE0"/>
+    </linearGradient>
+    <radialGradient id="jewel" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#FFF7DC"/>
+      <stop offset="40%" stop-color="#F5B642"/>
+      <stop offset="100%" stop-color="#7A4D10"/>
+    </radialGradient>
+    <radialGradient id="fanHub" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#2A3350"/>
+      <stop offset="100%" stop-color="#0A0E1C"/>
+    </radialGradient>
+    <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7DD3FC" stop-opacity="0.9"/>
+      <stop offset="60%" stop-color="#38BDF8" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="nodeCore" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F0F9FF"/>
+      <stop offset="55%" stop-color="#7DD3FC"/>
+      <stop offset="100%" stop-color="#0EA5E9"/>
+    </radialGradient>
+    <linearGradient id="meshLine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.05"/>
+      <stop offset="50%" stop-color="#7B6CFF" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.05"/>
+    </linearGradient>
+
+    <!-- Reusable ornate naga head (from v3) -->
+    <g id="nagaHead">
+      <path d="M -48 -40 Q 0 -92 48 -40 Q 46 28 0 44 Q -46 28 -48 -40 Z"
+            fill="url(#headFace)" stroke="#1A1332" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M 0 -78 L 0 36"
+            stroke="#1A1332" stroke-width="2.5" stroke-linecap="round" opacity="0.55"/>
+      <path d="M 0 -60 L 12 -42 L 0 -26 L -12 -42 Z"
+            fill="#F5B642" stroke="#1A1332" stroke-width="2"/>
+      <path d="M 0 -54 L 6 -42 L 0 -30 L -6 -42 Z" fill="#FFF7DC"/>
+      <path d="M -36 -20 Q -22 -32 -6 -20"
+            stroke="#1A1332" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+      <path d="M 36 -20 Q 22 -32 6 -20"
+            stroke="#1A1332" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+      <path d="M -30 -2 Q -20 12 -6 18"
+            stroke="#1A1332" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+      <path d="M 30 -2 Q 20 12 6 18"
+            stroke="#1A1332" stroke-width="2.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+      <ellipse cx="-6" cy="8" rx="2.6" ry="1.5" fill="#1A1332"/>
+      <ellipse cx="6" cy="8" rx="2.6" ry="1.5" fill="#1A1332"/>
+      <ellipse cx="-22" cy="-10" rx="10" ry="7" fill="#FFF7DC" stroke="#1A1332" stroke-width="2.5"/>
+      <ellipse cx="22" cy="-10" rx="10" ry="7" fill="#FFF7DC" stroke="#1A1332" stroke-width="2.5"/>
+      <ellipse cx="-22" cy="-10" rx="2.4" ry="6" fill="#1A1332"/>
+      <ellipse cx="22" cy="-10" rx="2.4" ry="6" fill="#1A1332"/>
+      <circle cx="-24" cy="-13" r="1.6" fill="#F5B642"/>
+      <circle cx="20" cy="-13" r="1.6" fill="#F5B642"/>
+      <path d="M -18 24 Q 0 30 18 24"
+            stroke="#1A1332" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <g stroke="#1A1332" stroke-width="2.2" fill="none" stroke-linecap="round" opacity="0.7">
+        <path d="M -30 -56 Q 0 -62 30 -56"/>
+        <path d="M -34 -46 Q 0 -52 34 -46"/>
+        <path d="M -38 -36 Q 0 -42 38 -36"/>
+      </g>
+      <g stroke="#1A1332" stroke-width="1.8" fill="none" opacity="0.55" stroke-linecap="round">
+        <path d="M -42 -18 l 6 2"/>
+        <path d="M -44 -6 l 7 2"/>
+        <path d="M -42 8 l 7 1"/>
+        <path d="M 42 -18 l -6 2"/>
+        <path d="M 44 -6 l -7 2"/>
+        <path d="M 42 8 l -7 1"/>
+      </g>
+      <path d="M 0 40 L -6 62 M 0 40 L 6 62"
+            stroke="#38BDF8" stroke-width="4" stroke-linecap="round" fill="none"/>
+    </g>
+
+    <!-- Reusable hood (scalloped) -->
+    <g id="nagaHoodSide">
+      <path d="M -95 -20 Q 0 -96 95 -20 Q 88 68 0 92 Q -88 68 -95 -20 Z"
+            fill="url(#hoodSide)" stroke="#1A1332" stroke-width="5" stroke-linejoin="round"/>
+      <path d="M -74 -14 Q 0 -76 74 -14 Q 68 56 0 74 Q -68 56 -74 -14 Z"
+            fill="#D4C6FD"/>
+      <path d="M -82 14 Q -70 44 -58 26 Q -50 52 -38 30 Q -28 56 -16 34
+               Q -6 58 0 36 Q 6 58 16 34 Q 28 56 38 30 Q 50 52 58 26 Q 70 44 82 14"
+            fill="none" stroke="#1A1332" stroke-width="2.8" stroke-linejoin="round" opacity="0.8"/>
+      <g fill="#F5B642">
+        <circle cx="0" cy="-10" r="3"/>
+        <circle cx="-20" cy="15" r="2.5"/>
+        <circle cx="20" cy="15" r="2.5"/>
+      </g>
+    </g>
+
+    <g id="nagaHoodCenter">
+      <path d="M -104 -50 Q 0 -122 104 -50 Q 96 62 0 90 Q -96 62 -104 -50 Z"
+            fill="url(#hoodCenter)" stroke="#1A1332" stroke-width="6" stroke-linejoin="round"/>
+      <path d="M -78 -40 Q 0 -102 78 -40 Q 68 50 0 72 Q -68 50 -78 -40 Z"
+            fill="#D4C6FD"/>
+      <path d="M -92 16 Q -78 52 -64 30 Q -54 60 -40 34 Q -28 64 -14 38
+               Q -4 62 0 40 Q 4 62 14 38 Q 28 64 40 34 Q 54 60 64 30 Q 78 52 92 16"
+            fill="none" stroke="#1A1332" stroke-width="3.2" stroke-linejoin="round" opacity="0.85"/>
+      <g fill="none" stroke="#1A1332" stroke-width="2.2" opacity="0.7">
+        <circle cx="0" cy="-10" r="26" stroke-dasharray="4 6"/>
+        <line x1="0" y1="-36" x2="0" y2="16"/>
+        <line x1="-26" y1="-10" x2="26" y2="-10"/>
+      </g>
+      <g fill="#F5B642">
+        <circle cx="0" cy="-10" r="3.5"/>
+        <circle cx="0" cy="-36" r="2.5"/>
+        <circle cx="0" cy="16" r="2.5"/>
+      </g>
+    </g>
+
+    <!-- Reusable fan with spokes (we'll mask the center to show snake body peeking through) -->
+    <g id="gpuFan">
+      <!-- outer shroud ring -->
+      <circle r="95" fill="url(#shroud)" stroke="#2A3350" stroke-width="3"/>
+      <circle r="90" fill="none" stroke="#0A0E1C" stroke-width="2"/>
+      <!-- fan blades (5 curved spokes) -->
+      <g opacity="0.95">
+        <path d="M 0 0 Q 22 -52 0 -82 Q -30 -60 -8 -12 Z" fill="#1C2340" stroke="#2A3350" stroke-width="1.5"/>
+        <path d="M 0 0 Q 52 -22 82 0 Q 60 30 12 8 Z" fill="#1C2340" stroke="#2A3350" stroke-width="1.5"/>
+        <path d="M 0 0 Q 22 52 0 82 Q -30 60 -8 12 Z" fill="#1C2340" stroke="#2A3350" stroke-width="1.5"/>
+        <path d="M 0 0 Q -52 22 -82 0 Q -60 -30 -12 -8 Z" fill="#1C2340" stroke="#2A3350" stroke-width="1.5"/>
+        <path d="M 0 0 Q 40 38 70 42 Q 54 68 10 30 Z" fill="#242C4A" stroke="#2A3350" stroke-width="1"/>
+      </g>
+      <!-- center hub -->
+      <circle r="18" fill="url(#fanHub)" stroke="#2A3350" stroke-width="2"/>
+      <circle r="8" fill="#0A0E1C"/>
+      <circle r="3" fill="#38BDF8" opacity="0.8"/>
+    </g>
+  </defs>
+
+  <!-- ========== Background ========== -->
+  <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="url(#bgC)"/>
+
+  <!-- Background mesh (sparse, faded — now secondary to GPU) -->
+  <g opacity="0.4">
+    <g stroke="url(#meshLine)" stroke-width="1.6" fill="none" stroke-linecap="round">
+      <path d="M 120 220 L 280 120"/>
+      <path d="M 280 120 L 512 80"/>
+      <path d="M 512 80 L 744 120"/>
+      <path d="M 744 120 L 904 220"/>
+      <path d="M 120 220 L 140 420"/>
+      <path d="M 904 220 L 884 420"/>
+      <path d="M 140 420 L 280 120"/>
+      <path d="M 884 420 L 744 120"/>
+      <path d="M 512 80 L 280 120"/>
+      <path d="M 512 80 L 744 120"/>
+    </g>
+    <g>
+      <g transform="translate(120 220)"><circle r="9" fill="url(#nodeGlow)"/><circle r="3" fill="url(#nodeCore)"/></g>
+      <g transform="translate(280 120)"><circle r="9" fill="url(#nodeGlow)"/><circle r="3" fill="url(#nodeCore)"/></g>
+      <g transform="translate(512 80)"><circle r="11" fill="url(#nodeGlow)"/><circle r="4" fill="url(#nodeCore)"/></g>
+      <g transform="translate(744 120)"><circle r="9" fill="url(#nodeGlow)"/><circle r="3" fill="url(#nodeCore)"/></g>
+      <g transform="translate(904 220)"><circle r="9" fill="url(#nodeGlow)"/><circle r="3" fill="url(#nodeCore)"/></g>
+      <g transform="translate(140 420)"><circle r="9" fill="url(#nodeGlow)"/><circle r="3" fill="url(#nodeCore)"/></g>
+      <g transform="translate(884 420)"><circle r="9" fill="url(#nodeGlow)"/><circle r="3" fill="url(#nodeCore)"/></g>
+    </g>
+  </g>
+
+  <!-- ========================================================
+       GPU CARD (horizontal, hero hardware)
+       Occupies roughly x:[96,928], y:[460,820]
+       Layering: PCB → heatsink fins → shroud → fans → (snake weaves between layers)
+       ======================================================== -->
+
+  <!-- Ground shadow beneath card -->
+  <ellipse cx="512" cy="860" rx="420" ry="22" fill="#000" opacity="0.45"/>
+
+  <!-- PCIe gold fingers (bottom) -->
+  <g>
+    <rect x="200" y="800" width="520" height="22" rx="3" fill="url(#pcieGold)" stroke="#7A4D10" stroke-width="2"/>
+    <g stroke="#3D2708" stroke-width="1.5" opacity="0.8">
+      <line x1="220" y1="802" x2="220" y2="820"/>
+      <line x1="240" y1="802" x2="240" y2="820"/>
+      <line x1="260" y1="802" x2="260" y2="820"/>
+      <line x1="280" y1="802" x2="280" y2="820"/>
+      <line x1="300" y1="802" x2="300" y2="820"/>
+      <line x1="340" y1="802" x2="340" y2="820"/>
+      <line x1="360" y1="802" x2="360" y2="820"/>
+      <line x1="380" y1="802" x2="380" y2="820"/>
+      <line x1="400" y1="802" x2="400" y2="820"/>
+      <line x1="420" y1="802" x2="420" y2="820"/>
+      <line x1="440" y1="802" x2="440" y2="820"/>
+      <line x1="460" y1="802" x2="460" y2="820"/>
+      <line x1="480" y1="802" x2="480" y2="820"/>
+      <line x1="500" y1="802" x2="500" y2="820"/>
+      <line x1="540" y1="802" x2="540" y2="820"/>
+      <line x1="560" y1="802" x2="560" y2="820"/>
+      <line x1="580" y1="802" x2="580" y2="820"/>
+      <line x1="600" y1="802" x2="600" y2="820"/>
+      <line x1="620" y1="802" x2="620" y2="820"/>
+      <line x1="640" y1="802" x2="640" y2="820"/>
+      <line x1="660" y1="802" x2="660" y2="820"/>
+      <line x1="680" y1="802" x2="680" y2="820"/>
+      <line x1="700" y1="802" x2="700" y2="820"/>
+    </g>
+    <!-- notch (PCIe keying) -->
+    <rect x="315" y="800" width="20" height="22" fill="#05091A"/>
+    <rect x="515" y="800" width="20" height="22" fill="#05091A"/>
+  </g>
+
+  <!-- PCB backplate (visible border just above PCIe fingers) -->
+  <rect x="112" y="760" width="800" height="42" rx="4" fill="url(#pcb)" stroke="#042019" stroke-width="2"/>
+  <!-- circuit traces on PCB strip -->
+  <g stroke="#38BDF8" stroke-width="1.2" fill="none" opacity="0.5" stroke-linecap="round">
+    <path d="M 140 772 L 260 772 L 260 790 L 380 790"/>
+    <path d="M 600 772 L 720 772 L 720 790 L 860 790"/>
+    <path d="M 160 792 L 200 792"/>
+    <path d="M 840 792 L 880 792"/>
+  </g>
+  <g fill="#7DD3FC" opacity="0.9">
+    <circle cx="260" cy="772" r="2.5"/>
+    <circle cx="380" cy="790" r="2.5"/>
+    <circle cx="720" cy="772" r="2.5"/>
+    <circle cx="600" cy="772" r="2.5"/>
+  </g>
+
+  <!-- Main shroud / card body (the big rectangle housing fans) -->
+  <rect x="96" y="460" width="832" height="320" rx="22" ry="22" fill="url(#shroud)" stroke="#2A3350" stroke-width="4"/>
+  <!-- top bevel highlight -->
+  <rect x="100" y="464" width="824" height="6" rx="3" fill="#3A4466" opacity="0.55"/>
+
+  <!-- Heatsink fins peeking on top edge (between fan cutouts) -->
+  <g fill="url(#heatsink)" stroke="#0A0E1C" stroke-width="1">
+    <rect x="104" y="430" width="10" height="34" rx="2"/>
+    <rect x="120" y="420" width="10" height="44" rx="2"/>
+    <rect x="136" y="428" width="10" height="36" rx="2"/>
+    <rect x="152" y="436" width="10" height="28" rx="2"/>
+    <rect x="168" y="430" width="10" height="34" rx="2"/>
+    <rect x="184" y="424" width="10" height="40" rx="2"/>
+    <rect x="420" y="430" width="10" height="34" rx="2"/>
+    <rect x="436" y="420" width="10" height="44" rx="2"/>
+    <rect x="452" y="428" width="10" height="36" rx="2"/>
+    <rect x="468" y="436" width="10" height="28" rx="2"/>
+    <rect x="484" y="430" width="10" height="34" rx="2"/>
+    <rect x="500" y="424" width="10" height="40" rx="2"/>
+    <rect x="520" y="424" width="10" height="40" rx="2"/>
+    <rect x="536" y="430" width="10" height="34" rx="2"/>
+    <rect x="552" y="436" width="10" height="28" rx="2"/>
+    <rect x="568" y="428" width="10" height="36" rx="2"/>
+    <rect x="584" y="420" width="10" height="44" rx="2"/>
+    <rect x="830" y="430" width="10" height="34" rx="2"/>
+    <rect x="846" y="420" width="10" height="44" rx="2"/>
+    <rect x="862" y="428" width="10" height="36" rx="2"/>
+    <rect x="878" y="436" width="10" height="28" rx="2"/>
+    <rect x="894" y="430" width="10" height="34" rx="2"/>
+    <rect x="910" y="424" width="10" height="40" rx="2"/>
+  </g>
+
+  <!-- Brand strip on shroud -->
+  <rect x="96" y="744" width="832" height="18" fill="#0A0E1C"/>
+  <g fill="#38BDF8" opacity="0.8">
+    <rect x="140" y="750" width="60" height="6" rx="1"/>
+    <rect x="220" y="750" width="22" height="6" rx="1"/>
+    <rect x="780" y="750" width="60" height="6" rx="1"/>
+    <rect x="858" y="750" width="22" height="6" rx="1"/>
+  </g>
+
+  <!-- Display ports (left edge) -->
+  <g fill="#0A0E1C" stroke="#2A3350" stroke-width="1.5">
+    <rect x="82" y="480" width="28" height="42" rx="2"/>
+    <rect x="82" y="534" width="28" height="42" rx="2"/>
+    <rect x="82" y="588" width="28" height="42" rx="2"/>
+    <rect x="82" y="642" width="28" height="42" rx="2"/>
+  </g>
+  <g fill="#38BDF8" opacity="0.55">
+    <rect x="86" y="488" width="20" height="4"/>
+    <rect x="86" y="542" width="20" height="4"/>
+    <rect x="86" y="596" width="20" height="4"/>
+    <rect x="86" y="650" width="20" height="4"/>
+  </g>
+
+  <!-- Power connector (right edge top) -->
+  <g>
+    <rect x="830" y="484" width="90" height="36" rx="3" fill="#0A0E1C" stroke="#2A3350" stroke-width="2"/>
+    <g fill="#1C2340" stroke="#2A3350" stroke-width="1">
+      <rect x="838" y="490" width="14" height="10" rx="1"/>
+      <rect x="856" y="490" width="14" height="10" rx="1"/>
+      <rect x="874" y="490" width="14" height="10" rx="1"/>
+      <rect x="892" y="490" width="14" height="10" rx="1"/>
+      <rect x="838" y="504" width="14" height="10" rx="1"/>
+      <rect x="856" y="504" width="14" height="10" rx="1"/>
+      <rect x="874" y="504" width="14" height="10" rx="1"/>
+      <rect x="892" y="504" width="14" height="10" rx="1"/>
+    </g>
+  </g>
+
+  <!-- ========================================================
+       SERPENT BODY — weaves THROUGH the card
+       Single continuous body entering bottom-left PCIe area,
+       weaving behind shroud and reappearing through each fan,
+       terminating in 3 heads above.
+       Order: draw BACK segments first (behind fans/shroud),
+              then fans (which occlude them),
+              then FRONT segments (neck rises emerging from fans).
+       ======================================================== -->
+
+  <!-- BACK body: enters bottom-left, snakes across behind the shroud,
+       exits right side, loops around and re-enters.
+       We simulate 'behind' by drawing below the shroud rect. Since the shroud
+       is already drawn, we instead use a clipped approach: draw full body now,
+       then draw the shroud SHADOW bars on top where the body should be hidden. -->
+  <g>
+    <!-- main body weaving back-and-forth behind the card.
+         Comes from bottom-left under the PCIe, goes up BEHIND the card,
+         threads between fans, exits top. -->
+    <path d="M 60 880
+             C 130 820, 160 760, 140 680
+             C 120 600, 180 540, 230 560
+             C 280 580, 270 640, 300 640
+             C 330 640, 320 580, 380 560
+             C 440 540, 460 620, 512 620
+             C 564 620, 584 540, 644 560
+             C 704 580, 694 640, 724 640
+             C 754 640, 744 580, 794 560
+             C 844 540, 904 600, 884 680
+             C 864 760, 894 820, 964 880"
+          stroke="#1A1332" stroke-width="44" fill="none" stroke-linecap="round" opacity="0.0"/>
+  </g>
+
+  <!-- A LEFT coil behind card (tail visible at bottom-left, re-emerging top-left above card) -->
+  <path d="M 120 900
+           C 80 840, 60 720, 100 620
+           C 140 520, 210 500, 250 460"
+        stroke="#1A1332" stroke-width="56" fill="none" stroke-linecap="round"/>
+  <path d="M 120 900
+           C 80 840, 60 720, 100 620
+           C 140 520, 210 500, 250 460"
+        stroke="url(#spineC)" stroke-width="48" fill="none" stroke-linecap="round"/>
+  <!-- scales -->
+  <g stroke="#1A1332" stroke-width="2.5" fill="none" opacity="0.7" stroke-linecap="round">
+    <path d="M 108 880 Q 120 886 132 876"/>
+    <path d="M 86 830 Q 100 834 112 822"/>
+    <path d="M 74 770 Q 88 772 100 758"/>
+    <path d="M 70 700 Q 84 700 96 684"/>
+    <path d="M 86 640 Q 100 638 112 622"/>
+    <path d="M 116 580 Q 130 576 142 558"/>
+    <path d="M 164 528 Q 178 522 188 504"/>
+    <path d="M 216 490 Q 228 484 236 468"/>
+  </g>
+
+  <!-- A RIGHT coil behind card (tail visible at bottom-right, re-emerging top-right) -->
+  <path d="M 904 900
+           C 944 840, 964 720, 924 620
+           C 884 520, 814 500, 774 460"
+        stroke="#1A1332" stroke-width="56" fill="none" stroke-linecap="round"/>
+  <path d="M 904 900
+           C 944 840, 964 720, 924 620
+           C 884 520, 814 500, 774 460"
+        stroke="url(#spineC)" stroke-width="48" fill="none" stroke-linecap="round"/>
+  <g stroke="#1A1332" stroke-width="2.5" fill="none" opacity="0.7" stroke-linecap="round">
+    <path d="M 916 880 Q 904 886 892 876"/>
+    <path d="M 938 830 Q 924 834 912 822"/>
+    <path d="M 950 770 Q 936 772 924 758"/>
+    <path d="M 954 700 Q 940 700 928 684"/>
+    <path d="M 938 640 Q 924 638 912 622"/>
+    <path d="M 908 580 Q 894 576 882 558"/>
+    <path d="M 860 528 Q 846 522 836 504"/>
+    <path d="M 808 490 Q 796 484 788 468"/>
+  </g>
+
+  <!-- MIDDLE body passing BEHIND the shroud horizontally —
+       we show it as small arcs peeking between fans (the "weaving" moments) -->
+  <g>
+    <!-- segment peeking between fan1 and fan2 (above top edge) -->
+    <path d="M 386 470 C 404 448, 432 446, 452 472"
+          stroke="#1A1332" stroke-width="32" fill="none" stroke-linecap="round"/>
+    <path d="M 386 470 C 404 448, 432 446, 452 472"
+          stroke="url(#spineC)" stroke-width="26" fill="none" stroke-linecap="round"/>
+    <path d="M 408 454 Q 418 450 428 460" stroke="#1A1332" stroke-width="2" fill="none" opacity="0.7" stroke-linecap="round"/>
+
+    <!-- segment peeking between fan2 and fan3 -->
+    <path d="M 572 470 C 590 448, 620 446, 640 472"
+          stroke="#1A1332" stroke-width="32" fill="none" stroke-linecap="round"/>
+    <path d="M 572 470 C 590 448, 620 446, 640 472"
+          stroke="url(#spineC)" stroke-width="26" fill="none" stroke-linecap="round"/>
+    <path d="M 594 454 Q 604 450 614 460" stroke="#1A1332" stroke-width="2" fill="none" opacity="0.7" stroke-linecap="round"/>
+  </g>
+
+  <!-- ================== FANS (occlude body segments passing behind fans) ================== -->
+  <g transform="translate(300 610)"><use href="#gpuFan"/></g>
+  <g transform="translate(512 610)"><use href="#gpuFan"/></g>
+  <g transform="translate(724 610)"><use href="#gpuFan"/></g>
+
+  <!-- Glow around fan hubs -->
+  <g opacity="0.8">
+    <circle cx="300" cy="610" r="10" fill="#38BDF8" opacity="0.5"/>
+    <circle cx="512" cy="610" r="10" fill="#38BDF8" opacity="0.5"/>
+    <circle cx="724" cy="610" r="10" fill="#38BDF8" opacity="0.5"/>
+  </g>
+
+  <!-- ================== FRONT NECKS — rising from between/behind fans to heads ==================
+       Each neck visually emerges from just above a fan, implying the body threaded through it.
+  -->
+  <!-- Left neck -->
+  <path d="M 300 520 Q 298 440 312 380 Q 320 330 300 280"
+        stroke="#1A1332" stroke-width="56" fill="none" stroke-linecap="round"/>
+  <path d="M 300 520 Q 298 440 312 380 Q 320 330 300 280"
+        stroke="url(#spineC)" stroke-width="48" fill="none" stroke-linecap="round"/>
+  <g stroke="#1A1332" stroke-width="2.5" fill="none" opacity="0.7" stroke-linecap="round">
+    <path d="M 290 500 Q 302 496 314 504"/>
+    <path d="M 290 460 Q 302 456 314 464"/>
+    <path d="M 294 420 Q 306 416 318 424"/>
+    <path d="M 300 380 Q 312 376 322 384"/>
+    <path d="M 300 340 Q 312 336 322 344"/>
+  </g>
+  <!-- Neck rings -->
+  <g stroke="#1A1332" stroke-width="2.5" fill="#D4C6FD" opacity="0.95">
+    <ellipse cx="304" cy="470" rx="22" ry="8"/>
+    <ellipse cx="310" cy="380" rx="22" ry="8"/>
+  </g>
+
+  <!-- Center neck (tallest) -->
+  <path d="M 512 510 L 512 230"
+        stroke="#1A1332" stroke-width="62" fill="none" stroke-linecap="round"/>
+  <path d="M 512 510 L 512 230"
+        stroke="url(#spineC)" stroke-width="54" fill="none" stroke-linecap="round"/>
+  <g stroke="#1A1332" stroke-width="2.8" fill="none" opacity="0.75" stroke-linecap="round">
+    <path d="M 500 490 Q 512 486 524 494"/>
+    <path d="M 500 450 Q 512 446 524 454"/>
+    <path d="M 500 410 Q 512 406 524 414"/>
+    <path d="M 500 370 Q 512 366 524 374"/>
+    <path d="M 500 330 Q 512 326 524 334"/>
+    <path d="M 500 290 Q 512 286 524 294"/>
+  </g>
+  <g stroke="#1A1332" stroke-width="3" fill="#D4C6FD" opacity="0.95">
+    <ellipse cx="512" cy="470" rx="26" ry="9"/>
+    <ellipse cx="512" cy="380" rx="26" ry="9"/>
+    <ellipse cx="512" cy="300" rx="26" ry="9"/>
+  </g>
+
+  <!-- Right neck -->
+  <path d="M 724 520 Q 726 440 712 380 Q 704 330 724 280"
+        stroke="#1A1332" stroke-width="56" fill="none" stroke-linecap="round"/>
+  <path d="M 724 520 Q 726 440 712 380 Q 704 330 724 280"
+        stroke="url(#spineC)" stroke-width="48" fill="none" stroke-linecap="round"/>
+  <g stroke="#1A1332" stroke-width="2.5" fill="none" opacity="0.7" stroke-linecap="round">
+    <path d="M 734 500 Q 722 496 710 504"/>
+    <path d="M 734 460 Q 722 456 710 464"/>
+    <path d="M 730 420 Q 718 416 706 424"/>
+    <path d="M 724 380 Q 712 376 702 384"/>
+    <path d="M 724 340 Q 712 336 702 344"/>
+  </g>
+  <g stroke="#1A1332" stroke-width="2.5" fill="#D4C6FD" opacity="0.95">
+    <ellipse cx="720" cy="470" rx="22" ry="8"/>
+    <ellipse cx="714" cy="380" rx="22" ry="8"/>
+  </g>
+
+  <!-- Packet dots along necks -->
+  <g fill="#F0F9FF" opacity="0.95">
+    <circle cx="304" cy="440" r="3.5"/>
+    <circle cx="512" cy="420" r="4"/>
+    <circle cx="512" cy="340" r="4"/>
+    <circle cx="720" cy="440" r="3.5"/>
+  </g>
+
+  <!-- ================== HEADS WITH HOODS ==================
+       Left & right use side hood, center uses larger center hood + jewel
+  -->
+  <g transform="translate(300 230)">
+    <g transform="scale(0.82)"><use href="#nagaHoodSide"/></g>
+    <g transform="translate(0 28) scale(0.74)"><use href="#nagaHead"/></g>
+  </g>
+
+  <g transform="translate(512 180)">
+    <use href="#nagaHoodCenter"/>
+    <g transform="translate(0 40)"><use href="#nagaHead"/></g>
+    <circle cx="0" cy="-62" r="22" fill="url(#jewel)" stroke="#1A1332" stroke-width="3"/>
+    <ellipse cx="-7" cy="-68" rx="7" ry="5" fill="#FFF7DC" opacity="0.9"/>
+  </g>
+
+  <g transform="translate(724 230)">
+    <g transform="scale(0.82)"><use href="#nagaHoodSide"/></g>
+    <g transform="translate(0 28) scale(0.74)"><use href="#nagaHead"/></g>
+  </g>
+
+  <!-- Ground mist/steam rising from card top (implies heat) -->
+  <g opacity="0.25" fill="#38BDF8">
+    <ellipse cx="300" cy="458" rx="60" ry="8"/>
+    <ellipse cx="512" cy="458" rx="70" ry="8"/>
+    <ellipse cx="724" cy="458" rx="60" ry="8"/>
+  </g>
+</svg>

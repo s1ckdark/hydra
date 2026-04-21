@@ -2,18 +2,21 @@
 import PackageDescription
 
 let package = Package(
-    name: "Naga",
+    name: "Hydra",
     platforms: [
         .macOS(.v14),
         .iOS(.v17)
     ],
     products: [
-        .executable(name: "Naga", targets: ["Naga"]),
+        .executable(name: "Hydra", targets: ["Hydra"]),
     ],
     targets: [
         .executableTarget(
-            name: "Naga",
-            path: "Naga"
+            name: "Hydra",
+            path: "Hydra",
+            resources: [
+                .process("Assets.xcassets")
+            ]
         ),
     ]
 )

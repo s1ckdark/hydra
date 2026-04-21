@@ -1,4 +1,4 @@
-module github.com/dave/naga
+module github.com/s1ckdark/hydra
 
 go 1.25.6
 

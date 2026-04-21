@@ -58,6 +58,6 @@ config.yaml
 # MCP server
 mcp-server/node_modules/
 mcp-server/dist/
-Naga/.build/
-Naga/.swiftpm/xcode/**/xcuserdata/
+Hydra/.build/
+Hydra/.swiftpm/xcode/**/xcuserdata/
 .omx/

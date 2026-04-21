@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dave/naga/internal/domain"
+	"github.com/s1ckdark/hydra/internal/domain"
 )
 
 // Collector collects metrics from devices via SSH

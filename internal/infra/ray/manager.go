@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dave/naga/internal/domain"
-	"github.com/dave/naga/internal/infra/ssh"
+	"github.com/s1ckdark/hydra/internal/domain"
+	"github.com/s1ckdark/hydra/internal/infra/ssh"
 )
 
 // Manager manages Ray orch operations

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"time"
 
-	"github.com/dave/naga/internal/domain"
+	"github.com/s1ckdark/hydra/internal/domain"
 )
 
 // OrchNodeRepository implements repository.OrchNodeRepository for SQLite

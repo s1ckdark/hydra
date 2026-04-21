@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dave/naga/internal/domain"
-	"github.com/dave/naga/internal/infra/ai"
+	"github.com/s1ckdark/hydra/internal/domain"
+	"github.com/s1ckdark/hydra/internal/infra/ai"
 )
 
 // --- Unit tests (mock server) ---

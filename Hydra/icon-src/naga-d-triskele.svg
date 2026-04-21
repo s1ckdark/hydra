@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Background: deep navy radial -->
+    <radialGradient id="bg" cx="50%" cy="45%" r="75%">
+      <stop offset="0%" stop-color="#1B2244"/>
+      <stop offset="55%" stop-color="#0E1530"/>
+      <stop offset="100%" stop-color="#05081A"/>
+    </radialGradient>
+
+    <!-- Arm gradient: cool cyan → violet, flows outward from center -->
+    <linearGradient id="armG" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="60%" stop-color="#7B6CFF"/>
+      <stop offset="100%" stop-color="#C4B5FD"/>
+    </linearGradient>
+
+    <!-- Node head gradient -->
+    <radialGradient id="nodeG" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#F0F9FF"/>
+      <stop offset="45%" stop-color="#7DD3FC"/>
+      <stop offset="100%" stop-color="#0369A1"/>
+    </radialGradient>
+
+    <!-- Soft outer glow behind nodes -->
+    <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7DD3FC" stop-opacity="0.75"/>
+      <stop offset="60%" stop-color="#38BDF8" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Central hub gradient -->
+    <radialGradient id="hubG" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#FFF7DC"/>
+      <stop offset="45%" stop-color="#F5B642"/>
+      <stop offset="100%" stop-color="#7A4D10"/>
+    </radialGradient>
+
+    <!-- Mesh edge gradient (triangle between the 3 heads) -->
+    <linearGradient id="meshEdge" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.15"/>
+      <stop offset="50%" stop-color="#7B6CFF" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.15"/>
+    </linearGradient>
+
+    <!-- A single triskele arm — drawn once, rotated 3× around center.
+         Arm geometry: thick curled stroke from just outside the hub
+         spiralling outward and upward, ending at the node position.
+         Local space: center at (0,0), arm curls up-right to roughly (0, -300). -->
+    <g id="arm">
+      <!-- Outline stroke (dark) for silhouette strength -->
+      <path d="M 0 -70
+               C -70 -90, -130 -40, -120 60
+               C -112 140, -40 190, 60 140
+               C 160 92, 150 -30, 80 -120
+               C 40 -172, -8 -212, 0 -280"
+            stroke="#05081A" stroke-width="86" fill="none"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Main arm stroke -->
+      <path d="M 0 -70
+               C -70 -90, -130 -40, -120 60
+               C -112 140, -40 190, 60 140
+               C 160 92, 150 -30, 80 -120
+               C 40 -172, -8 -212, 0 -280"
+            stroke="url(#armG)" stroke-width="72" fill="none"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Highlight stroke (subtle lit side) -->
+      <path d="M 0 -70
+               C -70 -90, -130 -40, -120 60
+               C -112 140, -40 190, 60 140
+               C 160 92, 150 -30, 80 -120
+               C 40 -172, -8 -212, 0 -280"
+            stroke="#E0E7FF" stroke-width="14" fill="none"
+            stroke-linecap="round" stroke-linejoin="round"
+            opacity="0.35" transform="translate(-4 -6)"/>
+
+      <!-- Packet dots travelling along the arm (data flowing outward to the head) -->
+      <g fill="#F0F9FF" opacity="0.95">
+        <circle cx="-100" cy="40" r="5"/>
+        <circle cx="40" cy="160" r="5"/>
+        <circle cx="120" cy="-20" r="5"/>
+        <circle cx="40" cy="-180" r="5"/>
+      </g>
+
+      <!-- Node head at arm tip (position matches arm end x=0, y=-280) -->
+      <g transform="translate(0 -300)">
+        <!-- soft halo -->
+        <circle r="72" fill="url(#nodeGlow)"/>
+        <!-- outer ring -->
+        <circle r="52" fill="url(#nodeG)" stroke="#05081A" stroke-width="6"/>
+        <!-- inner accent: 3 small nodes suggesting sub-cluster / replica set -->
+        <circle cx="0" cy="-18" r="8" fill="#05081A"/>
+        <circle cx="-15" cy="9" r="8" fill="#05081A"/>
+        <circle cx="15" cy="9" r="8" fill="#05081A"/>
+        <!-- tiny highlight -->
+        <circle cx="-12" cy="-24" r="6" fill="#FFF7DC" opacity="0.85"/>
+      </g>
+    </g>
+  </defs>
+
+  <!-- ========== Background ========== -->
+  <rect x="0" y="0" width="1024" height="1024" rx="229" ry="229" fill="url(#bg)"/>
+
+  <!-- Faint concentric rings (orbit rails, very subtle) -->
+  <g fill="none" stroke="#7B6CFF" stroke-width="1.5" opacity="0.08">
+    <circle cx="512" cy="512" r="180"/>
+    <circle cx="512" cy="512" r="300"/>
+    <circle cx="512" cy="512" r="420"/>
+  </g>
+
+  <!-- Triangular mesh between the 3 head nodes
+       Head positions: 120° apart, at radius 300 from center (512,512).
+       θ₁ = -90° (top)     → (512, 212)
+       θ₂ = 30°  (bot-right) → (512 + 300·cos(30°), 512 + 300·sin(30°)) ≈ (771.8, 662)
+       θ₃ = 150° (bot-left)  → (252.2, 662)
+  -->
+  <g stroke="url(#meshEdge)" stroke-width="4" fill="none" opacity="0.9">
+    <line x1="512" y1="212" x2="771.8" y2="662"/>
+    <line x1="771.8" y1="662" x2="252.2" y2="662"/>
+    <line x1="252.2" y1="662" x2="512" y2="212"/>
+  </g>
+  <!-- pulse dots on the mesh edges -->
+  <g fill="#7DD3FC" opacity="0.9">
+    <circle cx="641.9" cy="437" r="4"/>
+    <circle cx="382.1" cy="437" r="4"/>
+    <circle cx="512" cy="662" r="4"/>
+  </g>
+
+  <!-- Three triskele arms, 120° apart -->
+  <g transform="translate(512 512)">
+    <use href="#arm" transform="rotate(0)"/>
+    <use href="#arm" transform="rotate(120)"/>
+    <use href="#arm" transform="rotate(240)"/>
+  </g>
+
+  <!-- Central coordinator hub (on top of arm convergence) -->
+  <g transform="translate(512 512)">
+    <!-- outer dark rim -->
+    <circle r="58" fill="#05081A" stroke="#7B6CFF" stroke-width="3" opacity="0.95"/>
+    <!-- core -->
+    <circle r="44" fill="url(#hubG)" stroke="#05081A" stroke-width="4"/>
+    <!-- inner detail: hex mark (K8s-adjacent visual vocabulary) -->
+    <polygon points="0,-22 19,-11 19,11 0,22 -19,11 -19,-11"
+             fill="none" stroke="#05081A" stroke-width="3"/>
+    <circle r="7" fill="#FFF7DC"/>
+    <!-- radiating ticks -->
+    <g stroke="#FFF7DC" stroke-width="3" stroke-linecap="round" opacity="0.9">
+      <line x1="0" y1="-52" x2="0" y2="-62"/>
+      <line x1="45" y1="-26" x2="54" y2="-31"/>
+      <line x1="45" y1="26" x2="54" y2="31"/>
+      <line x1="0" y1="52" x2="0" y2="62"/>
+      <line x1="-45" y1="26" x2="-54" y2="31"/>
+      <line x1="-45" y1="-26" x2="-54" y2="-31"/>
+    </g>
+  </g>
+</svg>

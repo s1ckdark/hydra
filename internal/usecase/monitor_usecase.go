@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dave/naga/internal/domain"
-	"github.com/dave/naga/internal/repository"
+	"github.com/s1ckdark/hydra/internal/domain"
+	"github.com/s1ckdark/hydra/internal/repository"
 )
 
 // MonitorUseCase handles monitoring-related business logic

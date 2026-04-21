@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/dave/naga/internal/domain"
+	"github.com/s1ckdark/hydra/internal/domain"
 )
 
 // FailoverRayManager extends RayManager with checkpoint operations

@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dave/naga/internal/domain"
-	"github.com/dave/naga/internal/repository"
+	"github.com/s1ckdark/hydra/internal/domain"
+	"github.com/s1ckdark/hydra/internal/repository"
 )
 
 // GPUChecker checks GPU availability on a device

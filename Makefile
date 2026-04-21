@@ -1,8 +1,8 @@
-# naga Makefile
+# hydra Makefile
 
 # Variables
-BINARY_NAME=naga
-SERVER_BINARY=naga-server
+BINARY_NAME=hydra
+SERVER_BINARY=hydra-server
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME=$(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME)"
@@ -47,10 +47,10 @@ deps: ## Download dependencies
 	$(GOMOD) download
 
 run-server: ## Run server locally
-	$(GOCMD) run $(CMD_SERVER)/main.go
+	$(GOCMD) run $(CMD_SERVER)
 
 run-cli: ## Run CLI locally
-	$(GOCMD) run $(CMD_CLI)/main.go
+	$(GOCMD) run $(CMD_CLI)
 
 ## Test targets
 

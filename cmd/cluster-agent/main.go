@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dave/naga/internal/agent"
-	"github.com/dave/naga/internal/domain"
-	"github.com/dave/naga/internal/infra/ai/claude"
-	"github.com/dave/naga/internal/infra/ai/lmstudio"
-	"github.com/dave/naga/internal/infra/ai/ollama"
+	"github.com/s1ckdark/hydra/internal/agent"
+	"github.com/s1ckdark/hydra/internal/domain"
+	"github.com/s1ckdark/hydra/internal/infra/ai/claude"
+	"github.com/s1ckdark/hydra/internal/infra/ai/lmstudio"
+	"github.com/s1ckdark/hydra/internal/infra/ai/ollama"
 )
 
 func main() {

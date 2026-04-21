@@ -6,7 +6,7 @@ import Security
 final class CredentialStore {
     static let shared = CredentialStore()
 
-    private let service = "com.naga.credentials"
+    private let service = "com.hydra.credentials"
 
     // MARK: - Keychain keys
 

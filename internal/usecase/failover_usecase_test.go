@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dave/naga/internal/domain"
+	"github.com/s1ckdark/hydra/internal/domain"
 )
 
 type mockFailoverRayManager struct {

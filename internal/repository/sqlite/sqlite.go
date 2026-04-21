@@ -10,7 +10,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/dave/naga/internal/repository"
+	"github.com/s1ckdark/hydra/internal/repository"
 )
 
 // DB holds the SQLite database connection

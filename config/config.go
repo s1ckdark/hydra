@@ -122,7 +122,7 @@ func DefaultConfig() *Config {
 		},
 		Database: DatabaseConfig{
 			Driver: "sqlite",
-			DSN:    filepath.Join(getConfigDir(), "naga.db"),
+			DSN:    filepath.Join(getConfigDir(), "hydra.db"),
 		},
 		Log: LogConfig{
 			Level:  "info",
@@ -218,7 +218,7 @@ func getConfigDir() string {
 		return dir
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".naga")
+	return filepath.Join(home, ".hydra")
 }
 
 // GetConfigDir exports the config directory path

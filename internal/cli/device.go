@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dave/naga/internal/domain"
-	"github.com/dave/naga/internal/infra/tailscale"
+	"github.com/s1ckdark/hydra/internal/domain"
+	"github.com/s1ckdark/hydra/internal/infra/tailscale"
 )
 
 func newDeviceCmd() *cobra.Command {
