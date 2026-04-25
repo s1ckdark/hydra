@@ -179,3 +179,31 @@ func TestMigrateLegacyAgentAI_SkipsWhenAIDefaultPresent(t *testing.T) {
 		t.Errorf("migration overwrote existing AI.Default: %+v", agent.AI.Default)
 	}
 }
+
+func TestConfig_SaveAndLoad_AIConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("NAGA_CONFIG_DIR", tmpDir)
+	// Tailscale.APIKey required by Validate(); not used here but keep the file loadable.
+	cfg := DefaultConfig()
+	cfg.Tailscale.APIKey = "tskey-roundtrip"
+	override := ProviderConfig{Provider: "ollama", Endpoint: "http://localhost:11434", Model: "llama3"}
+	cfg.Agent.AI = AIConfig{
+		Default:        ProviderConfig{Provider: "claude", APIKey: "sk-default", Model: "claude-sonnet-4-6"},
+		TaskScheduling: &override,
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Agent.AI.Default.Provider != "claude" || loaded.Agent.AI.Default.APIKey != "sk-default" {
+		t.Errorf("Default not persisted: %+v", loaded.Agent.AI.Default)
+	}
+	if loaded.Agent.AI.TaskScheduling == nil || loaded.Agent.AI.TaskScheduling.Provider != "ollama" {
+		t.Errorf("TaskScheduling override not persisted: %+v", loaded.Agent.AI.TaskScheduling)
+	}
+}

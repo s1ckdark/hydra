@@ -276,6 +276,15 @@ func Save(cfg *Config) error {
 	viper.Set("agent.lmstudio_endpoint", cfg.Agent.LMStudioEndpoint)
 	viper.Set("agent.lmstudio_model", cfg.Agent.LMStudioModel)
 
+	// AI config — new role-based structure
+	viper.Set("agent.ai.default.provider", cfg.Agent.AI.Default.Provider)
+	viper.Set("agent.ai.default.api_key", cfg.Agent.AI.Default.APIKey)
+	viper.Set("agent.ai.default.endpoint", cfg.Agent.AI.Default.Endpoint)
+	viper.Set("agent.ai.default.model", cfg.Agent.AI.Default.Model)
+	setRoleOverride("agent.ai.head_selection", cfg.Agent.AI.HeadSelection)
+	setRoleOverride("agent.ai.task_scheduling", cfg.Agent.AI.TaskScheduling)
+	setRoleOverride("agent.ai.capacity_estimation", cfg.Agent.AI.CapacityEstimation)
+
 	configPath := filepath.Join(configDir, "config.yaml")
 	return viper.WriteConfigAs(configPath)
 }
@@ -292,6 +301,18 @@ func getConfigDir() string {
 // GetConfigDir exports the config directory path
 func GetConfigDir() string {
 	return getConfigDir()
+}
+
+// setRoleOverride sets a role-override block in viper, or clears it if nil.
+func setRoleOverride(key string, p *ProviderConfig) {
+	if p == nil {
+		viper.Set(key, nil)
+		return
+	}
+	viper.Set(key+".provider", p.Provider)
+	viper.Set(key+".api_key", p.APIKey)
+	viper.Set(key+".endpoint", p.Endpoint)
+	viper.Set(key+".model", p.Model)
 }
 
 // Validate validates the configuration
