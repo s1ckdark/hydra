@@ -2,12 +2,13 @@ import SwiftUI
 
 #if os(macOS)
 struct AISettingsTab: View {
+    // Single provider dropdown — no separate Auth Method toggle.
+    // Provider value drives whether API Key field or Endpoint field is shown.
     @AppStorage("serverURL") private var serverURL = "http://localhost:8080"
     @AppStorage("aiDefaultProvider") private var provider: String = "claude"
     @AppStorage("aiDefaultEndpoint") private var endpoint: String = ""
     @AppStorage("aiDefaultModel") private var model: String = ""
 
-    @State private var authMethod: AuthMethod = .apiKey
     @State private var apiKey: String = ""
     @State private var connectionVerified = false
     @State private var testStatus: TestStatus?
@@ -15,11 +16,6 @@ struct AISettingsTab: View {
     @State private var showAdvanced = false
 
     private let store = CredentialStore.shared
-
-    enum AuthMethod: String, CaseIterable {
-        case apiKey = "API Key"
-        case localAPI = "Local API"
-    }
 
     enum TestStatus {
         case testing
@@ -34,37 +30,39 @@ struct AISettingsTab: View {
         case error(String)
     }
 
-    private var cloudProviders: [String] { ["claude", "openai", "zai"] }
-    private var localProviders: [String] { ["ollama", "lmstudio", "openai_compatible"] }
-    private var currentProviders: [String] {
-        authMethod == .apiKey ? cloudProviders : localProviders
+    /// Cloud providers require an API key; local providers require an endpoint URL.
+    static let cloudProviders: Set<String> = ["claude", "openai", "zai"]
+    static let localProviders: Set<String> = ["ollama", "lmstudio", "openai_compatible"]
+
+    private var isCloudProvider: Bool { Self.cloudProviders.contains(provider) }
+
+    /// Display label combining provider id with its group hint.
+    private func label(for id: String) -> String {
+        switch id {
+        case "claude":             return "Claude (cloud)"
+        case "openai":             return "OpenAI (cloud)"
+        case "zai":                return "Z.AI (cloud)"
+        case "ollama":             return "Ollama (local)"
+        case "lmstudio":           return "LM Studio (local)"
+        case "openai_compatible":  return "OpenAI-compatible (local)"
+        default:                   return id
+        }
     }
 
     var body: some View {
         Form {
             Section {
-                Picker("Auth Method", selection: $authMethod) {
-                    ForEach(AuthMethod.allCases, id: \.self) { method in
-                        Text(method.rawValue).tag(method)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: authMethod) {
-                    // Reset provider to first available when switching modes
-                    if !currentProviders.contains(provider) {
-                        provider = currentProviders.first ?? ""
-                    }
-                    credentialsChanged()
-                }
-
                 Picker("Provider", selection: $provider) {
-                    ForEach(currentProviders, id: \.self) { p in
-                        Text(p).tag(p)
-                    }
+                    Text(label(for: "claude")).tag("claude")
+                    Text(label(for: "openai")).tag("openai")
+                    Text(label(for: "zai")).tag("zai")
+                    Text(label(for: "ollama")).tag("ollama")
+                    Text(label(for: "lmstudio")).tag("lmstudio")
+                    Text(label(for: "openai_compatible")).tag("openai_compatible")
                 }
                 .onChange(of: provider) { credentialsChanged() }
 
-                if authMethod == .apiKey {
+                if isCloudProvider {
                     SecureField("API Key", text: $apiKey)
                         .textFieldStyle(.roundedBorder)
                         .onChange(of: apiKey) { credentialsChanged() }
@@ -166,7 +164,6 @@ struct AISettingsTab: View {
         .formStyle(.grouped)
         .onAppear {
             apiKey = store.get(.aiDefaultAPIKey)
-            if !endpoint.isEmpty { authMethod = .localAPI }
         }
     }
 
@@ -177,7 +174,7 @@ struct AISettingsTab: View {
     }
 
     private var hasCredentials: Bool {
-        if authMethod == .apiKey { return !apiKey.isEmpty }
+        if isCloudProvider { return !apiKey.isEmpty }
         return !endpoint.isEmpty
     }
 
@@ -233,11 +230,8 @@ struct AISettingsTab: View {
     }
 
     private func saveLocally() {
-        if authMethod == .apiKey {
-            store.set(.aiDefaultAPIKey, value: apiKey)
-        } else {
-            store.set(.aiDefaultAPIKey, value: "")
-        }
+        // Only persist a key when the chosen provider needs one.
+        store.set(.aiDefaultAPIKey, value: isCloudProvider ? apiKey : "")
         withAnimation { saveStatus = .savedLocally }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
             withAnimation { saveStatus = nil }
@@ -252,7 +246,7 @@ struct AISettingsTab: View {
             "provider": provider,
             "model":    model,
         ]
-        if authMethod == .apiKey {
+        if isCloudProvider {
             defaultPayload["api_key"] = apiKey
         } else {
             defaultPayload["endpoint"] = endpoint
