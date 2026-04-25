@@ -110,6 +110,48 @@ struct AISettingsTab: View {
             } header: {
                 Text("② Verify")
             }
+
+            Section {
+                HStack {
+                    Button("Save Locally") { saveLocally() }
+                        .disabled(!connectionVerified)
+
+                    Spacer()
+
+                    Button("Save & Push to Server") {
+                        Task { await pushToServer() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!connectionVerified || saveStatus.isSaving)
+                }
+
+                if !connectionVerified {
+                    Text("Test the connection first before saving.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let status = saveStatus {
+                    switch status {
+                    case .saving:
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Pushing to server…").font(.caption)
+                        }
+                    case .savedLocally:
+                        Label("Saved to Keychain", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green).font(.caption)
+                    case .pushedToServer:
+                        Label("Saved locally & pushed to server", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green).font(.caption)
+                    case .error(let msg):
+                        Label(msg, systemImage: "xmark.circle.fill")
+                            .foregroundStyle(.red).font(.caption)
+                    }
+                }
+            } header: {
+                Text("③ Save")
+            }
         }
         .formStyle(.grouped)
         .onAppear {
@@ -179,11 +221,74 @@ struct AISettingsTab: View {
             withAnimation { testStatus = .error("Connection failed: \(error.localizedDescription)") }
         }
     }
+
+    private func saveLocally() {
+        if authMethod == .apiKey {
+            store.set(.aiDefaultAPIKey, value: apiKey)
+        } else {
+            store.set(.aiDefaultAPIKey, value: "")
+        }
+        withAnimation { saveStatus = .savedLocally }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation { saveStatus = nil }
+        }
+    }
+
+    private func pushToServer() async {
+        withAnimation { saveStatus = .saving }
+        saveLocally()
+
+        var defaultPayload: [String: String] = [
+            "provider": provider,
+            "model":    model,
+        ]
+        if authMethod == .apiKey {
+            defaultPayload["api_key"] = apiKey
+        } else {
+            defaultPayload["endpoint"] = endpoint
+        }
+
+        let body: [String: Any] = ["default": defaultPayload]
+
+        do {
+            let url = URL(string: serverURL)!.appendingPathComponent("api/config/ai")
+            var request = URLRequest(url: url, timeoutInterval: 15)
+            request.httpMethod = "PUT"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+            let serverKey = store.get(.serverAPIKey)
+            if !serverKey.isEmpty {
+                request.setValue("Bearer \(serverKey)", forHTTPHeaderField: "Authorization")
+            }
+
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                withAnimation { saveStatus = .error("Server returned \(code)") }
+                return
+            }
+
+            withAnimation { saveStatus = .pushedToServer }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                withAnimation { saveStatus = nil }
+            }
+        } catch {
+            withAnimation { saveStatus = .error(error.localizedDescription) }
+        }
+    }
 }
 
 private extension Optional where Wrapped == AISettingsTab.TestStatus {
     var isTesting: Bool {
         if case .testing = self { return true }
+        return false
+    }
+}
+
+private extension Optional where Wrapped == AISettingsTab.SaveStatus {
+    var isSaving: Bool {
+        if case .saving = self { return true }
         return false
     }
 }
