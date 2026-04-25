@@ -195,7 +195,11 @@ func (h *Handler) APITaskSetResult(c echo.Context) error {
 	return c.JSON(http.StatusOK, task)
 }
 
-// APIRegisterCapabilities registers device capabilities
+// APIRegisterCapabilities registers device capabilities. The override is
+// persisted in DeviceUseCase so it survives the Tailscale cache TTL refresh.
+// Devices not yet known to Tailscale (e.g. clients identified by a local
+// Keychain UUID) are accepted — the override is recorded keyed by id and
+// will be applied if/when a matching device appears.
 func (h *Handler) APIRegisterCapabilities(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
@@ -212,23 +216,30 @@ func (h *Handler) APIRegisterCapabilities(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
-	device, err := h.deviceUC.GetDevice(ctx, id)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "device not found"})
+	// Persist the override unconditionally — works for unknown devices too.
+	h.deviceUC.SetCapabilities(id, req.Capabilities)
+
+	// If the device is known to Tailscale, mutate the in-memory record so
+	// concurrent reads observe the change before the next override apply.
+	if device, err := h.deviceUC.GetDevice(ctx, id); err == nil {
+		device.Capabilities = req.Capabilities
+		if req.DeviceToken != "" {
+			device.DeviceToken = req.DeviceToken
+		}
 	}
 
-	device.Capabilities = req.Capabilities
-	if req.DeviceToken != "" {
-		device.DeviceToken = req.DeviceToken
+	caps := req.Capabilities
+	if caps == nil {
+		caps = []string{}
 	}
-
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"deviceId":     device.ID,
-		"capabilities": device.Capabilities,
+		"deviceId":     id,
+		"capabilities": caps,
 	})
 }
 
-// APIGetCapabilities returns device capabilities
+// APIGetCapabilities returns device capabilities. Falls back to the override
+// map for devices not yet known to Tailscale.
 func (h *Handler) APIGetCapabilities(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
@@ -239,7 +250,14 @@ func (h *Handler) APIGetCapabilities(c echo.Context) error {
 
 	device, err := h.deviceUC.GetDevice(ctx, id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "device not found"})
+		caps := h.deviceUC.GetCapabilities(id)
+		if caps == nil {
+			caps = []string{}
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"deviceId":     id,
+			"capabilities": caps,
+		})
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
