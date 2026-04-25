@@ -19,6 +19,7 @@ final class CredentialStore {
         case aiHeadAPIKey = "ai_head_api_key"
         case aiScheduleAPIKey = "ai_schedule_api_key"
         case aiCapacityAPIKey = "ai_capacity_api_key"
+        case deviceUUID = "device_uuid"
     }
 
     // MARK: - Public API
