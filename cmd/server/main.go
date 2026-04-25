@@ -270,6 +270,8 @@ func main() {
 	// Config routes (Tailscale network auth required)
 	apiWrite.GET("/config/tailscale", h.APIGetTailscaleConfig)
 	apiWrite.PUT("/config/tailscale", h.APIPutTailscaleConfig)
+	apiWrite.GET("/config/ai", h.APIGetAIConfig)
+	apiWrite.PUT("/config/ai", h.APIPutAIConfig)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {
