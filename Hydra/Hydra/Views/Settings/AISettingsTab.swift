@@ -81,11 +81,34 @@ struct AISettingsTab: View {
                 Text("① AI Provider (Default)")
             }
 
-            // Placeholder for Verify/Save sections added in later tasks
             Section {
-                Text("Test and Save will be wired up next.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button {
+                    Task { await testConnection() }
+                } label: {
+                    HStack {
+                        Image(systemName: "bolt.horizontal.circle")
+                        Text("Test Connection")
+                    }
+                }
+                .disabled(testStatus.isTesting || !hasCredentials)
+
+                if let status = testStatus {
+                    switch status {
+                    case .testing:
+                        HStack(spacing: 8) {
+                            ProgressView().controlSize(.small)
+                            Text("Testing…").font(.caption)
+                        }
+                    case .success(let msg):
+                        Label(msg, systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green).font(.caption)
+                    case .error(let msg):
+                        Label(msg, systemImage: "xmark.circle.fill")
+                            .foregroundStyle(.red).font(.caption)
+                    }
+                }
+            } header: {
+                Text("② Verify")
             }
         }
         .formStyle(.grouped)
@@ -99,6 +122,69 @@ struct AISettingsTab: View {
         connectionVerified = false
         testStatus = nil
         saveStatus = nil
+    }
+
+    private var hasCredentials: Bool {
+        if authMethod == .apiKey { return !apiKey.isEmpty }
+        return !endpoint.isEmpty
+    }
+
+    private func testConnection() async {
+        withAnimation { testStatus = .testing }
+
+        let urlString: String
+        var headers: [String: String] = [:]
+        switch provider {
+        case "claude":
+            urlString = "https://api.anthropic.com/v1/models"
+            headers["x-api-key"] = apiKey
+            headers["anthropic-version"] = "2023-06-01"
+        case "openai":
+            urlString = "https://api.openai.com/v1/models"
+            headers["Authorization"] = "Bearer \(apiKey)"
+        case "zai":
+            urlString = "https://api.z.ai/v1/models"
+            headers["Authorization"] = "Bearer \(apiKey)"
+        case "ollama":
+            urlString = endpoint.trimmingCharacters(in: .whitespaces) + "/api/tags"
+        case "lmstudio", "openai_compatible":
+            urlString = endpoint.trimmingCharacters(in: .whitespaces) + "/v1/models"
+        default:
+            withAnimation { testStatus = .error("Unknown provider: \(provider)") }
+            return
+        }
+
+        guard let url = URL(string: urlString) else {
+            withAnimation { testStatus = .error("Invalid endpoint URL") }
+            return
+        }
+        var req = URLRequest(url: url, timeoutInterval: 15)
+        for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: req)
+            guard let http = response as? HTTPURLResponse else {
+                withAnimation { testStatus = .error("No response") }
+                return
+            }
+            if (200...299).contains(http.statusCode) {
+                withAnimation {
+                    connectionVerified = true
+                    testStatus = .success("Connected to \(provider)")
+                }
+            } else {
+                withAnimation { testStatus = .error("\(provider) returned HTTP \(http.statusCode)") }
+            }
+        } catch {
+            withAnimation { testStatus = .error("Connection failed: \(error.localizedDescription)") }
+        }
+    }
+}
+
+private extension Optional where Wrapped == AISettingsTab.TestStatus {
+    var isTesting: Bool {
+        if case .testing = self { return true }
+        return false
     }
 }
 #endif
