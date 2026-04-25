@@ -9,8 +9,11 @@ struct SettingsView: View {
 
             TailscaleSettingsTab()
                 .tabItem { Label("Tailscale", systemImage: "network") }
+
+            AISettingsTab()
+                .tabItem { Label("AI", systemImage: "brain") }
         }
-        .frame(width: 500, height: 400)
+        .frame(width: 560, height: 520)
     }
 }
 
