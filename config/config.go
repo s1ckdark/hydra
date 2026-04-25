@@ -94,6 +94,44 @@ type AgentConfig struct {
 	LMStudioModel       string `mapstructure:"lmstudio_model"`
 }
 
+// ProviderConfig describes one AI provider instance.
+// When Provider is "claude"/"openai"/"zai" the APIKey field is required.
+// When Provider is "ollama"/"lmstudio"/"openai_compatible" the Endpoint field is required.
+type ProviderConfig struct {
+	Provider string `mapstructure:"provider"`
+	APIKey   string `mapstructure:"api_key"`
+	Endpoint string `mapstructure:"endpoint"`
+	Model    string `mapstructure:"model"`
+}
+
+// AIConfig routes AI calls to providers per role.
+// Default applies to any role without a non-empty override.
+type AIConfig struct {
+	Default            ProviderConfig  `mapstructure:"default"`
+	HeadSelection      *ProviderConfig `mapstructure:"head_selection,omitempty"`
+	TaskScheduling     *ProviderConfig `mapstructure:"task_scheduling,omitempty"`
+	CapacityEstimation *ProviderConfig `mapstructure:"capacity_estimation,omitempty"`
+}
+
+// Resolve returns the ProviderConfig for a given role, falling back to Default
+// when no override is set or the override has an empty Provider.
+// role must be one of: "head", "schedule", "capacity".
+func (a AIConfig) Resolve(role string) ProviderConfig {
+	var override *ProviderConfig
+	switch role {
+	case "head":
+		override = a.HeadSelection
+	case "schedule":
+		override = a.TaskScheduling
+	case "capacity":
+		override = a.CapacityEstimation
+	}
+	if override != nil && override.Provider != "" {
+		return *override
+	}
+	return a.Default
+}
+
 // DefaultConfig returns a Config with default values
 func DefaultConfig() *Config {
 	return &Config{

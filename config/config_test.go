@@ -90,3 +90,39 @@ func TestGetConfigDir_Default(t *testing.T) {
 		t.Error("GetConfigDir() should return non-empty default")
 	}
 }
+
+func TestAIConfig_Resolve_FallsBackToDefault(t *testing.T) {
+	cfg := AIConfig{
+		Default: ProviderConfig{Provider: "claude", APIKey: "sk-default"},
+	}
+	got := cfg.Resolve("head")
+	if got.Provider != "claude" || got.APIKey != "sk-default" {
+		t.Errorf("Resolve(head) = %+v; want claude/sk-default default fallback", got)
+	}
+}
+
+func TestAIConfig_Resolve_UsesRoleOverride(t *testing.T) {
+	override := ProviderConfig{Provider: "ollama", Endpoint: "http://localhost:11434", Model: "llama3"}
+	cfg := AIConfig{
+		Default:        ProviderConfig{Provider: "claude", APIKey: "sk-default"},
+		TaskScheduling: &override,
+	}
+	got := cfg.Resolve("schedule")
+	if got.Provider != "ollama" || got.Endpoint != "http://localhost:11434" {
+		t.Errorf("Resolve(schedule) = %+v; want ollama override", got)
+	}
+	if got := cfg.Resolve("head"); got.Provider != "claude" {
+		t.Errorf("Resolve(head) should fall back to default, got %+v", got)
+	}
+}
+
+func TestAIConfig_Resolve_EmptyOverrideFallsThrough(t *testing.T) {
+	empty := ProviderConfig{}
+	cfg := AIConfig{
+		Default:       ProviderConfig{Provider: "claude", APIKey: "sk-default"},
+		HeadSelection: &empty,
+	}
+	if got := cfg.Resolve("head"); got.Provider != "claude" {
+		t.Errorf("Resolve should ignore empty-Provider override; got %+v", got)
+	}
+}
