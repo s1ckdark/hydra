@@ -60,6 +60,9 @@ type Task struct {
 	//   true  → always run scheduling through the AI provider
 	//   false → use rule-based scoring with AI only as a tiebreaker
 	AISchedule *bool `json:"aiSchedule,omitempty"`
+	// GroupID links this task to a fan-out batch (TaskGroup). Empty when
+	// the task was submitted via the single-task POST endpoint.
+	GroupID string `json:"groupId,omitempty"`
 }
 
 // TaskResult holds the output of a completed task
