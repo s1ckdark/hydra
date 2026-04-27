@@ -10,6 +10,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/s1ckdark/hydra/internal/domain"
 	"github.com/s1ckdark/hydra/internal/repository"
 )
 
@@ -59,11 +60,13 @@ func (d *DB) Close() error {
 // Repositories returns all repository implementations
 func (d *DB) Repositories() *repository.Repositories {
 	return &repository.Repositories{
-		Devices:      NewDeviceRepository(d.db),
-		Orchs:     NewOrchRepository(d.db),
-		OrchNodes: NewOrchNodeRepository(d.db),
-		Metrics:      NewMetricsRepository(d.db),
-		UnitOfWork:   d,
+		Devices:    NewDeviceRepository(d.db),
+		Orchs:      NewOrchRepository(d.db),
+		OrchNodes:  NewOrchNodeRepository(d.db),
+		Metrics:    NewMetricsRepository(d.db),
+		Tasks:      NewTaskRepository(d.db),
+		TaskGroups: NewTaskGroupRepository(d.db),
+		UnitOfWork: d,
 	}
 }
 
@@ -109,6 +112,16 @@ func (t *Transaction) OrchNodes() repository.OrchNodeRepository {
 // Metrics returns the metrics repository for this transaction
 func (t *Transaction) Metrics() repository.MetricsRepository {
 	return &MetricsRepository{db: t.tx}
+}
+
+// Tasks returns the task repository for this transaction
+func (t *Transaction) Tasks() domain.TaskRepository {
+	return &TaskRepository{db: t.tx}
+}
+
+// TaskGroups returns the task group repository for this transaction
+func (t *Transaction) TaskGroups() repository.TaskGroupRepository {
+	return &TaskGroupRepository{db: t.tx}
 }
 
 // migrate runs database migrations
