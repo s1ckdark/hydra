@@ -186,6 +186,46 @@ func TestAPITaskBatchCreate_EmptyTasks(t *testing.T) {
 	}
 }
 
+// Verifies F-1: a cancelled request context must NOT prevent the group from
+// being saved, otherwise the queue's write-through (which uses
+// context.Background()) would land task rows that reference no group row.
+func TestAPITaskBatchCreate_GroupSaveSurvivesRequestCancel(t *testing.T) {
+	gRepo := &stubTaskGroupRepo{data: map[string]*domain.TaskGroup{}}
+	tRepo := &stubTaskRepoForGroup{data: map[string][]*domain.Task{}}
+	tq := domain.NewTaskQueue()
+	h := &Handler{
+		taskGroupRepo:  gRepo,
+		taskGroupTasks: tRepo,
+		taskGroupSaver: gRepo,
+		taskQueue:      tq,
+	}
+
+	// Cancel the request context before the handler runs.
+	cancelCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	e := echo.New()
+	body := `{"tasks":[{"type":"shell"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/tasks/batch", strings.NewReader(body)).
+		WithContext(cancelCtx)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.APITaskBatchCreate(c); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201 (save must survive request cancel); body=%s", rec.Code, rec.Body.String())
+	}
+	if len(gRepo.data) != 1 {
+		t.Errorf("group save dropped: gRepo.data = %d, want 1", len(gRepo.data))
+	}
+	if tq.PendingCount() != 1 {
+		t.Errorf("task enqueue dropped: queue = %d, want 1", tq.PendingCount())
+	}
+}
+
 func TestAPITaskBatchCreate_InvalidTaskRollsBack(t *testing.T) {
 	gRepo := &stubTaskGroupRepo{data: map[string]*domain.TaskGroup{}}
 	tq := domain.NewTaskQueue()

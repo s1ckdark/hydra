@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -109,6 +110,14 @@ func (h *Handler) APITaskBatchCreate(c echo.Context) error {
 	ctx := c.Request().Context()
 	now := time.Now()
 
+	// Persistence operations use a detached context so a client disconnect
+	// mid-batch cannot leave orphan rows. This matches TaskQueue.persist,
+	// which also writes through to the tasks table on context.Background().
+	// Without symmetry here, the group save could fail with context.Canceled
+	// while task rows continue to land via the queue's bg context, producing
+	// rows in `tasks` with a `group_id` referencing no `task_groups` row.
+	persistCtx := context.Background()
+
 	group := &domain.TaskGroup{
 		ID:         generateID(),
 		Name:       req.Name,
@@ -116,7 +125,7 @@ func (h *Handler) APITaskBatchCreate(c echo.Context) error {
 		TotalTasks: len(req.Tasks),
 		Metadata:   req.Metadata,
 	}
-	if err := h.taskGroupSaver.Save(ctx, group); err != nil {
+	if err := h.taskGroupSaver.Save(persistCtx, group); err != nil {
 		return internalError(c, "failed to save group", err)
 	}
 
