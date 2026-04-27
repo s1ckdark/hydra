@@ -83,9 +83,15 @@ func (h *Handler) APIPutAIConfig(c echo.Context) error {
 		}
 	}
 
+	// Build newAI preserving fields the client omitted, so partial updates
+	// (e.g. rotating only `default`) don't silently clear existing role
+	// overrides or always_consult.
 	newAI := config.AIConfig{
-		Default:       req.Default.toConfig(),
-		AlwaysConsult: h.cfg.Agent.AI.AlwaysConsult, // preserve unless explicitly provided
+		Default:            req.Default.toConfig(),
+		AlwaysConsult:      h.cfg.Agent.AI.AlwaysConsult,
+		HeadSelection:      h.cfg.Agent.AI.HeadSelection,
+		TaskScheduling:     h.cfg.Agent.AI.TaskScheduling,
+		CapacityEstimation: h.cfg.Agent.AI.CapacityEstimation,
 	}
 	if req.AlwaysConsult != nil {
 		newAI.AlwaysConsult = *req.AlwaysConsult

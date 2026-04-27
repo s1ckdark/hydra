@@ -209,6 +209,38 @@ func TestAPIPutAIConfig_InvokesArbiterRebuilder(t *testing.T) {
 	}
 }
 
+func TestAPIPutAIConfig_OmittedRoleOverridesPreserved(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Tailscale.APIKey = "tskey-test"
+	headOverride := config.ProviderConfig{Provider: "ollama", Endpoint: "http://localhost:11434"}
+	cfg.Agent.AI = config.AIConfig{
+		Default:       config.ProviderConfig{Provider: "claude", APIKey: "sk-x"},
+		HeadSelection: &headOverride,
+	}
+	t.Setenv("NAGA_CONFIG_DIR", t.TempDir())
+	h := &Handler{cfg: cfg}
+
+	e := echo.New()
+	body := `{"default":{"provider":"claude","api_key":"sk-y"}}` // no head_selection
+	req := httptest.NewRequest(http.MethodPut, "/api/config/ai", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.APIPutAIConfig(c); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if cfg.Agent.AI.HeadSelection == nil {
+		t.Fatalf("HeadSelection got cleared by partial update; want preserved")
+	}
+	if cfg.Agent.AI.HeadSelection.Provider != "ollama" {
+		t.Errorf("HeadSelection.Provider = %q, want ollama", cfg.Agent.AI.HeadSelection.Provider)
+	}
+}
+
 func TestAPIPutAIConfig_RollsBackInMemoryOnSaveFailure(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Tailscale.APIKey = "tskey-test"

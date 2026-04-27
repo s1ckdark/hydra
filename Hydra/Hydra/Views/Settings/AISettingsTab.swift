@@ -244,7 +244,12 @@ struct AISettingsTab: View {
 
     private func pushToServer() async {
         withAnimation { saveStatus = .saving }
-        saveLocally()
+        // Persist the API key to Keychain alongside the network push, but
+        // do NOT call saveLocally() here — it would flip saveStatus to
+        // .savedLocally before the PUT completes, re-enabling the Save &
+        // Push button mid-request because its disabled-state checks
+        // saveStatus.isSaving.
+        store.set(.aiDefaultAPIKey, value: isCloudProvider ? apiKey : "")
 
         var defaultPayload: [String: String] = [
             "provider": provider,
