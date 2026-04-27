@@ -27,10 +27,16 @@ type TaskSupervisor struct {
 	// asks it to pick between workers whose scores are within tiebreakEpsilon
 	// of each other. aiCallBudget caps the arbiter calls per scheduling tick
 	// so a flood of near-ties cannot blow past the tick deadline.
+	//
+	// alwaysConsultAI promotes the AI from a tiebreaker to the primary
+	// scheduler: when true (or when a task's AISchedule pointer is true),
+	// every eligible-worker decision is delegated to the arbiter, not just
+	// rule-based ties. Per-task AISchedule overrides this default.
 	aiArbiter       ai.TaskScheduler
 	tiebreakEpsilon float64
 	aiCallBudget    int
 	aiCallTimeout   time.Duration
+	alwaysConsultAI bool
 }
 
 func NewTaskSupervisor(taskQueue *domain.TaskQueue, wsHub *ws.Hub, deviceUC *DeviceUseCase, monitorUC *MonitorUseCase) *TaskSupervisor {
@@ -49,10 +55,42 @@ func NewTaskSupervisor(taskQueue *domain.TaskQueue, wsHub *ws.Hub, deviceUC *Dev
 // AI calls per scheduling tick; timeout caps an individual arbiter call.
 // Passing a nil arbiter disables tiebreaking.
 func (s *TaskSupervisor) SetAIArbiter(arbiter ai.TaskScheduler, epsilon float64, budget int, timeout time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.aiArbiter = arbiter
 	s.tiebreakEpsilon = epsilon
 	s.aiCallBudget = budget
 	s.aiCallTimeout = timeout
+}
+
+// SetAlwaysConsultAI sets the server-wide default for whether every task
+// scheduling decision goes through the AI arbiter. Per-task AISchedule
+// (when non-nil) overrides this. The aiCallBudget still caps how many AI
+// calls can fire per scheduling tick.
+func (s *TaskSupervisor) SetAlwaysConsultAI(enable bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.alwaysConsultAI = enable
+}
+
+// resolveAlwaysConsult returns whether AI scheduling should be invoked for
+// task — task-level AISchedule wins over the supervisor default.
+func (s *TaskSupervisor) resolveAlwaysConsult(task *domain.Task) bool {
+	if task != nil && task.AISchedule != nil {
+		return *task.AISchedule
+	}
+	return s.alwaysConsultAI
+}
+
+// ScheduleNow runs one scheduling pass immediately, outside the periodic
+// ticker. Callers (e.g. the POST /api/tasks handler) use this to push a
+// freshly enqueued task through the same AI-aware path the supervisor uses
+// during its tick, instead of bypassing it with a separate immediate-assign
+// codepath. Locks the same mutex as the periodic check.
+func (s *TaskSupervisor) ScheduleNow(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.scheduleQueue(ctx)
 }
 
 // Start begins the supervision loop
@@ -138,13 +176,34 @@ func (s *TaskSupervisor) scheduleQueue(ctx context.Context) {
 	}
 
 	aiCallsRemaining := s.aiCallBudget
-	for _, task := range s.taskQueue.ListQueuedByPriority() {
+	queued := s.taskQueue.ListQueuedByPriority()
+	if len(queued) > 0 {
+		log.Printf("[supervisor] tick: queued=%d snapshots=%d aiBudget=%d", len(queued), len(snaps), aiCallsRemaining)
+	}
+	for _, task := range queued {
 		var best *ai.WorkerSnapshot
-		if s.aiArbiter != nil && aiCallsRemaining > 0 {
+		alwaysAI := s.resolveAlwaysConsult(task) && s.aiArbiter != nil && aiCallsRemaining > 0
+		if alwaysAI {
+			log.Printf("[supervisor] task %s always-consult -> calling AI scheduler", task.ID)
+			best = ai.ScheduleAlways(ctx, task, snaps, s.aiArbiter, s.aiCallTimeout)
+			aiCallsRemaining--
+			if best != nil {
+				log.Printf("[supervisor] task %s AI picked %s", task.ID, best.DeviceID)
+			} else {
+				log.Printf("[supervisor] task %s AI returned nil (no eligible)", task.ID)
+			}
+		} else if s.aiArbiter != nil && aiCallsRemaining > 0 {
 			tied := ai.PickTopKEligible(task, snaps, 5, s.tiebreakEpsilon)
+			log.Printf("[supervisor] task %s eligible=%d", task.ID, len(tied))
 			if len(tied) > 1 {
+				log.Printf("[supervisor] task %s tied=%d -> calling AI tiebreaker", task.ID, len(tied))
 				best = ai.ScheduleWithTiebreak(ctx, task, snaps, s.aiArbiter, s.tiebreakEpsilon, s.aiCallTimeout)
 				aiCallsRemaining--
+				if best != nil {
+					log.Printf("[supervisor] task %s AI picked %s", task.ID, best.DeviceID)
+				} else {
+					log.Printf("[supervisor] task %s AI returned nil (fallback)", task.ID)
+				}
 			} else if len(tied) == 1 {
 				w := tied[0]
 				best = &w
@@ -153,12 +212,14 @@ func (s *TaskSupervisor) scheduleQueue(ctx context.Context) {
 			best = ai.PickBestWorker(task, snaps)
 		}
 		if best == nil {
+			log.Printf("[supervisor] task %s: no worker selected", task.ID)
 			continue
 		}
 		assigned := s.taskQueue.AssignToDevice(task.ID, best.DeviceID)
 		if assigned == nil {
 			continue // raced: another pass claimed it
 		}
+		log.Printf("[supervisor] task %s assigned to %s", task.ID, best.DeviceID)
 		s.notifyDeviceOfTask(best.DeviceID, assigned)
 		bumpRunningJobs(snaps, best.DeviceID)
 	}

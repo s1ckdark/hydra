@@ -10,6 +10,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/s1ckdark/hydra/internal/domain"
 	"github.com/s1ckdark/hydra/internal/repository"
 )
 
@@ -59,11 +60,13 @@ func (d *DB) Close() error {
 // Repositories returns all repository implementations
 func (d *DB) Repositories() *repository.Repositories {
 	return &repository.Repositories{
-		Devices:      NewDeviceRepository(d.db),
-		Orchs:     NewOrchRepository(d.db),
-		OrchNodes: NewOrchNodeRepository(d.db),
-		Metrics:      NewMetricsRepository(d.db),
-		UnitOfWork:   d,
+		Devices:    NewDeviceRepository(d.db),
+		Orchs:      NewOrchRepository(d.db),
+		OrchNodes:  NewOrchNodeRepository(d.db),
+		Metrics:    NewMetricsRepository(d.db),
+		Tasks:      NewTaskRepository(d.db),
+		TaskGroups: NewTaskGroupRepository(d.db),
+		UnitOfWork: d,
 	}
 }
 
@@ -109,6 +112,16 @@ func (t *Transaction) OrchNodes() repository.OrchNodeRepository {
 // Metrics returns the metrics repository for this transaction
 func (t *Transaction) Metrics() repository.MetricsRepository {
 	return &MetricsRepository{db: t.tx}
+}
+
+// Tasks returns the task repository for this transaction
+func (t *Transaction) Tasks() domain.TaskRepository {
+	return &TaskRepository{db: t.tx}
+}
+
+// TaskGroups returns the task group repository for this transaction
+func (t *Transaction) TaskGroups() repository.TaskGroupRepository {
+	return &TaskGroupRepository{db: t.tx}
 }
 
 // migrate runs database migrations
@@ -218,6 +231,47 @@ func (d *DB) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_orchs_status ON orchs(status)`,
 		`CREATE INDEX IF NOT EXISTS idx_orchs_name ON orchs(name)`,
 		`CREATE INDEX IF NOT EXISTS idx_metrics_device_time ON metrics(device_id, collected_at DESC)`,
+
+		// Tasks table — write-through shadow of the in-memory TaskQueue.
+		`CREATE TABLE IF NOT EXISTS tasks (
+			id                     TEXT PRIMARY KEY,
+			parent_id              TEXT NOT NULL DEFAULT '',
+			orch_id                TEXT NOT NULL DEFAULT '',
+			type                   TEXT NOT NULL,
+			status                 TEXT NOT NULL,
+			priority               TEXT NOT NULL DEFAULT 'normal',
+			required_capabilities  TEXT NOT NULL DEFAULT '[]',
+			preferred_device_id    TEXT NOT NULL DEFAULT '',
+			assigned_device_id     TEXT NOT NULL DEFAULT '',
+			payload                TEXT NOT NULL DEFAULT '{}',
+			result                 TEXT NOT NULL DEFAULT '',
+			error                  TEXT NOT NULL DEFAULT '',
+			created_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			assigned_at            TIMESTAMP,
+			started_at             TIMESTAMP,
+			completed_at           TIMESTAMP,
+			timeout_ns             INTEGER NOT NULL DEFAULT 0,
+			retry_count            INTEGER NOT NULL DEFAULT 0,
+			max_retries            INTEGER NOT NULL DEFAULT 0,
+			created_by             TEXT NOT NULL DEFAULT '',
+			resource_reqs          TEXT NOT NULL DEFAULT '',
+			blocked_device_ids     TEXT NOT NULL DEFAULT '[]',
+			ai_schedule            TEXT NOT NULL DEFAULT '',
+			group_id               TEXT NOT NULL DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_status     ON tasks(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_group_id   ON tasks(group_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)`,
+
+		// Task groups table — fan-out batch identity.
+		`CREATE TABLE IF NOT EXISTS task_groups (
+			id          TEXT PRIMARY KEY,
+			name        TEXT NOT NULL DEFAULT '',
+			created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			created_by  TEXT NOT NULL DEFAULT '',
+			total_tasks INTEGER NOT NULL,
+			metadata    TEXT NOT NULL DEFAULT '{}'
+		)`,
 	}
 
 	for _, migration := range migrations {

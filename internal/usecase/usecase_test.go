@@ -192,6 +192,129 @@ func TestDeviceUseCase_GetDevice(t *testing.T) {
 	}
 }
 
+func TestDeviceUseCase_SetCapabilities_AppliedOnGetDevice(t *testing.T) {
+	repos := setupTestRepos(t)
+	ts := &mockTailscale{devices: testDevices()}
+	uc := NewDeviceUseCase(repos, ts, &mockCollector{})
+	ctx := context.Background()
+
+	uc.SetCapabilities("d1", []string{"gpu", "compute"})
+
+	device, err := uc.GetDevice(ctx, "d1")
+	if err != nil {
+		t.Fatalf("GetDevice error: %v", err)
+	}
+	if got := device.Capabilities; len(got) != 2 || got[0] != "gpu" || got[1] != "compute" {
+		t.Errorf("Capabilities = %v, want [gpu compute]", got)
+	}
+
+	// Untouched device has no override.
+	other, _ := uc.GetDevice(ctx, "d2")
+	if len(other.Capabilities) != 0 {
+		t.Errorf("d2 Capabilities = %v, want empty", other.Capabilities)
+	}
+}
+
+func TestDeviceUseCase_SetCapabilities_SurvivesCacheRefresh(t *testing.T) {
+	repos := setupTestRepos(t)
+	ts := &mockTailscale{devices: testDevices()}
+	uc := NewDeviceUseCase(repos, ts, &mockCollector{})
+	ctx := context.Background()
+
+	// Prime cache.
+	if _, err := uc.ListDevices(ctx, false); err != nil {
+		t.Fatalf("ListDevices: %v", err)
+	}
+	uc.SetCapabilities("d1", []string{"gpu"})
+
+	// Force refresh — Tailscale returns devices with no Capabilities.
+	devices, err := uc.ListDevices(ctx, true)
+	if err != nil {
+		t.Fatalf("ListDevices(force): %v", err)
+	}
+	var d1 *domain.Device
+	for _, d := range devices {
+		if d.ID == "d1" {
+			d1 = d
+			break
+		}
+	}
+	if d1 == nil {
+		t.Fatal("d1 missing after refresh")
+	}
+	if len(d1.Capabilities) != 1 || d1.Capabilities[0] != "gpu" {
+		t.Errorf("Capabilities = %v after refresh, want [gpu]", d1.Capabilities)
+	}
+}
+
+func TestDeviceUseCase_SetCapabilities_EmptyClears(t *testing.T) {
+	repos := setupTestRepos(t)
+	ts := &mockTailscale{devices: testDevices()}
+	uc := NewDeviceUseCase(repos, ts, &mockCollector{})
+	ctx := context.Background()
+
+	uc.SetCapabilities("d1", []string{"gpu"})
+	if got := uc.GetCapabilities("d1"); len(got) != 1 {
+		t.Errorf("GetCapabilities = %v, want [gpu]", got)
+	}
+
+	uc.SetCapabilities("d1", nil)
+	if got := uc.GetCapabilities("d1"); got != nil {
+		t.Errorf("GetCapabilities after clear = %v, want nil", got)
+	}
+
+	device, _ := uc.GetDevice(ctx, "d1")
+	if len(device.Capabilities) != 0 {
+		t.Errorf("Capabilities after clear = %v, want empty", device.Capabilities)
+	}
+}
+
+func TestDeviceUseCase_SetCapabilities_EmptyClearsCachedDevicePointer(t *testing.T) {
+	// Regression test: clearing an override must also reset the cached device's
+	// Capabilities, not just delete the override map entry. Otherwise the
+	// in-place mutation applied during the prior override would persist on the
+	// cached *Device pointer until the next Tailscale refresh.
+	repos := setupTestRepos(t)
+	ts := &mockTailscale{devices: testDevices()}
+	uc := NewDeviceUseCase(repos, ts, &mockCollector{})
+	ctx := context.Background()
+
+	if _, err := uc.ListDevices(ctx, false); err != nil { // populate cache
+		t.Fatalf("ListDevices: %v", err)
+	}
+	uc.SetCapabilities("d1", []string{"gpu"})
+	if _, err := uc.ListDevices(ctx, false); err != nil { // applies override
+		t.Fatalf("ListDevices2: %v", err)
+	}
+
+	uc.SetCapabilities("d1", nil) // clear
+
+	devices, _ := uc.ListDevices(ctx, false) // cache hit, applyCapabilityOverrides no-ops for d1
+	for _, d := range devices {
+		if d.ID == "d1" {
+			if len(d.Capabilities) != 0 {
+				t.Errorf("cached d1.Capabilities = %v after clear; want empty", d.Capabilities)
+			}
+			return
+		}
+	}
+	t.Errorf("d1 not found in cached devices")
+}
+
+func TestDeviceUseCase_GetCapabilities_DefensiveCopy(t *testing.T) {
+	repos := setupTestRepos(t)
+	ts := &mockTailscale{devices: testDevices()}
+	uc := NewDeviceUseCase(repos, ts, &mockCollector{})
+
+	uc.SetCapabilities("d1", []string{"gpu"})
+	got := uc.GetCapabilities("d1")
+	got[0] = "tampered"
+
+	if again := uc.GetCapabilities("d1"); again[0] != "gpu" {
+		t.Errorf("internal state mutated via returned slice: got %v", again)
+	}
+}
+
 func TestDeviceUseCase_FilterDevices(t *testing.T) {
 	repos := setupTestRepos(t)
 	ts := &mockTailscale{devices: testDevices()}

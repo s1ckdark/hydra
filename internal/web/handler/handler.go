@@ -45,16 +45,33 @@ func internalError(c echo.Context, msg string, err error) error {
 	return c.JSON(http.StatusInternalServerError, map[string]string{"error": msg})
 }
 
+// taskGroupReader is the subset of repository.TaskGroupRepository the
+// /api/groups endpoint needs. Local interface so handler tests can supply
+// stubs without pulling sqlite into the test build graph.
+type taskGroupReader interface {
+	GetByID(ctx context.Context, id string) (*domain.TaskGroup, error)
+}
+
+// taskGroupSaver is the write-side of TaskGroupRepository.
+type taskGroupSaver interface {
+	Save(ctx context.Context, group *domain.TaskGroup) error
+}
+
 // Handler handles HTTP requests
 type Handler struct {
-	deviceUC   *usecase.DeviceUseCase
-	orchUC  *usecase.OrchUseCase
-	monitorUC  *usecase.MonitorUseCase
-	failoverUC *usecase.FailoverUseCase
-	executor   RemoteExecutor
-	cfg        *config.Config
-	wsHub      *ws.Hub
-	taskQueue  *domain.TaskQueue
+	deviceUC           *usecase.DeviceUseCase
+	orchUC             *usecase.OrchUseCase
+	monitorUC          *usecase.MonitorUseCase
+	failoverUC         *usecase.FailoverUseCase
+	executor           RemoteExecutor
+	cfg                *config.Config
+	wsHub              *ws.Hub
+	taskQueue          *domain.TaskQueue
+	taskSupervisor     *usecase.TaskSupervisor
+	taskGroupRepo      taskGroupReader
+	taskGroupTasks     domain.TaskRepository
+	taskGroupSaver     taskGroupSaver
+	aiArbiterRebuilder func(ai config.AIConfig)
 }
 
 // NewHandler creates a new Handler
@@ -87,6 +104,33 @@ func (h *Handler) SetWebSocketHub(hub *ws.Hub) {
 // SetTaskQueue sets the task queue
 func (h *Handler) SetTaskQueue(queue *domain.TaskQueue) {
 	h.taskQueue = queue
+}
+
+// SetTaskSupervisor wires the task supervisor so APITaskCreate can route
+// freshly enqueued tasks through the AI-aware scheduler instead of the
+// legacy immediate-assign path.
+func (h *Handler) SetTaskSupervisor(s *usecase.TaskSupervisor) {
+	h.taskSupervisor = s
+}
+
+// SetAIArbiterRebuilder wires a callback the handler invokes after
+// PUT /api/config/ai persists the new config so the running supervisor
+// picks up provider/key/endpoint changes without a process restart.
+// Pass nil to disable; if nil the supervisor's arbiter stays at boot config.
+func (h *Handler) SetAIArbiterRebuilder(rebuild func(ai config.AIConfig)) {
+	h.aiArbiterRebuilder = rebuild
+}
+
+// SetTaskGroupRepos wires the read and write dependencies for /api/groups
+// and /api/tasks/batch. The concrete type passed as g must implement both
+// taskGroupReader and taskGroupSaver (e.g. *sqlite.TaskGroupRepository).
+func (h *Handler) SetTaskGroupRepos(g interface {
+	taskGroupReader
+	taskGroupSaver
+}, t domain.TaskRepository) {
+	h.taskGroupRepo = g
+	h.taskGroupSaver = g
+	h.taskGroupTasks = t
 }
 
 // Dashboard renders the main dashboard

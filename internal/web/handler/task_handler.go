@@ -3,7 +3,6 @@ package handler
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -63,6 +62,7 @@ func (h *Handler) APITaskCreate(c echo.Context) error {
 		Payload              map[string]interface{} `json:"payload"`
 		Timeout              int                    `json:"timeout"` // seconds
 		MaxRetries           int                    `json:"maxRetries"`
+		AISchedule           *bool                  `json:"aiSchedule"` // override server-wide AlwaysConsult for this task
 	}
 
 	if err := c.Bind(&req); err != nil {
@@ -83,6 +83,7 @@ func (h *Handler) APITaskCreate(c echo.Context) error {
 		Payload:              req.Payload,
 		Timeout:              time.Duration(req.Timeout) * time.Second,
 		MaxRetries:           req.MaxRetries,
+		AISchedule:           req.AISchedule,
 	}
 
 	if task.Priority == "" {
@@ -91,30 +92,20 @@ func (h *Handler) APITaskCreate(c echo.Context) error {
 
 	h.taskQueue.Enqueue(task)
 
-	// Try to assign immediately if a matching device is connected via WebSocket
-	if h.wsHub != nil {
-		for _, connDeviceID := range h.wsHub.ConnectedDevices() {
-			if h.deviceUC != nil {
-				ctx := c.Request().Context()
-				dev, err := h.deviceUC.GetDevice(ctx, connDeviceID)
-				if err == nil {
-					matched := h.taskQueue.FindMatchingTask(dev)
-					if matched != nil && matched.ID == task.ID {
-						// Send task to device via WebSocket
-						payload, _ := json.Marshal(matched)
-						msg := &ws.Message{
-							Type:      ws.MsgTaskAssign,
-							DeviceID:  connDeviceID,
-							TaskID:    matched.ID,
-							Payload:   payload,
-							Timestamp: time.Now(),
-						}
-						h.wsHub.SendToDevice(connDeviceID, msg)
-						break
-					}
-				}
-			}
-		}
+	// Run one scheduling pass immediately so we don't wait up to a tick
+	// interval for the supervisor to pick this task up. The supervisor's
+	// scheduleQueue is the single source of scheduling truth — capability
+	// matching, metric-based scoring, and AI tiebreaking — so all task
+	// assignments share the same code path whether they arrive via POST
+	// or are leftovers from a previous tick.
+	if h.taskSupervisor != nil {
+		h.taskSupervisor.ScheduleNow(c.Request().Context())
+	}
+
+	// Refresh the task from the queue: ScheduleNow may have moved it from
+	// queued to assigned, and we want the response to reflect that.
+	if updated := h.taskQueue.Get(task.ID); updated != nil {
+		task = updated
 	}
 
 	return c.JSON(http.StatusCreated, task)
@@ -206,7 +197,11 @@ func (h *Handler) APITaskSetResult(c echo.Context) error {
 	return c.JSON(http.StatusOK, task)
 }
 
-// APIRegisterCapabilities registers device capabilities
+// APIRegisterCapabilities registers device capabilities. The override is
+// persisted in DeviceUseCase so it survives the Tailscale cache TTL refresh.
+// Devices not yet known to Tailscale (e.g. clients identified by a local
+// Keychain UUID) are accepted — the override is recorded keyed by id and
+// will be applied if/when a matching device appears.
 func (h *Handler) APIRegisterCapabilities(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
@@ -223,23 +218,30 @@ func (h *Handler) APIRegisterCapabilities(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
-	device, err := h.deviceUC.GetDevice(ctx, id)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "device not found"})
+	// Persist the override unconditionally — works for unknown devices too.
+	h.deviceUC.SetCapabilities(id, req.Capabilities)
+
+	// If the device is known to Tailscale, mutate the in-memory record so
+	// concurrent reads observe the change before the next override apply.
+	if device, err := h.deviceUC.GetDevice(ctx, id); err == nil {
+		device.Capabilities = req.Capabilities
+		if req.DeviceToken != "" {
+			device.DeviceToken = req.DeviceToken
+		}
 	}
 
-	device.Capabilities = req.Capabilities
-	if req.DeviceToken != "" {
-		device.DeviceToken = req.DeviceToken
+	caps := req.Capabilities
+	if caps == nil {
+		caps = []string{}
 	}
-
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"deviceId":     device.ID,
-		"capabilities": device.Capabilities,
+		"deviceId":     id,
+		"capabilities": caps,
 	})
 }
 
-// APIGetCapabilities returns device capabilities
+// APIGetCapabilities returns device capabilities. Falls back to the override
+// map for devices not yet known to Tailscale.
 func (h *Handler) APIGetCapabilities(c echo.Context) error {
 	id := c.Param("id")
 	ctx := c.Request().Context()
@@ -250,7 +252,14 @@ func (h *Handler) APIGetCapabilities(c echo.Context) error {
 
 	device, err := h.deviceUC.GetDevice(ctx, id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "device not found"})
+		caps := h.deviceUC.GetCapabilities(id)
+		if caps == nil {
+			caps = []string{}
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"deviceId":     id,
+			"capabilities": caps,
+		})
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{

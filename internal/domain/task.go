@@ -55,6 +55,14 @@ type Task struct {
 	CreatedBy            string                 `json:"createdBy,omitempty"`       // device ID of creator/head
 	ResourceReqs         *ResourceRequirements  `json:"resourceReqs,omitempty"`
 	BlockedDeviceIDs     []string               `json:"blockedDeviceIds,omitempty"` // workers excluded after failure; prevents flapping on retry
+	// AISchedule overrides the server-wide AlwaysConsult flag for this task:
+	//   nil   → use the server config default
+	//   true  → always run scheduling through the AI provider
+	//   false → use rule-based scoring with AI only as a tiebreaker
+	AISchedule *bool `json:"aiSchedule,omitempty"`
+	// GroupID links this task to a fan-out batch (TaskGroup). Empty when
+	// the task was submitted via the single-task POST endpoint.
+	GroupID string `json:"groupId,omitempty"`
 }
 
 // TaskResult holds the output of a completed task

@@ -25,6 +25,14 @@ type DeviceUseCase struct {
 	cachedDevices []*domain.Device
 	cacheTime     time.Time
 	cacheMu       sync.RWMutex
+
+	// capabilityOverride records capabilities reported by clients
+	// (Hydra GUI, wstub, future workers) via APIRegisterCapabilities.
+	// Tailscale doesn't carry this information, so we keep our own copy here
+	// and re-apply it on every read so it survives cache TTL refreshes.
+	// Cleared only by an explicit empty SetCapabilities call. Lost on restart.
+	capabilityOverride map[string][]string
+	capsMu             sync.RWMutex
 }
 
 // TailscaleClient interface for Tailscale API operations
@@ -55,6 +63,78 @@ func (uc *DeviceUseCase) SetGPUChecker(checker GPUChecker) {
 	uc.gpuChecker = checker
 }
 
+// SetCapabilities records the capability list for deviceID. The override is
+// applied on every subsequent ListDevices/GetDevice return, so it survives
+// the cache TTL refresh that would otherwise wipe Capabilities populated by
+// APIRegisterCapabilities. Passing an empty slice clears the override and
+// also resets the cached device's Capabilities — applyCapabilityOverrides
+// only writes new values, it doesn't undo prior mutations, so without this
+// reset a cleared device would keep reporting the stale capability set
+// until the next Tailscale refresh.
+func (uc *DeviceUseCase) SetCapabilities(deviceID string, caps []string) {
+	uc.capsMu.Lock()
+	if uc.capabilityOverride == nil {
+		uc.capabilityOverride = make(map[string][]string)
+	}
+	cleared := false
+	if len(caps) == 0 {
+		delete(uc.capabilityOverride, deviceID)
+		cleared = true
+	} else {
+		cp := make([]string, len(caps))
+		copy(cp, caps)
+		uc.capabilityOverride[deviceID] = cp
+	}
+	uc.capsMu.Unlock()
+
+	if cleared {
+		// Revert any prior in-place mutation on the cached device pointer
+		// (ListDevices reuses the same *Device, so an old override could
+		// persist on it after the override-map entry is gone).
+		uc.cacheMu.Lock()
+		for _, d := range uc.cachedDevices {
+			if d.ID == deviceID {
+				d.Capabilities = nil
+				break
+			}
+		}
+		uc.cacheMu.Unlock()
+	}
+}
+
+// applyCapabilityOverrides mutates the given devices in place, replacing
+// Capabilities with whatever was last reported via SetCapabilities. Devices
+// without an override are left untouched.
+func (uc *DeviceUseCase) applyCapabilityOverrides(devices []*domain.Device) {
+	uc.capsMu.RLock()
+	defer uc.capsMu.RUnlock()
+	if len(uc.capabilityOverride) == 0 {
+		return
+	}
+	for _, d := range devices {
+		if caps, ok := uc.capabilityOverride[d.ID]; ok {
+			cp := make([]string, len(caps))
+			copy(cp, caps)
+			d.Capabilities = cp
+		}
+	}
+}
+
+// GetCapabilities returns the override list recorded for deviceID, or nil
+// if none has been set. Useful for clients (e.g. APIGetCapabilities) that
+// need to look up capabilities for a device that isn't known to Tailscale.
+func (uc *DeviceUseCase) GetCapabilities(deviceID string) []string {
+	uc.capsMu.RLock()
+	defer uc.capsMu.RUnlock()
+	caps, ok := uc.capabilityOverride[deviceID]
+	if !ok {
+		return nil
+	}
+	cp := make([]string, len(caps))
+	copy(cp, caps)
+	return cp
+}
+
 // ListDevices returns all devices, using cache if available
 func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]*domain.Device, error) {
 	if !forceRefresh {
@@ -62,6 +142,7 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 		if time.Since(uc.cacheTime) < uc.cacheTTL && len(uc.cachedDevices) > 0 {
 			devices := uc.cachedDevices
 			uc.cacheMu.RUnlock()
+			uc.applyCapabilityOverrides(devices)
 			return devices, nil
 		}
 		uc.cacheMu.RUnlock()
@@ -113,6 +194,7 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 		}(cloned)
 	}
 
+	uc.applyCapabilityOverrides(devices)
 	return devices, nil
 }
 
@@ -187,7 +269,12 @@ func (uc *DeviceUseCase) probeGPU(ctx context.Context, devices []*domain.Device)
 
 // GetDevice returns a specific device
 func (uc *DeviceUseCase) GetDevice(ctx context.Context, nameOrID string) (*domain.Device, error) {
-	return uc.tailscale.GetDevice(ctx, nameOrID)
+	device, err := uc.tailscale.GetDevice(ctx, nameOrID)
+	if err != nil {
+		return nil, err
+	}
+	uc.applyCapabilityOverrides([]*domain.Device{device})
+	return device, nil
 }
 
 // GetDeviceWithMetrics returns a device with its current metrics

@@ -54,6 +54,23 @@ actor APIClient {
         return try await post("/api/devices/\(id)/execute", body: ExecuteRequest(command: command, timeout_seconds: timeout))
     }
 
+    /// Reports the device's enabled capabilities to the server. Used by
+    /// CapabilityReporter on app launch and reconnect so the AI scheduler
+    /// can route capability-tagged tasks here.
+    func registerCapabilities(deviceID: String, capabilities: [String]) async throws -> CapabilityRegisterResponse {
+        let req = CapabilityRegisterRequest(capabilities: capabilities)
+        return try await post("/api/devices/\(deviceID)/capabilities", body: req)
+    }
+
+    private struct CapabilityRegisterRequest: Encodable {
+        let capabilities: [String]
+    }
+
+    struct CapabilityRegisterResponse: Decodable {
+        let deviceId: String
+        let capabilities: [String]
+    }
+
     // MARK: - Orchs
 
     func listOrchs() async throws -> [Orch] {

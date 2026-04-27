@@ -82,6 +82,23 @@ func main() {
 
 	repos := db.Repositories()
 
+	// One-shot orphan cleanup: any task left non-terminal from a prior run
+	// can never converge (the in-memory TaskQueue rebuilds empty on boot). Mark
+	// them failed with an explanatory message so consuming groups transition
+	// to partial/failed correctly.
+	//
+	// Cutoff = current wall-clock. Routes (the only way to create new tasks
+	// in this run) aren't registered until later in main(), so no fresh task
+	// can have created_at <= now() yet. The earlier `now - 1s` cutoff left a
+	// gap where tasks created in the final second before a previous crash
+	// were not swept; using now() closes that gap.
+	bootCutoff := time.Now()
+	if affected, err := repos.Tasks.MarkStaleTasksFailed(context.Background(), bootCutoff); err != nil {
+		log.Printf("[startup] stale-task cleanup failed: %v", err)
+	} else if affected > 0 {
+		log.Printf("[startup] marked %d stale tasks failed (pre-boot)", affected)
+	}
+
 	// Initialize infrastructure
 	tsClient := tailscale.NewClient(cfg.Tailscale.APIKey, cfg.Tailscale.Tailnet)
 
@@ -133,8 +150,10 @@ func main() {
 	h.SetWebSocketHub(wsHub)
 
 	// Initialize task queue
-	taskQueue := domain.NewTaskQueue()
+	taskQueue := domain.NewTaskQueue().WithRepo(repos.Tasks)
 	h.SetTaskQueue(taskQueue)
+
+	h.SetTaskGroupRepos(repos.TaskGroups, repos.Tasks)
 
 	// Wire WebSocket disconnect handler for immediate task reassignment
 	wsHub.SetDisconnectHandler(func(deviceID string) {
@@ -153,10 +172,29 @@ func main() {
 
 	// Start task supervisor (periodic health check + timeout detection)
 	taskSupervisor := usecase.NewTaskSupervisor(taskQueue, wsHub, deviceUC, monitorUC)
-	if arbiter := buildAITaskScheduler(cfg.Agent); arbiter != nil {
+	aiRegistry := buildAIRegistry(cfg.Agent.AI)
+	if arbiter := aiRegistry.TaskSchedulerProvider(); arbiter != nil {
 		taskSupervisor.SetAIArbiter(arbiter, 0.10, 5, 3*time.Second)
-		log.Printf("[supervisor] AI tiebreaker enabled (provider=%s, epsilon=0.10, budget=5/tick, timeout=3s)", cfg.Agent.AIProvider)
+		log.Printf("[supervisor] AI tiebreaker enabled (provider=%s, epsilon=0.10, budget=5/tick, timeout=3s)", cfg.Agent.AI.Resolve("schedule").Provider)
 	}
+	if cfg.Agent.AI.AlwaysConsult {
+		taskSupervisor.SetAlwaysConsultAI(true)
+		log.Printf("[supervisor] AI promoted to primary scheduler (always_consult=true); per-task aiSchedule still wins")
+	}
+	// Allow PUT /api/config/ai to rebuild the running arbiter without a
+	// process restart. The closure captures taskSupervisor by reference;
+	// passing nil arbiter disables tiebreaking until the next valid PUT.
+	h.SetAIArbiterRebuilder(func(newAI config.AIConfig) {
+		reg := buildAIRegistry(newAI)
+		arbiter := reg.TaskSchedulerProvider()
+		taskSupervisor.SetAIArbiter(arbiter, 0.10, 5, 3*time.Second)
+		if arbiter != nil {
+			log.Printf("[supervisor] AI tiebreaker rebuilt from PUT (provider=%s)", newAI.Resolve("schedule").Provider)
+		} else {
+			log.Printf("[supervisor] AI tiebreaker disabled by PUT (no provider)")
+		}
+	})
+	h.SetTaskSupervisor(taskSupervisor)
 	go taskSupervisor.Start(monitorCtx)
 	h.SetExecutor(sshExecutor)
 
@@ -261,6 +299,8 @@ func main() {
 	api.POST("/tasks", h.APITaskCreate)
 	api.PUT("/tasks/:id/status", h.APITaskUpdateStatus)
 	api.PUT("/tasks/:id/result", h.APITaskSetResult)
+	api.GET("/groups/:id", h.APIGetGroup)
+	apiWrite.POST("/tasks/batch", h.APITaskBatchCreate)
 
 	// Capability routes
 	api.POST("/devices/:id/capabilities", h.APIRegisterCapabilities)
@@ -269,6 +309,8 @@ func main() {
 	// Config routes (Tailscale network auth required)
 	apiWrite.GET("/config/tailscale", h.APIGetTailscaleConfig)
 	apiWrite.PUT("/config/tailscale", h.APIPutTailscaleConfig)
+	apiWrite.GET("/config/ai", h.APIGetAIConfig)
+	apiWrite.PUT("/config/ai", h.APIPutAIConfig)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {

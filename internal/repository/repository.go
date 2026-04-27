@@ -87,6 +87,14 @@ type MetricsRepository interface {
 	Cleanup(ctx context.Context, olderThanDays int) error
 }
 
+// TaskGroupRepository defines operations for task group persistence.
+// (Tasks use domain.TaskRepository so domain.TaskQueue can depend on it
+// without importing this package — avoids an import cycle.)
+type TaskGroupRepository interface {
+	Save(ctx context.Context, group *domain.TaskGroup) error
+	GetByID(ctx context.Context, id string) (*domain.TaskGroup, error)
+}
+
 // UnitOfWork provides transactional support
 type UnitOfWork interface {
 	// Begin starts a new transaction
@@ -112,13 +120,21 @@ type Transaction interface {
 
 	// Metrics returns the metrics repository for this transaction
 	Metrics() MetricsRepository
+
+	// Tasks returns the task repository for this transaction
+	Tasks() domain.TaskRepository
+
+	// TaskGroups returns the task group repository for this transaction
+	TaskGroups() TaskGroupRepository
 }
 
 // Repositories provides access to all repositories
 type Repositories struct {
-	Devices      DeviceRepository
-	Orchs     OrchRepository
-	OrchNodes OrchNodeRepository
-	Metrics      MetricsRepository
-	UnitOfWork   UnitOfWork
+	Devices    DeviceRepository
+	Orchs      OrchRepository
+	OrchNodes  OrchNodeRepository
+	Metrics    MetricsRepository
+	Tasks      domain.TaskRepository
+	TaskGroups TaskGroupRepository
+	UnitOfWork UnitOfWork
 }

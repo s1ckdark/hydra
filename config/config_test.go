@@ -90,3 +90,150 @@ func TestGetConfigDir_Default(t *testing.T) {
 		t.Error("GetConfigDir() should return non-empty default")
 	}
 }
+
+func TestAIConfig_Resolve_FallsBackToDefault(t *testing.T) {
+	cfg := AIConfig{
+		Default: ProviderConfig{Provider: "claude", APIKey: "sk-default"},
+	}
+	got := cfg.Resolve("head")
+	if got.Provider != "claude" || got.APIKey != "sk-default" {
+		t.Errorf("Resolve(head) = %+v; want claude/sk-default default fallback", got)
+	}
+}
+
+func TestAIConfig_Resolve_UsesRoleOverride(t *testing.T) {
+	override := ProviderConfig{Provider: "ollama", Endpoint: "http://localhost:11434", Model: "llama3"}
+	cfg := AIConfig{
+		Default:        ProviderConfig{Provider: "claude", APIKey: "sk-default"},
+		TaskScheduling: &override,
+	}
+	got := cfg.Resolve("schedule")
+	if got.Provider != "ollama" || got.Endpoint != "http://localhost:11434" {
+		t.Errorf("Resolve(schedule) = %+v; want ollama override", got)
+	}
+	if got := cfg.Resolve("head"); got.Provider != "claude" {
+		t.Errorf("Resolve(head) should fall back to default, got %+v", got)
+	}
+}
+
+func TestAIConfig_Resolve_EmptyOverrideFallsThrough(t *testing.T) {
+	empty := ProviderConfig{}
+	cfg := AIConfig{
+		Default:       ProviderConfig{Provider: "claude", APIKey: "sk-default"},
+		HeadSelection: &empty,
+	}
+	if got := cfg.Resolve("head"); got.Provider != "claude" {
+		t.Errorf("Resolve should ignore empty-Provider override; got %+v", got)
+	}
+}
+
+func TestMigrateLegacyAgentAI_ClaudeKey(t *testing.T) {
+	agent := AgentConfig{
+		AIProvider:      "claude",
+		AnthropicAPIKey: "sk-ant-legacy",
+	}
+	migrateLegacyAgentAI(&agent)
+	if agent.AI.Default.Provider != "claude" {
+		t.Errorf("AI.Default.Provider = %q; want claude", agent.AI.Default.Provider)
+	}
+	if agent.AI.Default.APIKey != "sk-ant-legacy" {
+		t.Errorf("AI.Default.APIKey = %q; want sk-ant-legacy", agent.AI.Default.APIKey)
+	}
+}
+
+func TestMigrateLegacyAgentAI_OpenAIReusesKey(t *testing.T) {
+	agent := AgentConfig{
+		AIProvider:      "openai",
+		AnthropicAPIKey: "sk-openai-legacy",
+	}
+	migrateLegacyAgentAI(&agent)
+	if agent.AI.Default.Provider != "openai" || agent.AI.Default.APIKey != "sk-openai-legacy" {
+		t.Errorf("openai legacy migration failed: %+v", agent.AI.Default)
+	}
+}
+
+func TestMigrateLegacyAgentAI_OllamaEndpoint(t *testing.T) {
+	agent := AgentConfig{
+		AIProvider:     "ollama",
+		OllamaEndpoint: "http://localhost:11434",
+		OllamaModel:    "llama3",
+	}
+	migrateLegacyAgentAI(&agent)
+	if agent.AI.Default.Provider != "ollama" ||
+		agent.AI.Default.Endpoint != "http://localhost:11434" ||
+		agent.AI.Default.Model != "llama3" {
+		t.Errorf("ollama legacy migration failed: %+v", agent.AI.Default)
+	}
+}
+
+func TestMigrateLegacyAgentAI_SkipsWhenAIDefaultPresent(t *testing.T) {
+	agent := AgentConfig{
+		AIProvider:      "claude",
+		AnthropicAPIKey: "sk-legacy",
+		AI: AIConfig{
+			Default: ProviderConfig{Provider: "openai", APIKey: "sk-new"},
+		},
+	}
+	migrateLegacyAgentAI(&agent)
+	if agent.AI.Default.Provider != "openai" {
+		t.Errorf("migration overwrote existing AI.Default: %+v", agent.AI.Default)
+	}
+}
+
+func TestConfig_SaveAndLoad_AIConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("NAGA_CONFIG_DIR", tmpDir)
+	// Tailscale.APIKey required by Validate(); not used here but keep the file loadable.
+	cfg := DefaultConfig()
+	cfg.Tailscale.APIKey = "tskey-roundtrip"
+	override := ProviderConfig{Provider: "ollama", Endpoint: "http://localhost:11434", Model: "llama3"}
+	cfg.Agent.AI = AIConfig{
+		Default:        ProviderConfig{Provider: "claude", APIKey: "sk-default", Model: "claude-sonnet-4-6"},
+		TaskScheduling: &override,
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Agent.AI.Default.Provider != "claude" || loaded.Agent.AI.Default.APIKey != "sk-default" {
+		t.Errorf("Default not persisted: %+v", loaded.Agent.AI.Default)
+	}
+	if loaded.Agent.AI.TaskScheduling == nil || loaded.Agent.AI.TaskScheduling.Provider != "ollama" {
+		t.Errorf("TaskScheduling override not persisted: %+v", loaded.Agent.AI.TaskScheduling)
+	}
+}
+
+func TestConfig_SaveAndLoad_AIConfig_ClearsRoleOverride(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("NAGA_CONFIG_DIR", tmpDir)
+
+	cfg := DefaultConfig()
+	cfg.Tailscale.APIKey = "tskey-clear"
+	override := ProviderConfig{Provider: "ollama", Endpoint: "http://localhost:11434"}
+	cfg.Agent.AI = AIConfig{
+		Default:        ProviderConfig{Provider: "claude", APIKey: "sk-default"},
+		TaskScheduling: &override,
+	}
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save 1: %v", err)
+	}
+
+	// Now transition TaskScheduling to nil and Save again in the same process.
+	cfg.Agent.AI.TaskScheduling = nil
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save 2: %v", err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if loaded.Agent.AI.TaskScheduling != nil && loaded.Agent.AI.TaskScheduling.Provider != "" {
+		t.Errorf("TaskScheduling sub-keys not cleared on nil transition: %+v", loaded.Agent.AI.TaskScheduling)
+	}
+}

@@ -81,17 +81,89 @@ type LogConfig struct {
 
 // AgentConfig holds agent settings
 type AgentConfig struct {
-	HeartbeatInterval   int    `mapstructure:"heartbeat_interval"`
-	HealthCheckInterval int    `mapstructure:"healthcheck_interval"`
-	FailureTimeout      int    `mapstructure:"failure_timeout"`
-	CheckpointDir       string `mapstructure:"checkpoint_dir"`
-	AnthropicAPIKey     string `mapstructure:"anthropic_api_key"`
-	AgentPort           int    `mapstructure:"agent_port"`
-	AIProvider          string `mapstructure:"ai_provider"`       // "claude", "ollama", "lmstudio", "openai"
-	OllamaEndpoint      string `mapstructure:"ollama_endpoint"`
-	OllamaModel         string `mapstructure:"ollama_model"`
-	LMStudioEndpoint    string `mapstructure:"lmstudio_endpoint"`
-	LMStudioModel       string `mapstructure:"lmstudio_model"`
+	HeartbeatInterval   int      `mapstructure:"heartbeat_interval"`
+	HealthCheckInterval int      `mapstructure:"healthcheck_interval"`
+	FailureTimeout      int      `mapstructure:"failure_timeout"`
+	CheckpointDir       string   `mapstructure:"checkpoint_dir"`
+	AnthropicAPIKey     string   `mapstructure:"anthropic_api_key"` // deprecated: use AI.Default
+	AgentPort           int      `mapstructure:"agent_port"`
+	AIProvider          string   `mapstructure:"ai_provider"`       // deprecated: use AI.Default.Provider
+	OllamaEndpoint      string   `mapstructure:"ollama_endpoint"`   // deprecated: use AI.Default.Endpoint
+	OllamaModel         string   `mapstructure:"ollama_model"`      // deprecated: use AI.Default.Model
+	LMStudioEndpoint    string   `mapstructure:"lmstudio_endpoint"` // deprecated: use AI.Default.Endpoint
+	LMStudioModel       string   `mapstructure:"lmstudio_model"`    // deprecated: use AI.Default.Model
+	AI                  AIConfig `mapstructure:"ai"`
+}
+
+// ProviderConfig describes one AI provider instance.
+// When Provider is "claude"/"openai"/"zai" the APIKey field is required.
+// When Provider is "ollama"/"lmstudio"/"openai_compatible" the Endpoint field is required.
+type ProviderConfig struct {
+	Provider string `mapstructure:"provider"`
+	APIKey   string `mapstructure:"api_key"`
+	Endpoint string `mapstructure:"endpoint"`
+	Model    string `mapstructure:"model"`
+}
+
+// AIConfig routes AI calls to providers per role.
+// Default applies to any role without a non-empty override.
+//
+// AlwaysConsult promotes the AI from a tiebreaker to the primary scheduler:
+// when true, every task assignment goes through the AI provider (subject to
+// aiCallBudget), not just rule-based ties. Per-task `aiSchedule` overrides
+// this default both ways.
+type AIConfig struct {
+	Default            ProviderConfig  `mapstructure:"default"`
+	HeadSelection      *ProviderConfig `mapstructure:"head_selection"`
+	TaskScheduling     *ProviderConfig `mapstructure:"task_scheduling"`
+	CapacityEstimation *ProviderConfig `mapstructure:"capacity_estimation"`
+	AlwaysConsult      bool            `mapstructure:"always_consult"`
+}
+
+// Resolve returns the ProviderConfig for a given role, falling back to Default
+// when no override is set or the override has an empty Provider.
+// role must be one of: "head", "schedule", "capacity".
+func (a AIConfig) Resolve(role string) ProviderConfig {
+	var override *ProviderConfig
+	switch role {
+	case "head":
+		override = a.HeadSelection
+	case "schedule":
+		override = a.TaskScheduling
+	case "capacity":
+		override = a.CapacityEstimation
+	}
+	if override != nil && override.Provider != "" {
+		return *override
+	}
+	return a.Default
+}
+
+// migrateLegacyAgentAI copies deprecated single-provider fields into the new
+// AIConfig.Default structure. No-op when AI.Default.Provider is already set.
+func migrateLegacyAgentAI(agent *AgentConfig) {
+	if agent.AI.Default.Provider != "" {
+		return
+	}
+	switch agent.AIProvider {
+	case "claude":
+		agent.AI.Default = ProviderConfig{Provider: "claude", APIKey: agent.AnthropicAPIKey}
+	case "openai":
+		// Legacy code reused AnthropicAPIKey as OpenAI key; preserve that quirk.
+		agent.AI.Default = ProviderConfig{Provider: "openai", APIKey: agent.AnthropicAPIKey}
+	case "ollama":
+		agent.AI.Default = ProviderConfig{
+			Provider: "ollama",
+			Endpoint: agent.OllamaEndpoint,
+			Model:    agent.OllamaModel,
+		}
+	case "lmstudio":
+		agent.AI.Default = ProviderConfig{
+			Provider: "lmstudio",
+			Endpoint: agent.LMStudioEndpoint,
+			Model:    agent.LMStudioModel,
+		}
+	}
 }
 
 // DefaultConfig returns a Config with default values
@@ -142,6 +214,11 @@ func DefaultConfig() *Config {
 func Load() (*Config, error) {
 	cfg := DefaultConfig()
 
+	// Reset the global viper instance so prior in-memory Set() calls from
+	// Save() do not bleed into this load (relevant when called multiple times
+	// within the same process, e.g. after Save transitions).
+	viper.Reset()
+
 	// Set config name and paths
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
@@ -174,6 +251,8 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	migrateLegacyAgentAI(&cfg.Agent)
+
 	return cfg, nil
 }
 
@@ -183,6 +262,10 @@ func Save(cfg *Config) error {
 	if err := os.MkdirAll(configDir, 0700); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
+
+	// Reset global viper so no stale in-memory keys from a previous Save call
+	// within the same process can leak into the written YAML.
+	viper.Reset()
 
 	viper.Set("tailscale.api_key", cfg.Tailscale.APIKey)
 	viper.Set("tailscale.tailnet", cfg.Tailscale.Tailnet)
@@ -208,6 +291,16 @@ func Save(cfg *Config) error {
 	viper.Set("agent.lmstudio_endpoint", cfg.Agent.LMStudioEndpoint)
 	viper.Set("agent.lmstudio_model", cfg.Agent.LMStudioModel)
 
+	// AI config — new role-based structure
+	viper.Set("agent.ai.default.provider", cfg.Agent.AI.Default.Provider)
+	viper.Set("agent.ai.default.api_key", cfg.Agent.AI.Default.APIKey)
+	viper.Set("agent.ai.default.endpoint", cfg.Agent.AI.Default.Endpoint)
+	viper.Set("agent.ai.default.model", cfg.Agent.AI.Default.Model)
+	setRoleOverride("agent.ai.head_selection", cfg.Agent.AI.HeadSelection)
+	setRoleOverride("agent.ai.task_scheduling", cfg.Agent.AI.TaskScheduling)
+	setRoleOverride("agent.ai.capacity_estimation", cfg.Agent.AI.CapacityEstimation)
+	viper.Set("agent.ai.always_consult", cfg.Agent.AI.AlwaysConsult)
+
 	configPath := filepath.Join(configDir, "config.yaml")
 	return viper.WriteConfigAs(configPath)
 }
@@ -224,6 +317,24 @@ func getConfigDir() string {
 // GetConfigDir exports the config directory path
 func GetConfigDir() string {
 	return getConfigDir()
+}
+
+// setRoleOverride sets a role-override block in viper, or clears it if nil.
+func setRoleOverride(key string, p *ProviderConfig) {
+	if p == nil {
+		// Explicitly clear nested keys; viper.Set(key, nil) alone does not
+		// shadow already-set sub-keys within the same process.
+		viper.Set(key+".provider", "")
+		viper.Set(key+".api_key", "")
+		viper.Set(key+".endpoint", "")
+		viper.Set(key+".model", "")
+		viper.Set(key, nil)
+		return
+	}
+	viper.Set(key+".provider", p.Provider)
+	viper.Set(key+".api_key", p.APIKey)
+	viper.Set(key+".endpoint", p.Endpoint)
+	viper.Set(key+".model", p.Model)
 }
 
 // Validate validates the configuration

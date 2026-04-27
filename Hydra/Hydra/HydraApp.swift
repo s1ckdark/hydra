@@ -20,7 +20,10 @@ struct HydraApp: App {
                     NSApp.activate(ignoringOtherApps: true)
                     setupCapabilities()
                 }
-                .task { await autoDiscoverServer() }
+                .task {
+                    await autoDiscoverServer()
+                    await reportCapabilities()
+                }
         }
         .defaultSize(width: 1000, height: 700)
         .commands {
@@ -94,6 +97,7 @@ struct HydraApp: App {
         NSLog("[autoDiscover] no server found, waiting for Bonjour discovery")
     }
 
+    @MainActor
     private func setupCapabilities() {
         let registry = CapabilityRegistry.shared
         #if os(iOS)
@@ -101,5 +105,20 @@ struct HydraApp: App {
         registry.register(CameraCapability())
         #endif
         registry.register(DeviceInfoCapability())
+
+        #if os(macOS)
+        // Auto-detect macOS hardware capabilities (Compute/Network/Storage/GPU)
+        // and enable those that are actually present, so reportCapabilities()
+        // can advertise them to the server right after discovery.
+        CapabilityReporter.shared.register(into: registry)
+        #endif
+    }
+
+    /// Reports this device's enabled+available capabilities to the Hydra
+    /// server. macOS-only — iOS capability reporting is a follow-up task.
+    private func reportCapabilities() async {
+        #if os(macOS)
+        await CapabilityReporter.shared.report(via: APIClient.shared)
+        #endif
     }
 }
