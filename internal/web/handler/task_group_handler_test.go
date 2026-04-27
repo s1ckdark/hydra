@@ -41,6 +41,16 @@ type stubTaskRepoForGroup struct {
 
 func (s *stubTaskRepoForGroup) Save(_ context.Context, _ *domain.Task) error { return nil }
 func (s *stubTaskRepoForGroup) Delete(_ context.Context, _ string) error     { return nil }
+func (s *stubTaskRepoForGroup) GetByID(_ context.Context, id string) (*domain.Task, error) {
+	for _, list := range s.data {
+		for _, t := range list {
+			if t.ID == id {
+				return t, nil
+			}
+		}
+	}
+	return nil, sql.ErrNoRows
+}
 func (s *stubTaskRepoForGroup) GetByGroup(_ context.Context, gid string) ([]*domain.Task, error) {
 	return s.data[gid], nil
 }

@@ -219,3 +219,6 @@ func decodeAISchedule(s string) *bool {
 		return nil
 	}
 }
+
+// Compile-time interface satisfaction.
+var _ domain.TaskRepository = (*TaskRepository)(nil)

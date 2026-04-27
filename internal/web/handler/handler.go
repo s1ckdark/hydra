@@ -52,12 +52,6 @@ type taskGroupReader interface {
 	GetByID(ctx context.Context, id string) (*domain.TaskGroup, error)
 }
 
-// taskGroupTasksReader is the read-side of TaskRepository scoped to group
-// task lookup.
-type taskGroupTasksReader interface {
-	GetByGroup(ctx context.Context, groupID string) ([]*domain.Task, error)
-}
-
 // taskGroupSaver is the write-side of TaskGroupRepository.
 type taskGroupSaver interface {
 	Save(ctx context.Context, group *domain.TaskGroup) error
@@ -75,7 +69,7 @@ type Handler struct {
 	taskQueue      *domain.TaskQueue
 	taskSupervisor *usecase.TaskSupervisor
 	taskGroupRepo  taskGroupReader
-	taskGroupTasks taskGroupTasksReader
+	taskGroupTasks domain.TaskRepository
 	taskGroupSaver taskGroupSaver
 }
 
@@ -124,7 +118,7 @@ func (h *Handler) SetTaskSupervisor(s *usecase.TaskSupervisor) {
 func (h *Handler) SetTaskGroupRepos(g interface {
 	taskGroupReader
 	taskGroupSaver
-}, t taskGroupTasksReader) {
+}, t domain.TaskRepository) {
 	h.taskGroupRepo = g
 	h.taskGroupSaver = g
 	h.taskGroupTasks = t

@@ -17,7 +17,9 @@ func (r *stubTaskRepo) Save(_ context.Context, t *Task) error {
 	r.lastTask = t
 	return r.saveErr
 }
-func (r *stubTaskRepo) Delete(_ context.Context, _ string) error { return nil }
+func (r *stubTaskRepo) Delete(_ context.Context, _ string) error               { return nil }
+func (r *stubTaskRepo) GetByID(_ context.Context, _ string) (*Task, error)     { return nil, nil }
+func (r *stubTaskRepo) GetByGroup(_ context.Context, _ string) ([]*Task, error) { return nil, nil }
 
 func TestTaskQueue_EnqueueWritesThrough(t *testing.T) {
 	q := NewTaskQueue()
