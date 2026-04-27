@@ -186,7 +186,7 @@ func scanTask(row taskRowScanner) (*domain.Task, error) {
 }
 
 func scanTasks(rows *sql.Rows) ([]*domain.Task, error) {
-	var out []*domain.Task
+	out := make([]*domain.Task, 0)
 	for rows.Next() {
 		t, err := scanTask(rows)
 		if err != nil {

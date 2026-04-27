@@ -36,6 +36,10 @@ struct AISettingsTab: View {
 
     private var isCloudProvider: Bool { Self.cloudProviders.contains(provider) }
 
+    private func isCloudProviderID(_ id: String) -> Bool {
+        return Self.cloudProviders.contains(id)
+    }
+
     /// Display label combining provider id with its group hint.
     private func label(for id: String) -> String {
         switch id {
@@ -252,7 +256,37 @@ struct AISettingsTab: View {
             defaultPayload["endpoint"] = endpoint
         }
 
-        let body: [String: Any] = ["default": defaultPayload]
+        let defaults = UserDefaults.standard
+        var body: [String: Any] = ["default": defaultPayload]
+
+        let roleKeys = [
+            ("head_selection",      "head"),
+            ("task_scheduling",     "schedule"),
+            ("capacity_estimation", "capacity"),
+        ]
+        for (jsonKey, roleSlug) in roleKeys {
+            let raw = defaults.object(forKey: "aiRole_\(roleSlug)_useDefault")
+            let useDefault = (raw as? Bool) ?? true   // unset → use default (true)
+            if useDefault {
+                continue
+            }
+            let roleProvider = defaults.string(forKey: "aiRole_\(roleSlug)_provider") ?? ""
+            let roleEndpoint = defaults.string(forKey: "aiRole_\(roleSlug)_endpoint") ?? ""
+            let roleModel    = defaults.string(forKey: "aiRole_\(roleSlug)_model")    ?? ""
+            if roleProvider.isEmpty {
+                continue
+            }
+            var override: [String: String] = ["provider": roleProvider, "model": roleModel]
+            if isCloudProviderID(roleProvider) {
+                // The endpoint slot in the Advanced UI doubles as the API key
+                // input — this is acknowledged tech debt from the prior PR. Treat
+                // its value as api_key for cloud providers.
+                override["api_key"] = roleEndpoint
+            } else {
+                override["endpoint"] = roleEndpoint
+            }
+            body[jsonKey] = override
+        }
 
         do {
             let url = URL(string: serverURL)!.appendingPathComponent("api/config/ai")

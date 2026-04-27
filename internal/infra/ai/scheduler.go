@@ -76,6 +76,13 @@ func ScoreForTask(task *domain.Task, w WorkerSnapshot) float64 {
 			return ineligible
 		}
 	}
+	// Pinned execution: when the task names a preferred device, only that
+	// device is eligible. Was previously enforced by FindMatchingTask;
+	// must be enforced here too now that POST /api/tasks routes through
+	// ScheduleNow → PickTopKEligible / ScoreForTask.
+	if task.PreferredDeviceID != "" && task.PreferredDeviceID != w.DeviceID {
+		return ineligible
+	}
 	// Capability match: every required capability must be present.
 	if !hasAllCapabilities(w.Capabilities, task.RequiredCapabilities) {
 		return ineligible

@@ -59,6 +59,17 @@ func TestScoreForTask_BlockedDeviceRejected(t *testing.T) {
 	}
 }
 
+func TestScoreForTask_PreferredDeviceOnlyEligible(t *testing.T) {
+	a := fullyLoaded("a")
+	b := fullyLoaded("b")
+	task := &domain.Task{Priority: domain.TaskPriorityNormal, PreferredDeviceID: "b"}
+
+	// Only "b" should be eligible; "a" should be rejected even though it scores well.
+	if got := PickBestWorker(task, []WorkerSnapshot{a, b}); got == nil || got.DeviceID != "b" {
+		t.Fatalf("expected pinned device 'b', got %+v", got)
+	}
+}
+
 func TestScoreForTask_InsufficientGPUMemoryRejected(t *testing.T) {
 	w := fullyLoaded("w1")
 	w.GPUMemoryFreeMB = 8000

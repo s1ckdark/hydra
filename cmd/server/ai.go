@@ -9,6 +9,7 @@ import (
 	"github.com/s1ckdark/hydra/internal/infra/ai/lmstudio"
 	"github.com/s1ckdark/hydra/internal/infra/ai/ollama"
 	"github.com/s1ckdark/hydra/internal/infra/ai/openai"
+	"github.com/s1ckdark/hydra/internal/infra/ai/zai"
 )
 
 // buildAIRegistry wires role-specific providers from the resolved AIConfig.
@@ -56,6 +57,22 @@ func buildTaskScheduler(p config.ProviderConfig) ai.TaskScheduler {
 			return nil
 		}
 		return lmstudio.NewProvider(p.Endpoint, p.Model)
+	case "zai":
+		if p.APIKey == "" {
+			log.Println("[ai] zai task-scheduler: empty api_key; disabled")
+			return nil
+		}
+		endpoint := p.Endpoint
+		if endpoint == "" {
+			endpoint = "https://api.z.ai/v1"
+		}
+		return zai.NewProvider(p.APIKey, endpoint, p.Model)
+	case "openai_compatible":
+		if p.Endpoint == "" {
+			log.Println("[ai] openai_compatible task-scheduler: empty endpoint; disabled")
+			return nil
+		}
+		return openai.NewLocalProvider(p.Endpoint, p.Model)
 	default:
 		log.Printf("[ai] unknown provider %q for task scheduler; disabled", p.Provider)
 		return nil

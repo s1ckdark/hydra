@@ -64,22 +64,26 @@ func (q *TaskQueue) WithAsyncPersist(buf int) *TaskQueue {
 	}
 	ch := make(chan *Task, buf)
 	done := make(chan struct{})
-	repo := q.repo
 	q.persistCh = ch
 	q.persistDone = done
 	q.mu.Unlock()
-	go func() {
-		defer close(done)
-		for t := range ch {
-			if repo == nil {
-				continue
-			}
-			if err := repo.Save(context.Background(), t); err != nil {
-				log.Printf("[taskqueue] async persist failed for %s: %v", t.ID, err)
-			}
-		}
-	}()
+	go q.persistWorker(ch, done)
 	return q
+}
+
+func (q *TaskQueue) persistWorker(ch <-chan *Task, done chan<- struct{}) {
+	defer close(done)
+	for t := range ch {
+		q.mu.RLock()
+		repo := q.repo
+		q.mu.RUnlock()
+		if repo == nil {
+			continue
+		}
+		if err := repo.Save(context.Background(), t); err != nil {
+			log.Printf("[taskqueue] async persist failed for %s: %v", t.ID, err)
+		}
+	}
 }
 
 // Close drains any pending async persists and stops the worker goroutine.

@@ -164,6 +164,20 @@ func TestTaskRepo_MarkStaleTasksFailed(t *testing.T) {
 	}
 }
 
+func TestTaskRepo_GetByGroup_EmptyReturnsEmptySlice(t *testing.T) {
+	r := newTaskRepoForTest(t)
+	got, err := r.GetByGroup(context.Background(), "no-such-group")
+	if err != nil {
+		t.Fatalf("GetByGroup: %v", err)
+	}
+	if got == nil {
+		t.Errorf("expected empty slice, got nil")
+	}
+	if len(got) != 0 {
+		t.Errorf("expected length 0, got %d", len(got))
+	}
+}
+
 func TestTaskRepo_GetByGroup(t *testing.T) {
 	r := newTaskRepoForTest(t)
 	ctx := context.Background()

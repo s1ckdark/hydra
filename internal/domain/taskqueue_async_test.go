@@ -121,6 +121,21 @@ func TestTaskQueue_AsyncPersist_FullChannelDrops(t *testing.T) {
 	}
 }
 
+func TestTaskQueue_AsyncPersist_RepoSetAfterAsyncEnable(t *testing.T) {
+	q := NewTaskQueue()
+	repo := &recordingRepo{}
+	// Reverse the natural-feeling order: enable async FIRST, repo SECOND.
+	q.WithAsyncPersist(8).WithRepo(repo)
+	t.Cleanup(func() { q.Close() })
+
+	q.Enqueue(&Task{ID: "post-set", Type: "shell"})
+	q.Close()
+
+	if got := repo.count(); got != 1 {
+		t.Errorf("saved = %d, want 1 (worker must observe repo set after WithAsyncPersist)", got)
+	}
+}
+
 // itoaShort converts small ints to short strings for test ids.
 func itoaShort(i int) string {
 	if i < 10 {
