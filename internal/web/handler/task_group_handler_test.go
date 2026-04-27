@@ -54,6 +54,9 @@ func (s *stubTaskRepoForGroup) GetByID(_ context.Context, id string) (*domain.Ta
 func (s *stubTaskRepoForGroup) GetByGroup(_ context.Context, gid string) ([]*domain.Task, error) {
 	return s.data[gid], nil
 }
+func (s *stubTaskRepoForGroup) MarkStaleTasksFailed(_ context.Context, _ time.Time) (int, error) {
+	return 0, nil
+}
 
 func newGroupHandlerForTest(t *testing.T, groups []*domain.TaskGroup, tasks []*domain.Task) *Handler {
 	t.Helper()

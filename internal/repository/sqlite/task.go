@@ -220,5 +220,26 @@ func decodeAISchedule(s string) *bool {
 	}
 }
 
+// MarkStaleTasksFailed implements domain.TaskRepository.
+func (r *TaskRepository) MarkStaleTasksFailed(ctx context.Context, before time.Time) (int, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE tasks
+		SET status = ?,
+		    error = 'server restarted; status unknown',
+		    completed_at = ?
+		WHERE status IN (?, ?, ?)
+		  AND created_at < ?
+	`,
+		string(domain.TaskStatusFailed), time.Now(),
+		string(domain.TaskStatusQueued), string(domain.TaskStatusAssigned), string(domain.TaskStatusRunning),
+		before,
+	)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}
+
 // Compile-time interface satisfaction.
 var _ domain.TaskRepository = (*TaskRepository)(nil)

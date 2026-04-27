@@ -82,6 +82,18 @@ func main() {
 
 	repos := db.Repositories()
 
+	// One-shot orphan cleanup: any task left non-terminal from a prior run
+	// can never converge (the in-memory TaskQueue rebuilds empty on boot). Mark
+	// them failed with an explanatory message so consuming groups transition
+	// to partial/failed correctly. Cutoff = boot moment minus 1s grace so
+	// tasks created in the same wall-clock second as boot are not swept.
+	bootCutoff := time.Now().Add(-1 * time.Second)
+	if affected, err := repos.Tasks.MarkStaleTasksFailed(context.Background(), bootCutoff); err != nil {
+		log.Printf("[startup] stale-task cleanup failed: %v", err)
+	} else if affected > 0 {
+		log.Printf("[startup] marked %d stale tasks failed (pre-boot)", affected)
+	}
+
 	// Initialize infrastructure
 	tsClient := tailscale.NewClient(cfg.Tailscale.APIKey, cfg.Tailscale.Tailnet)
 

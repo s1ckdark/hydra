@@ -110,6 +110,60 @@ func TestTaskRepo_AISchedulePointerEncoding(t *testing.T) {
 	}
 }
 
+func TestTaskRepo_MarkStaleTasksFailed(t *testing.T) {
+	r := newTaskRepoForTest(t)
+	ctx := context.Background()
+	old := time.Now().UTC().Add(-1 * time.Hour)
+	fresh := time.Now().UTC()
+
+	staleQueued := &domain.Task{ID: "s1", Type: "shell", Status: domain.TaskStatusQueued, CreatedAt: old}
+	staleAssigned := &domain.Task{ID: "s2", Type: "shell", Status: domain.TaskStatusAssigned, CreatedAt: old, AssignedDeviceID: "d1"}
+	staleRunning := &domain.Task{ID: "s3", Type: "shell", Status: domain.TaskStatusRunning, CreatedAt: old}
+	freshQueued := &domain.Task{ID: "f1", Type: "shell", Status: domain.TaskStatusQueued, CreatedAt: fresh}
+	terminalCompleted := &domain.Task{ID: "c1", Type: "shell", Status: domain.TaskStatusCompleted, CreatedAt: old}
+	terminalFailed := &domain.Task{ID: "c2", Type: "shell", Status: domain.TaskStatusFailed, CreatedAt: old, Error: "prior failure"}
+
+	for _, tk := range []*domain.Task{staleQueued, staleAssigned, staleRunning, freshQueued, terminalCompleted, terminalFailed} {
+		if err := r.Save(ctx, tk); err != nil {
+			t.Fatalf("save %s: %v", tk.ID, err)
+		}
+	}
+
+	cutoff := time.Now().UTC().Add(-1 * time.Minute)
+	n, err := r.MarkStaleTasksFailed(ctx, cutoff)
+	if err != nil {
+		t.Fatalf("MarkStaleTasksFailed: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("affected = %d, want 3 (only s1/s2/s3)", n)
+	}
+
+	// The 3 stale non-terminal tasks should now be failed.
+	for _, id := range []string{"s1", "s2", "s3"} {
+		got, err := r.GetByID(ctx, id)
+		if err != nil {
+			t.Fatalf("get %s: %v", id, err)
+		}
+		if got.Status != domain.TaskStatusFailed {
+			t.Errorf("%s status = %s, want failed", id, got.Status)
+		}
+		if got.Error != "server restarted; status unknown" {
+			t.Errorf("%s error = %q", id, got.Error)
+		}
+	}
+
+	// The fresh queued task and the two terminal tasks must NOT have been touched.
+	if got, _ := r.GetByID(ctx, "f1"); got == nil || got.Status != domain.TaskStatusQueued {
+		t.Errorf("f1 should still be queued, got %+v", got)
+	}
+	if got, _ := r.GetByID(ctx, "c1"); got == nil || got.Status != domain.TaskStatusCompleted {
+		t.Errorf("c1 should still be completed, got %+v", got)
+	}
+	if got, _ := r.GetByID(ctx, "c2"); got == nil || got.Error != "prior failure" {
+		t.Errorf("c2 prior error overwritten: %+v", got)
+	}
+}
+
 func TestTaskRepo_GetByGroup(t *testing.T) {
 	r := newTaskRepoForTest(t)
 	ctx := context.Background()
