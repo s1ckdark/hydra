@@ -237,6 +237,7 @@ struct AISettingsTab: View {
                 continue
             }
             let roleProvider = defaults.string(forKey: "aiRole_\(roleSlug)_provider") ?? ""
+            let roleAPIKey   = defaults.string(forKey: "aiRole_\(roleSlug)_apikey")   ?? ""
             let roleEndpoint = defaults.string(forKey: "aiRole_\(roleSlug)_endpoint") ?? ""
             let roleModel    = defaults.string(forKey: "aiRole_\(roleSlug)_model")    ?? ""
             if roleProvider.isEmpty {
@@ -244,10 +245,12 @@ struct AISettingsTab: View {
             }
             var override: [String: String] = ["provider": roleProvider, "model": roleModel]
             if isCloudProviderID(roleProvider) {
-                // The endpoint slot in the Advanced UI doubles as the API key
-                // input — this is acknowledged tech debt from the prior PR. Treat
-                // its value as api_key for cloud providers.
-                override["api_key"] = roleEndpoint
+                // The iOS UI writes the cloud API key to the dedicated `_apikey` slot;
+                // the macOS UI historically stuffed it into the `_endpoint` slot
+                // (documented tech debt — see PR #1 round-2 review). Prefer the clean
+                // slot when non-empty so iOS overrides round-trip correctly, and fall
+                // back to the legacy slot for values written by older macOS builds.
+                override["api_key"] = roleAPIKey.isEmpty ? roleEndpoint : roleAPIKey
             } else {
                 override["endpoint"] = roleEndpoint
             }
