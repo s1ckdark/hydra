@@ -30,28 +30,13 @@ struct AISettingsTab: View {
         case error(String)
     }
 
-    /// Cloud providers require an API key; local providers require an endpoint URL.
-    static let cloudProviders: Set<String> = ["claude", "openai", "zai"]
-    static let localProviders: Set<String> = ["ollama", "lmstudio", "openai_compatible"]
-
-    private var isCloudProvider: Bool { Self.cloudProviders.contains(provider) }
+    private var isCloudProvider: Bool { AIProviderConfig.isCloudProvider(provider) }
 
     private func isCloudProviderID(_ id: String) -> Bool {
-        return Self.cloudProviders.contains(id)
+        AIProviderConfig.isCloudProvider(id)
     }
 
-    /// Display label combining provider id with its group hint.
-    private func label(for id: String) -> String {
-        switch id {
-        case "claude":             return "Claude (cloud)"
-        case "openai":             return "OpenAI (cloud)"
-        case "zai":                return "Z.AI (cloud)"
-        case "ollama":             return "Ollama (local)"
-        case "lmstudio":           return "LM Studio (local)"
-        case "openai_compatible":  return "OpenAI-compatible (local)"
-        default:                   return id
-        }
-    }
+    private func label(for id: String) -> String { AIProviderConfig.label(for: id) }
 
     var body: some View {
         Form {
@@ -188,34 +173,10 @@ struct AISettingsTab: View {
     private func testConnection() async {
         withAnimation { testStatus = .testing }
 
-        let urlString: String
-        var headers: [String: String] = [:]
-        switch provider {
-        case "claude":
-            urlString = "https://api.anthropic.com/v1/models"
-            headers["x-api-key"] = apiKey
-            headers["anthropic-version"] = "2023-06-01"
-        case "openai":
-            urlString = "https://api.openai.com/v1/models"
-            headers["Authorization"] = "Bearer \(apiKey)"
-        case "zai":
-            urlString = "https://api.z.ai/v1/models"
-            headers["Authorization"] = "Bearer \(apiKey)"
-        case "ollama":
-            urlString = endpoint.trimmingCharacters(in: .whitespaces) + "/api/tags"
-        case "lmstudio", "openai_compatible":
-            urlString = endpoint.trimmingCharacters(in: .whitespaces) + "/v1/models"
-        default:
-            withAnimation { testStatus = .error("Unknown provider: \(provider)") }
+        guard let req = AIProviderConfig.testConnectionRequest(provider: provider, apiKey: apiKey, endpoint: endpoint) else {
+            withAnimation { testStatus = .error("Invalid provider or endpoint") }
             return
         }
-
-        guard let url = URL(string: urlString) else {
-            withAnimation { testStatus = .error("Invalid endpoint URL") }
-            return
-        }
-        var req = URLRequest(url: url, timeoutInterval: 15)
-        for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
 
         do {
             let (_, response) = try await URLSession.shared.data(for: req)
