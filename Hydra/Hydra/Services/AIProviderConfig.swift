@@ -39,21 +39,24 @@ enum AIProviderConfig {
 
         switch provider {
         case "claude":
+            guard !apiKey.isEmpty else { return nil }
             urlString = "https://api.anthropic.com/v1/models"
             headers["x-api-key"] = apiKey
             headers["anthropic-version"] = "2023-06-01"
         case "openai":
+            guard !apiKey.isEmpty else { return nil }
             urlString = "https://api.openai.com/v1/models"
             headers["Authorization"] = "Bearer \(apiKey)"
         case "zai":
+            guard !apiKey.isEmpty else { return nil }
             urlString = "https://api.z.ai/v1/models"
             headers["Authorization"] = "Bearer \(apiKey)"
         case "ollama":
-            let trimmed = endpoint.trimmingCharacters(in: .whitespaces)
+            let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
             urlString = trimmed + "/api/tags"
         case "lmstudio", "openai_compatible":
-            let trimmed = endpoint.trimmingCharacters(in: .whitespaces)
+            let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
             urlString = trimmed + "/v1/models"
         default:

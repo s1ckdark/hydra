@@ -36,6 +36,21 @@ final class AIProviderConfigTests: XCTestCase {
         XCTAssertFalse(AIProviderConfig.isCloudProvider("wat"))
     }
 
+    // MARK: - allProviders contract
+
+    func testAllProviders_OrderAndMembership() {
+        XCTAssertEqual(
+            AIProviderConfig.allProviders,
+            ["claude", "openai", "zai", "ollama", "lmstudio", "openai_compatible"],
+            "Picker order is contractual — changing it changes the UI; update both this test and any UI snapshots together"
+        )
+        XCTAssertEqual(
+            Set(AIProviderConfig.allProviders),
+            AIProviderConfig.cloudProviders.union(AIProviderConfig.localProviders),
+            "Every entry in allProviders must be classified as cloud or local"
+        )
+    }
+
     // MARK: - testConnectionRequest
 
     func testTestConnectionRequest_ClaudeHeaders() {
@@ -76,9 +91,23 @@ final class AIProviderConfigTests: XCTestCase {
         XCTAssertNil(AIProviderConfig.testConnectionRequest(provider: "wat", apiKey: "k", endpoint: "e"))
     }
 
-    func testTestConnectionRequest_NilForInvalidURL() {
+    func testTestConnectionRequest_NilForWhitespaceOnlyEndpoint() {
         // Endpoint that becomes only whitespace after trim — local provider should reject.
         let req = AIProviderConfig.testConnectionRequest(provider: "ollama", apiKey: "", endpoint: " ")
         XCTAssertNil(req)
+    }
+
+    func testTestConnectionRequest_NilForEmptyAPIKey_Cloud() {
+        XCTAssertNil(AIProviderConfig.testConnectionRequest(provider: "claude", apiKey: "", endpoint: ""))
+        XCTAssertNil(AIProviderConfig.testConnectionRequest(provider: "openai", apiKey: "", endpoint: ""))
+        XCTAssertNil(AIProviderConfig.testConnectionRequest(provider: "zai", apiKey: "", endpoint: ""))
+    }
+
+    func testTestConnectionRequest_OllamaTrimsNewlines() {
+        let req = AIProviderConfig.testConnectionRequest(
+            provider: "ollama", apiKey: "",
+            endpoint: "\nhttp://192.168.1.5:11434\n"
+        )
+        XCTAssertEqual(req?.url?.absoluteString, "http://192.168.1.5:11434/api/tags")
     }
 }
