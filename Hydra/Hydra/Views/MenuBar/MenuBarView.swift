@@ -133,18 +133,49 @@ struct MenuBarView: View {
         }
     }
 
-    /// Surfaces the dashboard window from the menu-bar popover. If the window
-    /// is already open it is brought forward (and deminiaturized if needed);
-    /// if the user previously closed it, SwiftUI re-creates it via the
-    /// "dashboard" WindowGroup id. The earlier implementation walked
-    /// `NSApp.windows` directly, which silently no-op'd once the window had
-    /// been destroyed by a close.
+    /// Surfaces the dashboard window from the menu-bar popover. The previous
+    /// implementation called `openWindow(id:)` synchronously from inside the
+    /// `MenuBarExtra` Button action; on macOS 14 that combination silently
+    /// no-ops in the closed-window case (the popover scene's openWindow proxy
+    /// can't reliably reach a sibling `WindowGroup`). We instead defer the
+    /// work onto the next runloop tick so the popover dismissal completes
+    /// first, then prefer reusing any live AppKit window we can see directly,
+    /// and finally fall through to `openWindow` for the cold-start case —
+    /// followed by a second async tick to force focus on the just-created
+    /// window since SwiftUI doesn't reliably activate it from this context.
     private func openDashboardWindow() {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        openWindow(id: "dashboard")
-        if let window = NSApp.windows.first(where: { $0.isMiniaturized && $0.canBecomeKey }) {
-            window.deminiaturize(nil)
+        Task { @MainActor in
+            // Yield one runloop tick so the popover finishes dismissing —
+            // activation events fired during dismissal are sometimes dropped.
+            try? await Task.sleep(for: .milliseconds(50))
+
+            NSApp.setActivationPolicy(.regular)
+            // macOS 14 deprecates `.activateIgnoringOtherApps`; the no-arg
+            // call now performs the same activation when called from a
+            // foregrounded process context.
+            NSRunningApplication.current.activate()
+
+            // Reuse an existing dashboard window if one is alive. Filter out
+            // NSPanel (the menu-bar popover itself is one) and windows that
+            // can't become key (status items, transient overlays).
+            if let existing = NSApp.windows.first(where: {
+                $0.canBecomeKey && !($0 is NSPanel) && $0.contentViewController != nil
+            }) {
+                if existing.isMiniaturized { existing.deminiaturize(nil) }
+                existing.makeKeyAndOrderFront(nil)
+                return
+            }
+
+            // No live window — request SwiftUI to materialise one. Even when
+            // openWindow is honoured, the new NSWindow doesn't grab focus
+            // automatically from this scene context, so we wait one more tick
+            // and force makeKeyAndOrderFront on whichever real window appears.
+            openWindow(id: "dashboard")
+            try? await Task.sleep(for: .milliseconds(100))
+            for window in NSApp.windows where window.canBecomeKey && !(window is NSPanel) {
+                if window.isMiniaturized { window.deminiaturize(nil) }
+                window.makeKeyAndOrderFront(nil)
+            }
         }
     }
 
