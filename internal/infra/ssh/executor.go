@@ -188,14 +188,22 @@ func (e *Executor) executeRegularSSH(ctx context.Context, device *domain.Device,
 	return stdout.String(), nil
 }
 
-// getClient gets or creates an SSH client for a device
+// getClient gets or creates an SSH client for a device. A cached connection
+// is probed with a cheap OpenSSH keepalive request before being returned, so
+// a connection that has silently died (server reboot, NAT timeout, network
+// blip) is evicted on the next call instead of poisoning every subsequent
+// Execute. The probe adds one short round-trip per call, which is negligible
+// compared to the cost of a failed handshake or a stale-error display.
 func (e *Executor) getClient(device *domain.Device) (*ssh.Client, error) {
 	e.connPoolMu.RLock()
 	client, exists := e.connPool[device.ID]
 	e.connPoolMu.RUnlock()
 
 	if exists {
-		return client, nil
+		if isClientAlive(client) {
+			return client, nil
+		}
+		e.closeClient(device.ID)
 	}
 
 	// Create new connection
@@ -215,6 +223,15 @@ func (e *Executor) getClient(device *domain.Device) (*ssh.Client, error) {
 	e.connPoolMu.Unlock()
 
 	return client, nil
+}
+
+// isClientAlive sends an OpenSSH keepalive global request and reports whether
+// the peer responded. The request type is unsupported by the protocol on
+// purpose — peers respond with "request failure" which still proves the
+// connection is alive, while a transport-level error means it is not.
+func isClientAlive(client *ssh.Client) bool {
+	_, _, err := client.SendRequest("keepalive@openssh.com", true, nil)
+	return err == nil
 }
 
 // closeClient closes and removes a client from the pool
