@@ -1045,6 +1045,45 @@ func (h *Handler) APIDeviceMetrics(c echo.Context) error {
 	return c.JSON(http.StatusOK, metrics)
 }
 
+// APIDeviceMetricsPush accepts a self-reported metric snapshot from the
+// device itself. Used by the macOS GUI's MetricsReporter to fill in
+// dashboard values for the host running the app, which has no SSH path
+// back to itself.
+//
+// The device ID is validated against the tailnet device list — bogus or
+// stale IDs return 404 rather than silently populating the cache.
+// Source is set server-side so a malicious or buggy client can't claim
+// to be SSH-collected.
+func (h *Handler) APIDeviceMetricsPush(c echo.Context) error {
+	id := c.Param("id")
+
+	devices, err := h.deviceLister.ListDevices(c.Request().Context(), false)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	var dev *domain.Device
+	for _, d := range devices {
+		if d.ID == id {
+			dev = d
+			break
+		}
+	}
+	if dev == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "device not found"})
+	}
+
+	var payload domain.DeviceMetrics
+	if err := c.Bind(&payload); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid metrics payload"})
+	}
+	payload.DeviceID = dev.ID
+	payload.CollectedAt = time.Now()
+	payload.Source = domain.MetricsSourceSelfReport
+
+	h.monitorUC.PushSelfMetrics(&payload)
+	return c.JSON(http.StatusOK, map[string]bool{"ok": true})
+}
+
 // APIOrchList returns list of orchs as JSON
 func (h *Handler) APIOrchList(c echo.Context) error {
 	ctx := c.Request().Context()

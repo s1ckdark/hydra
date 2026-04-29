@@ -311,6 +311,8 @@ func main() {
 
 	// Device match route — resolves hostname/IP → Tailscale device ID
 	api.POST("/devices/match", h.APIDeviceMatch)
+	// Self-reported metrics from the macOS GUI's MetricsReporter
+	api.POST("/devices/:id/metrics", h.APIDeviceMetricsPush)
 
 	// Config routes (Tailscale network auth required)
 	apiWrite.GET("/config/tailscale", h.APIGetTailscaleConfig)
