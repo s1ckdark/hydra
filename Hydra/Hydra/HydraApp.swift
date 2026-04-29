@@ -12,7 +12,7 @@ struct HydraApp: App {
                 .task { await autoDiscoverServer() }
         }
         #else
-        WindowGroup {
+        WindowGroup(id: "dashboard") {
             ContentView()
                 .environmentObject(dashboardVM)
                 .onAppear {

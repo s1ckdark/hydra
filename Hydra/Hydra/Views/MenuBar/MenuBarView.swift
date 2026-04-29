@@ -3,6 +3,7 @@ import SwiftUI
 struct MenuBarView: View {
     @EnvironmentObject var vm: DashboardViewModel
     @StateObject private var gpuVM = GPUMonitorViewModel()
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -104,10 +105,7 @@ struct MenuBarView: View {
             Divider()
 
             Button("Open Dashboard") {
-                NSApp.activate(ignoringOtherApps: true)
-                if let window = NSApp.windows.first(where: { !($0 is NSPanel) }) {
-                    window.makeKeyAndOrderFront(nil)
-                }
+                openDashboardWindow()
             }
 
             Button("Refresh Now") {
@@ -132,6 +130,21 @@ struct MenuBarView: View {
         }
         .onDisappear {
             gpuVM.stopPolling()
+        }
+    }
+
+    /// Surfaces the dashboard window from the menu-bar popover. If the window
+    /// is already open it is brought forward (and deminiaturized if needed);
+    /// if the user previously closed it, SwiftUI re-creates it via the
+    /// "dashboard" WindowGroup id. The earlier implementation walked
+    /// `NSApp.windows` directly, which silently no-op'd once the window had
+    /// been destroyed by a close.
+    private func openDashboardWindow() {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: "dashboard")
+        if let window = NSApp.windows.first(where: { $0.isMiniaturized && $0.canBecomeKey }) {
+            window.deminiaturize(nil)
         }
     }
 
