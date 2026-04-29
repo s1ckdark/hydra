@@ -82,22 +82,18 @@ func main() {
 
 	repos := db.Repositories()
 
-	// One-shot orphan cleanup: any task left non-terminal from a prior run
-	// can never converge (the in-memory TaskQueue rebuilds empty on boot). Mark
-	// them failed with an explanatory message so consuming groups transition
-	// to partial/failed correctly.
-	//
-	// Cutoff = current wall-clock. Routes (the only way to create new tasks
-	// in this run) aren't registered until later in main(), so no fresh task
-	// can have created_at <= now() yet. The earlier `now - 1s` cutoff left a
-	// gap where tasks created in the final second before a previous crash
-	// were not swept; using now() closes that gap.
-	bootCutoff := time.Now()
-	if affected, err := repos.Tasks.MarkStaleTasksFailed(context.Background(), bootCutoff); err != nil {
-		log.Printf("[startup] stale-task cleanup failed: %v", err)
-	} else if affected > 0 {
-		log.Printf("[startup] marked %d stale tasks failed (pre-boot)", affected)
+	// Hydrate the in-memory task queue from sqlite. Tasks that were queued
+	// at the previous shutdown re-enter the scheduler; tasks that were
+	// already assigned to a worker stay attached so the worker can report
+	// results when it reconnects. The boot-reconcile pass in TaskSupervisor
+	// (Task 5) handles workers that fail to reconnect within the grace window.
+	hydratedQueue := domain.NewTaskQueue().WithRepo(repos.Tasks)
+	hydrateStats, err := usecase.HydrateQueue(context.Background(), repos.Tasks, hydratedQueue)
+	if err != nil {
+		log.Fatalf("[startup] hydrate task queue: %v", err)
 	}
+	log.Printf("[startup] hydrated tasks: pending=%d queued=%d assigned=%d running=%d skipped=%d (total=%d)",
+		hydrateStats.Pending, hydrateStats.Queued, hydrateStats.Assigned, hydrateStats.Running, hydrateStats.Skipped, hydrateStats.Total())
 
 	// Initialize infrastructure
 	tsClient := tailscale.NewClient(cfg.Tailscale.APIKey, cfg.Tailscale.Tailnet)
@@ -150,7 +146,7 @@ func main() {
 	h.SetWebSocketHub(wsHub)
 
 	// Initialize task queue
-	taskQueue := domain.NewTaskQueue().WithRepo(repos.Tasks)
+	taskQueue := hydratedQueue
 	h.SetTaskQueue(taskQueue)
 
 	h.SetTaskGroupRepos(repos.TaskGroups, repos.Tasks)

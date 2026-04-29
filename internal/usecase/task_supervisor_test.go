@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/s1ckdark/hydra/internal/domain"
+	"github.com/s1ckdark/hydra/internal/web/ws"
 )
 
 // TestTaskSupervisor_ConcurrentSettersNoRace exercises the setter paths
@@ -58,4 +59,97 @@ func TestTaskSupervisor_ConcurrentSettersNoRace(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	close(stop)
 	wg.Wait()
+}
+
+func TestReconcileBoot_ReassignsTasksFromDisconnectedWorkers(t *testing.T) {
+	taskQueue := domain.NewTaskQueue()
+	hub := ws.NewHub() // no clients registered → IsConnected returns false for all
+	s := NewTaskSupervisor(taskQueue, hub, nil, nil)
+
+	// Two assigned tasks across two devices, both disconnected.
+	taskQueue.Enqueue(&domain.Task{ID: "t1", Priority: domain.TaskPriorityNormal, MaxRetries: 3})
+	taskQueue.AssignToDevice("t1", "dev-1")
+	taskQueue.Enqueue(&domain.Task{ID: "t2", Priority: domain.TaskPriorityNormal, MaxRetries: 3})
+	taskQueue.AssignToDevice("t2", "dev-2")
+
+	s.reconcileBoot(context.Background())
+
+	for _, id := range []string{"t1", "t2"} {
+		got := taskQueue.Get(id)
+		if got == nil {
+			t.Fatalf("%s missing", id)
+		}
+		if got.Status != domain.TaskStatusQueued {
+			t.Errorf("%s.Status = %q; want queued (reassigned)", id, got.Status)
+		}
+		if got.AssignedDeviceID != "" {
+			t.Errorf("%s.AssignedDeviceID = %q; want empty after reassign", id, got.AssignedDeviceID)
+		}
+	}
+}
+
+func TestReconcileBoot_DedupesByDevice(t *testing.T) {
+	taskQueue := domain.NewTaskQueue()
+	hub := ws.NewHub()
+	s := NewTaskSupervisor(taskQueue, hub, nil, nil)
+
+	// Three tasks, all on the same device.
+	for _, id := range []string{"t1", "t2", "t3"} {
+		taskQueue.Enqueue(&domain.Task{ID: id, Priority: domain.TaskPriorityNormal, MaxRetries: 3})
+		taskQueue.AssignToDevice(id, "dev-A")
+	}
+
+	s.reconcileBoot(context.Background())
+
+	for _, id := range []string{"t1", "t2", "t3"} {
+		got := taskQueue.Get(id)
+		if got.Status != domain.TaskStatusQueued {
+			t.Errorf("%s.Status = %q; want queued", id, got.Status)
+		}
+	}
+	// All three should have RetryCount=1 from the single ReassignTasksFromDevice call.
+	// Two reassign calls would yield RetryCount=2.
+	for _, id := range []string{"t1", "t2", "t3"} {
+		if rc := taskQueue.Get(id).RetryCount; rc != 1 {
+			t.Errorf("%s.RetryCount = %d; want 1 (dedup proves single reassign call)", id, rc)
+		}
+	}
+}
+
+func TestReconcileBoot_SkipsEmptyAssignedDeviceID(t *testing.T) {
+	taskQueue := domain.NewTaskQueue()
+	hub := ws.NewHub()
+	s := NewTaskSupervisor(taskQueue, hub, nil, nil)
+
+	// Defensive: a malformed task with status=assigned but no device should
+	// not crash reconcile and should not match any reassign.
+	taskQueue.AttachAssigned(&domain.Task{
+		ID:       "t-orphan",
+		Status:   domain.TaskStatusAssigned,
+		Priority: domain.TaskPriorityNormal,
+	})
+
+	s.reconcileBoot(context.Background()) // must not panic
+
+	got := taskQueue.Get("t-orphan")
+	if got == nil {
+		t.Fatal("t-orphan removed; should remain in queue")
+	}
+	if got.Status != domain.TaskStatusAssigned {
+		t.Errorf("status = %q; want unchanged (assigned)", got.Status)
+	}
+}
+
+func TestReconcileBoot_NilHubIsNoOp(t *testing.T) {
+	taskQueue := domain.NewTaskQueue()
+	s := NewTaskSupervisor(taskQueue, nil, nil, nil)
+
+	taskQueue.Enqueue(&domain.Task{ID: "t1", Priority: domain.TaskPriorityNormal, MaxRetries: 3})
+	taskQueue.AssignToDevice("t1", "dev-1")
+
+	s.reconcileBoot(context.Background()) // must not panic
+
+	if got := taskQueue.Get("t1"); got.Status != domain.TaskStatusAssigned {
+		t.Errorf("t1.Status = %q; want unchanged when hub is nil", got.Status)
+	}
 }

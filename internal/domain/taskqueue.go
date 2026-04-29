@@ -141,6 +141,53 @@ func (q *TaskQueue) Enqueue(task *Task) {
 	q.persist(task)
 }
 
+// AttachAssigned re-inserts a task that already has a non-pending status
+// (assigned or running), typically replayed from the repository at boot.
+// The task lands in q.tasks (so Get / ListByStatus / GetAssignedTasks see
+// it) but is NOT placed in q.queue, since it is not awaiting initial
+// scheduling.
+//
+// The caller is responsible for ensuring task.Status is one of:
+//
+//	TaskStatusAssigned, TaskStatusRunning
+//
+// Use Enqueue for TaskStatusQueued / TaskStatusPending.
+//
+// AttachAssigned does not call persist — the task is already present in
+// the repo (it came from there).
+func (q *TaskQueue) AttachAssigned(t *Task) {
+	if t == nil {
+		return
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.tasks[t.ID] = t
+}
+
+// Replay re-inserts a pending or queued task that was loaded from the
+// repository at boot. Unlike Enqueue, it preserves the task's existing
+// Status and CreatedAt — the task is already part of the system's
+// recorded history; hydration must not rewrite it.
+//
+// The task lands in q.tasks and is also inserted into the priority queue
+// so the scheduler picks it up on the next tick. Replay does NOT call
+// persist — the row already exists in the repo (it came from there).
+//
+// The caller is responsible for ensuring task.Status is one of:
+//
+//	TaskStatusPending, TaskStatusQueued
+//
+// Use AttachAssigned for TaskStatusAssigned / TaskStatusRunning.
+func (q *TaskQueue) Replay(t *Task) {
+	if t == nil {
+		return
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.tasks[t.ID] = t
+	q.insertByPriority(t)
+}
+
 // insertByPriority inserts task maintaining priority order (urgent > high > normal > low)
 func (q *TaskQueue) insertByPriority(task *Task) {
 	pri := priorityValue(task.Priority)

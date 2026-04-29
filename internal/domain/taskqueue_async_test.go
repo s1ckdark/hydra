@@ -29,6 +29,7 @@ func (r *recordingRepo) GetByGroup(_ context.Context, _ string) ([]*Task, error)
 func (r *recordingRepo) MarkStaleTasksFailed(_ context.Context, _ time.Time) (int, error) {
 	return 0, nil
 }
+func (r *recordingRepo) LoadNonTerminal(_ context.Context) ([]*Task, error) { return nil, nil }
 func (r *recordingRepo) count() int { r.mu.Lock(); defer r.mu.Unlock(); return len(r.saved) }
 func (r *recordingRepo) lastByID(id string) *Task {
 	r.mu.Lock()
@@ -166,4 +167,5 @@ func (r *slowingRepo) GetByGroup(_ context.Context, _ string) ([]*Task, error) {
 func (r *slowingRepo) MarkStaleTasksFailed(_ context.Context, _ time.Time) (int, error) {
 	return 0, nil
 }
+func (r *slowingRepo) LoadNonTerminal(_ context.Context) ([]*Task, error) { return nil, nil }
 func (r *slowingRepo) count() int { r.mu.Lock(); defer r.mu.Unlock(); return r.calls }
