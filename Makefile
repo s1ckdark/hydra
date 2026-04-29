@@ -20,7 +20,7 @@ BUILD_DIR=./build
 CMD_CLI=./cmd/clusterctl
 CMD_SERVER=./cmd/server
 
-.PHONY: all build build-cli build-server clean test lint fmt vet deps run-server help
+.PHONY: all build build-cli build-server clean test lint fmt vet deps run-server help hydra-app hydra-app-run
 
 # Default target
 all: deps build
@@ -104,6 +104,15 @@ db-init: ## Initialize database with migrations
 
 serve: build-server ## Run server with Tailscale Serve (Tailnet-only access)
 	@./scripts/serve.sh
+
+## macOS app bundling
+
+hydra-app: ## Build the Hydra macOS .app bundle (icon + Info.plist)
+	@cd Hydra && ./scripts/bundle-app.sh release
+
+hydra-app-run: hydra-app ## Build and launch the Hydra .app
+	@open "Hydra/.build/arm64-apple-macosx/release/Hydra.app" || \
+		open "Hydra/.build/release/Hydra.app"
 
 ## Docker targets
 
