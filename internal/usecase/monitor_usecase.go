@@ -47,11 +47,40 @@ func (uc *MonitorUseCase) cacheLatest(snapshot *domain.MetricsSnapshot) {
 	}
 }
 
+// freshSelfReport is the maximum age of a self-reported metrics snapshot
+// for it to take precedence over SSH-collected metrics. Sized at 6× the
+// 5-second push cadence to absorb a missed tick or two without reverting
+// to SSH polling, but short enough that a stuck reporter eventually
+// surfaces SSH errors instead of silently masking them.
+const freshSelfReport = 30 * time.Second
+
+// PushSelfMetrics stores a metric snapshot reported by the device itself
+// (typically the macOS GUI host POSTing to /api/devices/{id}/metrics).
+// The cache slot is shared with SSH-collected metrics — Source on the
+// stored value distinguishes the two when GetDeviceMetrics looks up the
+// latest cached entry.
+func (uc *MonitorUseCase) PushSelfMetrics(m *domain.DeviceMetrics) {
+	if m == nil || m.DeviceID == "" {
+		return
+	}
+	uc.latestMu.Lock()
+	defer uc.latestMu.Unlock()
+	uc.latest[m.DeviceID] = m
+}
+
 // GetDeviceMetrics gets the current metrics for a device
 func (uc *MonitorUseCase) GetDeviceMetrics(ctx context.Context, deviceNameOrID string) (*domain.DeviceMetrics, error) {
 	device, err := uc.deviceUC.GetDevice(ctx, deviceNameOrID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Self-reported metrics take precedence when fresh — they describe
+	// the GUI host directly, which has no SSH path back to itself.
+	if cached := uc.GetLatestCached(device.ID); cached != nil &&
+		cached.Source == domain.MetricsSourceSelfReport &&
+		time.Since(cached.CollectedAt) < freshSelfReport {
+		return cached, nil
 	}
 
 	if !device.CanSSH() {
