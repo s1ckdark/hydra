@@ -155,27 +155,28 @@ struct MenuBarView: View {
             // fired during dismissal are sometimes dropped.
             try? await Task.sleep(for: .milliseconds(50))
 
-            // Activate via Apple Events (NSAppleScript). Sonoma+ blocks
-            // direct NSApp.activate() / NSRunningApplication.activate()
-            // when an app is "non-foreground" (e.g. menu-bar popover
-            // context), as a focus-stealing-prevention measure. AppleScript
-            // routes the request through the OS as if the user typed
-            // "tell application X to activate" — different policy path,
-            // and reliably brings the app to the front.
-            let bundleID = Bundle.main.bundleIdentifier ?? "io.hydra.Hydra"
-            let script = """
-            tell application id "\(bundleID)" to activate
-            """
-            if let appleScript = NSAppleScript(source: script) {
-                var err: NSDictionary?
-                appleScript.executeAndReturnError(&err)
-                if let err = err {
-                    print("[menubar] AppleScript activate error: \(err)")
+            // Activate via NSWorkspace.openApplication on our own bundle.
+            // This routes through the same OS code path as user double-
+            // clicking the .app in Finder — explicitly designed to launch
+            // OR activate (config.activates = true) and not subject to
+            // the focus-stealing-prevention policy that blocks
+            // NSApp.activate / NSRunningApplication.activate when called
+            // from a non-foreground (menu-bar popover) context on
+            // Sonoma+.
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL,
+                                               configuration: config) { app, error in
+                if let error = error {
+                    print("[menubar] NSWorkspace.openApplication error: \(error)")
+                } else if let app = app {
+                    print("[menubar] activated pid=\(app.processIdentifier) bundle=\(app.bundleIdentifier ?? "?")")
                 }
             }
 
             // Belt-and-suspenders: also call AppKit-side activation in
-            // case AppleScript routing changes upstream. Cheap to do both.
+            // case the workspace call is async and the next steps need
+            // the app to already be foreground.
             NSRunningApplication.current.activate()
             NSApp.activate()
 
