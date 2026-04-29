@@ -2,6 +2,13 @@ import SwiftUI
 
 @main
 struct HydraApp: App {
+    #if os(macOS)
+    // AppDelegate pins activation policy at launch and surfaces existing
+    // windows when the dock icon is clicked, working around macOS 14
+    // SwiftUI quirks where pure-SwiftUI App lifecycles silently transition
+    // to .accessory after the only WindowGroup window closes.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    #endif
     @StateObject private var dashboardVM = DashboardViewModel()
 
     var body: some Scene {
@@ -122,3 +129,31 @@ struct HydraApp: App {
         #endif
     }
 }
+
+#if os(macOS)
+/// Pins the app's activation policy and re-surfaces the dashboard window
+/// when the user clicks the dock icon. SwiftUI's pure App lifecycle is
+/// not enough on macOS 14 because once the dashboard window closes, the
+/// scene graph contains only a `MenuBarExtra` and a `Settings` scene —
+/// configurations that some Sonoma builds treat as `.accessory`-eligible
+/// and silently demote, dropping the dock icon. Pinning `.regular` from
+/// `applicationDidFinishLaunching` keeps the dock icon, and
+/// `applicationShouldHandleReopen` covers the "click dock icon to bring
+/// back the closed window" case that pure SwiftUI doesn't wire up.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            for window in sender.windows where window.canBecomeKey && !(window is NSPanel) {
+                if window.isMiniaturized { window.deminiaturize(nil) }
+                window.orderFrontRegardless()
+            }
+        }
+        sender.activate()
+        return true
+    }
+}
+#endif

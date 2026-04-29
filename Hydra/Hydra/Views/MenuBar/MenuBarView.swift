@@ -133,18 +133,80 @@ struct MenuBarView: View {
         }
     }
 
-    /// Surfaces the dashboard window from the menu-bar popover. If the window
-    /// is already open it is brought forward (and deminiaturized if needed);
-    /// if the user previously closed it, SwiftUI re-creates it via the
-    /// "dashboard" WindowGroup id. The earlier implementation walked
-    /// `NSApp.windows` directly, which silently no-op'd once the window had
-    /// been destroyed by a close.
+    /// Surfaces the dashboard window from the menu-bar popover. The previous
+    /// implementation called `openWindow(id:)` synchronously from inside the
+    /// `MenuBarExtra` Button action; on macOS 14 that combination silently
+    /// no-ops in the closed-window case (the popover scene's openWindow proxy
+    /// can't reliably reach a sibling `WindowGroup`). We instead defer the
+    /// work onto the next runloop tick so the popover dismissal completes
+    /// first, then prefer reusing any live AppKit window we can see directly,
+    /// and finally fall through to `openWindow` for the cold-start case —
+    /// followed by a second async tick to force focus on the just-created
+    /// window since SwiftUI doesn't reliably activate it from this context.
     private func openDashboardWindow() {
+        // Set policy synchronously here, before any Task — calling it from
+        // inside a Task races macOS internals on some Sonoma builds and
+        // silently no-ops.
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        openWindow(id: "dashboard")
-        if let window = NSApp.windows.first(where: { $0.isMiniaturized && $0.canBecomeKey }) {
-            window.deminiaturize(nil)
+        print("[menubar] open dashboard: policy \(NSApp.activationPolicy().rawValue)")
+
+        Task { @MainActor in
+            // Yield so the popover finishes dismissing — activation events
+            // fired during dismissal are sometimes dropped.
+            try? await Task.sleep(for: .milliseconds(50))
+
+            // Activate via NSWorkspace.openApplication on our own bundle.
+            // This routes through the same OS code path as user double-
+            // clicking the .app in Finder — explicitly designed to launch
+            // OR activate (config.activates = true) and not subject to
+            // the focus-stealing-prevention policy that blocks
+            // NSApp.activate / NSRunningApplication.activate when called
+            // from a non-foreground (menu-bar popover) context on
+            // Sonoma+.
+            let config = NSWorkspace.OpenConfiguration()
+            config.activates = true
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL,
+                                               configuration: config) { app, error in
+                if let error = error {
+                    print("[menubar] NSWorkspace.openApplication error: \(error)")
+                } else if let app = app {
+                    print("[menubar] activated pid=\(app.processIdentifier) bundle=\(app.bundleIdentifier ?? "?")")
+                }
+            }
+
+            // Belt-and-suspenders: also call AppKit-side activation in
+            // case the workspace call is async and the next steps need
+            // the app to already be foreground.
+            NSRunningApplication.current.activate()
+            NSApp.activate()
+
+            let candidates = NSApp.windows.filter {
+                $0.canBecomeKey && !($0 is NSPanel)
+            }
+            print("[menubar] candidate windows: \(candidates.map { "\($0.title)/\($0.identifier?.rawValue ?? "nil")" })")
+
+            if let existing = candidates.first {
+                if existing.isMiniaturized { existing.deminiaturize(nil) }
+                existing.collectionBehavior.insert(.canJoinAllSpaces)
+                existing.orderFrontRegardless()
+                existing.makeKeyAndOrderFront(nil)
+                return
+            }
+
+            // No live window — ask SwiftUI to materialise one, then surface
+            // whatever appears on the next tick.
+            openWindow(id: "dashboard")
+            try? await Task.sleep(for: .milliseconds(150))
+            let next = NSApp.windows.filter {
+                $0.canBecomeKey && !($0 is NSPanel)
+            }
+            print("[menubar] candidate windows after openWindow: \(next.map { $0.title })")
+            for window in next {
+                if window.isMiniaturized { window.deminiaturize(nil) }
+                window.collectionBehavior.insert(.canJoinAllSpaces)
+                window.orderFrontRegardless()
+                window.makeKeyAndOrderFront(nil)
+            }
         }
     }
 
