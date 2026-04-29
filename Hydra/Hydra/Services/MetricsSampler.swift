@@ -16,6 +16,7 @@ struct MemorySnapshot {
     let totalBytes: UInt64
     let usedBytes: UInt64
     let freeBytes: UInt64
+    let availableBytes: UInt64
     let usagePercent: Double
 }
 
@@ -86,7 +87,8 @@ enum MetricsSampler {
             }
         }
         guard kern == KERN_SUCCESS else {
-            return MemorySnapshot(totalBytes: total, usedBytes: 0, freeBytes: total, usagePercent: 0)
+            return MemorySnapshot(totalBytes: total, usedBytes: 0, freeBytes: total,
+                                  availableBytes: total, usagePercent: 0)
         }
         let pageSize = UInt64(vm_kernel_page_size)
         let free = UInt64(info.free_count) * pageSize
@@ -95,8 +97,14 @@ enum MetricsSampler {
         let wired = UInt64(info.wire_count) * pageSize
         let compressed = UInt64(info.compressor_page_count) * pageSize
         let used = active + inactive + wired + compressed
+        // available = what the kernel can hand out without paging out — free
+        // pages plus the inactive (file-backed cache) pages, mirroring the
+        // "Available" number Activity Monitor displays. This is materially
+        // larger than free alone on macOS, where inactive often dominates.
+        let available = free + inactive
         let percent = total > 0 ? Double(used) / Double(total) * 100.0 : 0
-        return MemorySnapshot(totalBytes: total, usedBytes: used, freeBytes: free, usagePercent: percent)
+        return MemorySnapshot(totalBytes: total, usedBytes: used, freeBytes: free,
+                              availableBytes: available, usagePercent: percent)
     }
 
     static func sampleDisk() -> DiskSnapshot {

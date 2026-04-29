@@ -66,7 +66,7 @@ final class MetricsReporter {
                 total: memory.totalBytes,
                 used: memory.usedBytes,
                 free: memory.freeBytes,
-                available: memory.freeBytes,   // approximation — sampler doesn't expose available separately
+                available: memory.availableBytes,
                 usagePercent: memory.usagePercent
             ),
             disk: .init(partitions: [
