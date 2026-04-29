@@ -144,37 +144,55 @@ struct MenuBarView: View {
     /// followed by a second async tick to force focus on the just-created
     /// window since SwiftUI doesn't reliably activate it from this context.
     private func openDashboardWindow() {
+        // Critical: setActivationPolicy must run synchronously here, BEFORE
+        // any Task. Calling it from inside a Task races macOS internals on
+        // some Sonoma builds and silently no-ops, which is the symptom we
+        // saw — dock icon never appears even though the menu-bar action
+        // fires. AppKit honours the policy switch reliably only when called
+        // on the calling thread before yielding to the runloop.
+        let beforePolicy = NSApp.activationPolicy().rawValue
+        NSApp.setActivationPolicy(.regular)
+        let afterPolicy = NSApp.activationPolicy().rawValue
+        print("[menubar] open dashboard: policy \(beforePolicy) → \(afterPolicy)")
+
         Task { @MainActor in
             // Yield one runloop tick so the popover finishes dismissing —
             // activation events fired during dismissal are sometimes dropped.
             try? await Task.sleep(for: .milliseconds(50))
 
-            NSApp.setActivationPolicy(.regular)
-            // macOS 14 deprecates `.activateIgnoringOtherApps`; the no-arg
-            // call now performs the same activation when called from a
-            // foregrounded process context.
+            // Two activation paths cover both AppKit and SwiftUI scene
+            // graph state. Some Sonoma builds honour only one of these.
             NSRunningApplication.current.activate()
+            NSApp.activate()
 
-            // Reuse an existing dashboard window if one is alive. Filter out
-            // NSPanel (the menu-bar popover itself is one) and windows that
-            // can't become key (status items, transient overlays).
-            if let existing = NSApp.windows.first(where: {
-                $0.canBecomeKey && !($0 is NSPanel) && $0.contentViewController != nil
-            }) {
+            let candidates = NSApp.windows.filter {
+                $0.canBecomeKey && !($0 is NSPanel)
+            }
+            print("[menubar] candidate windows after activate: \(candidates.map { "\($0.title)/\($0.identifier?.rawValue ?? "nil")" })")
+
+            // Reuse a live window if one exists. orderFrontRegardless is
+            // more aggressive than makeKeyAndOrderFront — it surfaces the
+            // window even if the app isn't currently active, which matters
+            // when the policy switch is still settling.
+            if let existing = candidates.first {
                 if existing.isMiniaturized { existing.deminiaturize(nil) }
-                existing.makeKeyAndOrderFront(nil)
+                existing.orderFrontRegardless()
+                existing.makeKey()
                 return
             }
 
-            // No live window — request SwiftUI to materialise one. Even when
-            // openWindow is honoured, the new NSWindow doesn't grab focus
-            // automatically from this scene context, so we wait one more tick
-            // and force makeKeyAndOrderFront on whichever real window appears.
+            // No live window — ask SwiftUI to materialise one, then surface
+            // whatever appears on the next tick.
             openWindow(id: "dashboard")
-            try? await Task.sleep(for: .milliseconds(100))
-            for window in NSApp.windows where window.canBecomeKey && !(window is NSPanel) {
+            try? await Task.sleep(for: .milliseconds(150))
+            let next = NSApp.windows.filter {
+                $0.canBecomeKey && !($0 is NSPanel)
+            }
+            print("[menubar] candidate windows after openWindow: \(next.map { $0.title })")
+            for window in next {
                 if window.isMiniaturized { window.deminiaturize(nil) }
-                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
+                window.makeKey()
             }
         }
     }
