@@ -242,7 +242,10 @@ extension APIClient: DeviceMatchClient {
 }
 
 /// JSON shape sent to POST /api/devices/{id}/metrics. Field names match the
-/// server-side domain.DeviceMetrics so no CodingKeys translation is needed.
+/// server-side domain.DeviceMetrics exactly so no CodingKeys translation is
+/// needed. Disk and GPU are array-of-records on the server (multiple
+/// partitions / multiple GPUs); on macOS we send a single-element array
+/// describing the root volume and the default Metal device respectively.
 struct DeviceMetricsPayload: Encodable {
     struct CPUPayload: Encodable {
         let usagePercent: Double
@@ -255,17 +258,34 @@ struct DeviceMetricsPayload: Encodable {
         let total: UInt64
         let used: UInt64
         let free: UInt64
-        let usagePercent: Double
-    }
-    struct DiskPayload: Encodable {
-        let total: UInt64
         let available: UInt64
         let usagePercent: Double
     }
-    struct GPUPayload: Encodable {
+    struct PartitionPayload: Encodable {
+        let mountPoint: String
+        let device: String
+        let fsType: String
+        let total: UInt64
+        let used: UInt64
+        let free: UInt64
+        let usagePercent: Double
+    }
+    struct DiskPayload: Encodable {
+        let partitions: [PartitionPayload]
+    }
+    struct SingleGPUPayload: Encodable {
+        let index: Int
         let name: String
-        let memoryBudgetBytes: UInt64
-        let isLowPower: Bool
+        let memoryTotal: UInt64
+        let memoryUsed: UInt64
+        let memoryFree: UInt64
+        let usagePercent: Double
+        let temperature: Double
+        let powerDraw: Double
+        let powerLimit: Double
+    }
+    struct GPUPayload: Encodable {
+        let gpus: [SingleGPUPayload]
     }
     let cpu: CPUPayload
     let memory: MemoryPayload
