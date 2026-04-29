@@ -31,4 +31,9 @@ type TaskRepository interface {
 	// small grace window) so brand-new tasks created after this boot are not
 	// affected.
 	MarkStaleTasksFailed(ctx context.Context, before time.Time) (int, error)
+
+	// LoadNonTerminal returns every task whose status is not terminal
+	// (i.e. not completed, failed, or cancelled). Used at server boot
+	// to rehydrate the in-memory queue.
+	LoadNonTerminal(ctx context.Context) ([]*Task, error)
 }

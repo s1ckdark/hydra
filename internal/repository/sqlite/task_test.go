@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -192,5 +193,107 @@ func TestTaskRepo_GetByGroup(t *testing.T) {
 	}
 	if len(got) != 3 {
 		t.Errorf("len = %d, want 3 (got=%v)", len(got), got)
+	}
+}
+
+func TestTaskRepo_LoadNonTerminal_FiltersTerminal(t *testing.T) {
+	r := newTaskRepoForTest(t)
+	ctx := context.Background()
+
+	statuses := []domain.TaskStatus{
+		domain.TaskStatusPending,
+		domain.TaskStatusQueued,
+		domain.TaskStatusAssigned,
+		domain.TaskStatusRunning,
+		domain.TaskStatusCompleted,
+		domain.TaskStatusFailed,
+		domain.TaskStatusCancelled,
+	}
+	for i, st := range statuses {
+		task := &domain.Task{
+			ID:        fmt.Sprintf("t%d", i),
+			Type:      "shell",
+			Status:    st,
+			Priority:  domain.TaskPriorityNormal,
+			CreatedAt: time.Now().UTC().Truncate(time.Second).Add(time.Duration(i) * time.Second),
+		}
+		if err := r.Save(ctx, task); err != nil {
+			t.Fatalf("save %s: %v", st, err)
+		}
+	}
+
+	got, err := r.LoadNonTerminal(ctx)
+	if err != nil {
+		t.Fatalf("LoadNonTerminal: %v", err)
+	}
+	if len(got) != 4 {
+		t.Fatalf("got %d tasks, want 4 non-terminal", len(got))
+	}
+	for _, task := range got {
+		switch task.Status {
+		case domain.TaskStatusCompleted, domain.TaskStatusFailed, domain.TaskStatusCancelled:
+			t.Errorf("LoadNonTerminal returned terminal status %s for %s", task.Status, task.ID)
+		}
+	}
+}
+
+func TestTaskRepo_LoadNonTerminal_EmptyDB(t *testing.T) {
+	r := newTaskRepoForTest(t)
+	got, err := r.LoadNonTerminal(context.Background())
+	if err != nil {
+		t.Fatalf("LoadNonTerminal: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("got %d, want 0 on empty DB", len(got))
+	}
+}
+
+func TestTaskRepo_LoadNonTerminal_PreservesAllFields(t *testing.T) {
+	r := newTaskRepoForTest(t)
+	ctx := context.Background()
+
+	original := &domain.Task{
+		ID:                   "t-roundtrip",
+		Type:                 "shell",
+		Status:               domain.TaskStatusAssigned,
+		Priority:             domain.TaskPriorityHigh,
+		RequiredCapabilities: []string{"gpu", "compute"},
+		BlockedDeviceIDs:     []string{"dev-bad"},
+		AssignedDeviceID:     "dev-1",
+		Payload:              map[string]interface{}{"cmd": "echo hi"},
+		ResourceReqs:         &domain.ResourceRequirements{GPUMemoryMB: 4096, CPUCores: 4},
+		CreatedAt:            time.Now().UTC().Truncate(time.Second),
+		RetryCount:           1,
+		MaxRetries:           3,
+	}
+	if err := r.Save(ctx, original); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	got, err := r.LoadNonTerminal(ctx)
+	if err != nil {
+		t.Fatalf("LoadNonTerminal: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d, want 1", len(got))
+	}
+	loaded := got[0]
+	if loaded.ID != "t-roundtrip" {
+		t.Errorf("ID = %q", loaded.ID)
+	}
+	if loaded.Status != domain.TaskStatusAssigned {
+		t.Errorf("Status = %q", loaded.Status)
+	}
+	if len(loaded.RequiredCapabilities) != 2 || loaded.RequiredCapabilities[0] != "gpu" {
+		t.Errorf("RequiredCapabilities = %v", loaded.RequiredCapabilities)
+	}
+	if len(loaded.BlockedDeviceIDs) != 1 || loaded.BlockedDeviceIDs[0] != "dev-bad" {
+		t.Errorf("BlockedDeviceIDs = %v", loaded.BlockedDeviceIDs)
+	}
+	if loaded.AssignedDeviceID != "dev-1" {
+		t.Errorf("AssignedDeviceID = %q", loaded.AssignedDeviceID)
+	}
+	if loaded.ResourceReqs == nil || loaded.ResourceReqs.GPUMemoryMB != 4096 {
+		t.Errorf("ResourceReqs = %+v", loaded.ResourceReqs)
 	}
 }
