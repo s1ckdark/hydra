@@ -309,10 +309,16 @@ func main() {
 	api.POST("/devices/:id/capabilities", h.APIRegisterCapabilities)
 	api.GET("/devices/:id/capabilities", h.APIGetCapabilities)
 
-	// Device match route — resolves hostname/IP → Tailscale device ID
+	// Device match route — resolves hostname/IP → Tailscale device ID.
+	// On the read-side `api` group: this is a lookup, not a write, and
+	// loopback OR a Tailscale peer is allowed to call it.
 	api.POST("/devices/match", h.APIDeviceMatch)
-	// Self-reported metrics from the macOS GUI's MetricsReporter
-	api.POST("/devices/:id/metrics", h.APIDeviceMetricsPush)
+	// Self-reported metrics from the macOS GUI's MetricsReporter. This
+	// is a write endpoint — same auth posture as orch / task / config
+	// writes via the apiWrite group, which permits loopback OR a
+	// Tailscale-authenticated peer. Without this, a server bound to
+	// 0.0.0.0 would expose an unauthenticated metric-injection vector.
+	apiWrite.POST("/devices/:id/metrics", h.APIDeviceMetricsPush)
 
 	// Config routes (Tailscale network auth required)
 	apiWrite.GET("/config/tailscale", h.APIGetTailscaleConfig)
