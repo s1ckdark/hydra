@@ -45,10 +45,10 @@ func HydrateQueue(ctx context.Context, repo domain.TaskRepository, queue *domain
 	for _, t := range loaded {
 		switch t.Status {
 		case domain.TaskStatusPending:
-			queue.Enqueue(t)
+			queue.Replay(t)
 			stats.Pending++
 		case domain.TaskStatusQueued:
-			queue.Enqueue(t)
+			queue.Replay(t)
 			stats.Queued++
 		case domain.TaskStatusAssigned:
 			queue.AttachAssigned(t)

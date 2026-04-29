@@ -2,6 +2,7 @@ package domain
 
 import (
 	"testing"
+	"time"
 )
 
 func newTask(id string, priority TaskPriority) *Task {
@@ -136,5 +137,58 @@ func TestAttachAssigned_DoesNotPersist(t *testing.T) {
 
 	if got := r.count(); got != 0 {
 		t.Errorf("AttachAssigned should not call repo.Save; got %d calls", got)
+	}
+}
+
+func TestReplay_PreservesStatusAndCreatedAt(t *testing.T) {
+	q := NewTaskQueue()
+	created := time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC)
+
+	// A task as it would be loaded from sqlite: explicit CreatedAt and
+	// Status TaskStatusPending. Enqueue would overwrite both; Replay must not.
+	task := &Task{
+		ID:        "t1",
+		Priority:  TaskPriorityNormal,
+		Status:    TaskStatusPending,
+		CreatedAt: created,
+	}
+
+	q.Replay(task)
+
+	got := q.Get("t1")
+	if got == nil {
+		t.Fatal("Replay did not place task in tasks map")
+	}
+	if got.Status != TaskStatusPending {
+		t.Errorf("Replay mutated Status: got %q, want %q (Pending)", got.Status, TaskStatusPending)
+	}
+	if !got.CreatedAt.Equal(created) {
+		t.Errorf("Replay mutated CreatedAt: got %v, want %v", got.CreatedAt, created)
+	}
+}
+
+func TestReplay_AddsToPriorityQueue(t *testing.T) {
+	q := NewTaskQueue()
+	q.Replay(&Task{ID: "t1", Priority: TaskPriorityHigh, Status: TaskStatusQueued})
+	q.Replay(&Task{ID: "t2", Priority: TaskPriorityLow, Status: TaskStatusQueued})
+
+	pending := q.ListQueuedByPriority()
+	if len(pending) != 2 {
+		t.Fatalf("ListQueuedByPriority = %d; want 2", len(pending))
+	}
+	// High priority must come first.
+	if pending[0].ID != "t1" {
+		t.Errorf("priority order broken: got %v", []string{pending[0].ID, pending[1].ID})
+	}
+}
+
+func TestReplay_DoesNotPersist(t *testing.T) {
+	r := &recordingRepo{}
+	q := NewTaskQueue().WithRepo(r)
+
+	q.Replay(&Task{ID: "t1", Priority: TaskPriorityNormal, Status: TaskStatusQueued})
+
+	if r.count() != 0 {
+		t.Errorf("Replay should not call repo.Save; got %d", r.count())
 	}
 }

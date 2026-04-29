@@ -38,7 +38,7 @@ func (s *stubTaskRepo) LoadNonTerminal(ctx context.Context) ([]*domain.Task, err
 func TestHydrateQueue_DispatchesByStatus(t *testing.T) {
 	repo := &stubTaskRepo{
 		loaded: []*domain.Task{
-			{ID: "p1", Status: domain.TaskStatusPending, Priority: domain.TaskPriorityNormal},
+			{ID: "p1", Status: domain.TaskStatusPending, Priority: domain.TaskPriorityNormal, CreatedAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)},
 			{ID: "q1", Status: domain.TaskStatusQueued, Priority: domain.TaskPriorityNormal},
 			{ID: "a1", Status: domain.TaskStatusAssigned, Priority: domain.TaskPriorityNormal, AssignedDeviceID: "dev-1"},
 			{ID: "r1", Status: domain.TaskStatusRunning, Priority: domain.TaskPriorityNormal, AssignedDeviceID: "dev-2"},
@@ -54,16 +54,22 @@ func TestHydrateQueue_DispatchesByStatus(t *testing.T) {
 		t.Errorf("stats = %+v; want pending=queued=assigned=running=1", stats)
 	}
 
-	if got := queue.Get("p1"); got == nil || got.Status != domain.TaskStatusQueued {
-		t.Errorf("p1 not loaded as queued (enqueued): %+v", got)
+	if got := queue.Get("p1"); got == nil || got.Status != domain.TaskStatusPending {
+		t.Errorf("p1 not loaded as pending: %+v", got)
+	}
+	if got := queue.Get("p1"); got != nil {
+		want := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+		if !got.CreatedAt.Equal(want) {
+			t.Errorf("p1.CreatedAt = %v; want %v (Replay must preserve)", got.CreatedAt, want)
+		}
 	}
 	if got := queue.Get("a1"); got == nil || got.Status != domain.TaskStatusAssigned {
 		t.Errorf("a1 not attached as assigned: %+v", got)
 	}
 
 	pending := queue.ListQueuedByPriority()
-	if len(pending) != 2 {
-		t.Errorf("ListQueuedByPriority = %d; want 2 (pending+queued)", len(pending))
+	if len(pending) != 1 {
+		t.Errorf("ListQueuedByPriority = %d; want 1 (queued only; pending preserves status)", len(pending))
 	}
 
 	assignedDev1 := queue.GetAssignedTasks("dev-1")
