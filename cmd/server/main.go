@@ -309,6 +309,9 @@ func main() {
 	api.POST("/devices/:id/capabilities", h.APIRegisterCapabilities)
 	api.GET("/devices/:id/capabilities", h.APIGetCapabilities)
 
+	// Device match route — resolves hostname/IP → Tailscale device ID
+	api.POST("/devices/match", h.APIDeviceMatch)
+
 	// Config routes (Tailscale network auth required)
 	apiWrite.GET("/config/tailscale", h.APIGetTailscaleConfig)
 	apiWrite.PUT("/config/tailscale", h.APIPutTailscaleConfig)

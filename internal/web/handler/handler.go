@@ -73,6 +73,7 @@ type Handler struct {
 	taskGroupTasks     domain.TaskRepository
 	taskGroupSaver     taskGroupSaver
 	aiArbiterRebuilder func(ai config.AIConfig)
+	deviceLister       deviceLister
 }
 
 // NewHandler creates a new Handler
@@ -83,13 +84,15 @@ func NewHandler(
 	failoverUC *usecase.FailoverUseCase,
 	cfg *config.Config,
 ) *Handler {
-	return &Handler{
+	h := &Handler{
 		deviceUC:   deviceUC,
-		orchUC:  orchUC,
+		orchUC:     orchUC,
 		monitorUC:  monitorUC,
 		failoverUC: failoverUC,
 		cfg:        cfg,
 	}
+	h.deviceLister = h.deviceUC
+	return h
 }
 
 // SetExecutor sets the remote executor for distributed task execution
