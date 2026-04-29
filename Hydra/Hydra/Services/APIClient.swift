@@ -73,7 +73,7 @@ actor APIClient {
 
     // MARK: - SSH Recovery
 
-    struct EmptyBody: Encodable {}
+    struct EmptyBody: Codable {}
 
     struct AcceptKeyRequest: Encodable { let fingerprint: String }
 
@@ -217,4 +217,78 @@ enum APIError: LocalizedError {
             return "[\(status)] \(message)"
         }
     }
+}
+
+// MARK: - Device match + self-reported metrics
+
+extension APIClient: DeviceMatchClient {
+    private struct MatchRequest: Encodable {
+        let hostname: String
+        let ip: String?
+    }
+    private struct MatchResponse: Decodable {
+        let deviceId: String
+    }
+
+    func matchDevice(hostname: String, ip: String?) async throws -> String {
+        let body = MatchRequest(hostname: hostname, ip: ip)
+        let response: MatchResponse = try await post("/api/devices/match", body: body)
+        return response.deviceId
+    }
+
+    func postMetrics(deviceID: String, payload: DeviceMetricsPayload) async throws {
+        let _: EmptyBody = try await post("/api/devices/\(deviceID)/metrics", body: payload)
+    }
+}
+
+/// JSON shape sent to POST /api/devices/{id}/metrics. Field names match the
+/// server-side domain.DeviceMetrics exactly so no CodingKeys translation is
+/// needed. Disk and GPU are array-of-records on the server (multiple
+/// partitions / multiple GPUs); on macOS we send a single-element array
+/// describing the root volume and the default Metal device respectively.
+struct DeviceMetricsPayload: Encodable {
+    struct CPUPayload: Encodable {
+        let usagePercent: Double
+        let cores: Int
+        let loadAvg1: Double
+        let loadAvg5: Double
+        let loadAvg15: Double
+    }
+    struct MemoryPayload: Encodable {
+        let total: UInt64
+        let used: UInt64
+        let free: UInt64
+        let available: UInt64
+        let usagePercent: Double
+    }
+    struct PartitionPayload: Encodable {
+        let mountPoint: String
+        let device: String
+        let fsType: String
+        let total: UInt64
+        let used: UInt64
+        let free: UInt64
+        let usagePercent: Double
+    }
+    struct DiskPayload: Encodable {
+        let partitions: [PartitionPayload]
+    }
+    struct SingleGPUPayload: Encodable {
+        let index: Int
+        let name: String
+        let memoryTotal: UInt64
+        let memoryUsed: UInt64
+        let memoryFree: UInt64
+        let usagePercent: Double
+        let temperature: Double
+        let powerDraw: Double
+        let powerLimit: Double
+    }
+    struct GPUPayload: Encodable {
+        let gpus: [SingleGPUPayload]
+    }
+    let cpu: CPUPayload
+    let memory: MemoryPayload
+    let disk: DiskPayload
+    let gpu: GPUPayload?
 }

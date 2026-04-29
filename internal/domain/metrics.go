@@ -74,16 +74,28 @@ type InterfaceMetrics struct {
 	ErrorsOut   uint64 `json:"errorsOut"`
 }
 
+// MetricsSource identifies how a DeviceMetrics snapshot was obtained.
+// Self-reported metrics from the GUI host take precedence over SSH-
+// collected metrics in MonitorUseCase.GetDeviceMetrics so the local Mac
+// (which has no SSH path back to itself) shows real numbers.
+type MetricsSource string
+
+const (
+	MetricsSourceSSH        MetricsSource = "ssh"
+	MetricsSourceSelfReport MetricsSource = "self"
+)
+
 // DeviceMetrics represents all metrics for a device
 type DeviceMetrics struct {
-	DeviceID    string         `json:"deviceId"`
-	CPU         CPUMetrics     `json:"cpu"`
-	Memory      MemoryMetrics  `json:"memory"`
-	Disk        DiskMetrics    `json:"disk"`
-	GPU         *GPUMetrics    `json:"gpu,omitempty"`
+	DeviceID    string          `json:"deviceId"`
+	CPU         CPUMetrics      `json:"cpu"`
+	Memory      MemoryMetrics   `json:"memory"`
+	Disk        DiskMetrics     `json:"disk"`
+	GPU         *GPUMetrics     `json:"gpu,omitempty"`
 	Network     *NetworkMetrics `json:"network,omitempty"`
-	CollectedAt time.Time      `json:"collectedAt"`
-	Error       string         `json:"error,omitempty"`
+	Source      MetricsSource   `json:"source,omitempty"`   // NEW
+	CollectedAt time.Time       `json:"collectedAt"`
+	Error       string          `json:"error,omitempty"`
 }
 
 // HasError returns true if there was an error collecting metrics

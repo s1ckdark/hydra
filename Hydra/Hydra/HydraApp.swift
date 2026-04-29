@@ -30,6 +30,9 @@ struct HydraApp: App {
                 .task {
                     await autoDiscoverServer()
                     await reportCapabilities()
+                    #if os(macOS)
+                    MetricsReporter.shared.start(via: APIClient.shared)
+                    #endif
                 }
         }
         .defaultSize(width: 1000, height: 700)

@@ -13,6 +13,9 @@ final class CapabilityReporter: ObservableObject {
     /// launch and reused thereafter.
     let deviceID: String
 
+    // TODO(uuid-retirement): Keychain UUID is kept for per-device state
+    // compatibility. Once DeviceIdentity is the sole source of truth the
+    // property and this init block can be removed in a follow-up PR.
     private init() {
         let stored = CredentialStore.shared.get(.deviceUUID)
         if !stored.isEmpty {
@@ -56,13 +59,17 @@ final class CapabilityReporter: ObservableObject {
     /// — capability reporting is best-effort and must not break app launch.
     func report(via apiClient: APIClient) async {
         let caps = CapabilityRegistry.shared.enabledIdentifiers()
-        let id = self.deviceID
+
+        guard let resolvedID = await DeviceIdentity.shared.current(via: apiClient) else {
+            NSLog("[CapabilityReporter] device identity not resolved; skipping capability report")
+            return
+        }
 
         var delay: UInt64 = 500_000_000 // 500ms
         for attempt in 1...3 {
             do {
-                _ = try await apiClient.registerCapabilities(deviceID: id, capabilities: caps)
-                NSLog("[CapabilityReporter] registered \(caps) as device \(id)")
+                _ = try await apiClient.registerCapabilities(deviceID: resolvedID, capabilities: caps)
+                NSLog("[CapabilityReporter] registered \(caps) as device \(resolvedID)")
                 return
             } catch {
                 NSLog("[CapabilityReporter] attempt \(attempt) failed: \(error.localizedDescription)")
