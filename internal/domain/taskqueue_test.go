@@ -2,6 +2,7 @@ package domain
 
 import (
 	"testing"
+	"time"
 )
 
 func newTask(id string, priority TaskPriority) *Task {
@@ -103,5 +104,91 @@ func TestReassignTasksFromDevice_PopulatesBlockedIDs(t *testing.T) {
 	got = q.Get("t1")
 	if len(got.BlockedDeviceIDs) != 2 {
 		t.Fatalf("expected 2 blocked, got %v", got.BlockedDeviceIDs)
+	}
+}
+
+func TestAttachAssigned_AddsToTasksMapNotQueue(t *testing.T) {
+	q := NewTaskQueue()
+	task := newTask("t1", TaskPriorityNormal)
+	task.Status = TaskStatusAssigned
+	task.AssignedDeviceID = "dev-1"
+
+	q.AttachAssigned(task)
+
+	if got := q.Get("t1"); got == nil {
+		t.Fatal("Get should return the task after AttachAssigned")
+	}
+	if pending := q.ListQueuedByPriority(); len(pending) != 0 {
+		t.Errorf("ListQueuedByPriority should be empty after AttachAssigned, got %d", len(pending))
+	}
+	assigned := q.GetAssignedTasks("dev-1")
+	if len(assigned) != 1 || assigned[0].ID != "t1" {
+		t.Errorf("GetAssignedTasks(dev-1) = %v; want [t1]", assigned)
+	}
+}
+
+func TestAttachAssigned_DoesNotPersist(t *testing.T) {
+	r := &recordingRepo{}
+	q := NewTaskQueue().WithRepo(r)
+
+	task := newTask("t1", TaskPriorityNormal)
+	task.Status = TaskStatusRunning
+	q.AttachAssigned(task)
+
+	if got := r.count(); got != 0 {
+		t.Errorf("AttachAssigned should not call repo.Save; got %d calls", got)
+	}
+}
+
+func TestReplay_PreservesStatusAndCreatedAt(t *testing.T) {
+	q := NewTaskQueue()
+	created := time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC)
+
+	// A task as it would be loaded from sqlite: explicit CreatedAt and
+	// Status TaskStatusPending. Enqueue would overwrite both; Replay must not.
+	task := &Task{
+		ID:        "t1",
+		Priority:  TaskPriorityNormal,
+		Status:    TaskStatusPending,
+		CreatedAt: created,
+	}
+
+	q.Replay(task)
+
+	got := q.Get("t1")
+	if got == nil {
+		t.Fatal("Replay did not place task in tasks map")
+	}
+	if got.Status != TaskStatusPending {
+		t.Errorf("Replay mutated Status: got %q, want %q (Pending)", got.Status, TaskStatusPending)
+	}
+	if !got.CreatedAt.Equal(created) {
+		t.Errorf("Replay mutated CreatedAt: got %v, want %v", got.CreatedAt, created)
+	}
+}
+
+func TestReplay_AddsToPriorityQueue(t *testing.T) {
+	q := NewTaskQueue()
+	q.Replay(&Task{ID: "t1", Priority: TaskPriorityHigh, Status: TaskStatusQueued})
+	q.Replay(&Task{ID: "t2", Priority: TaskPriorityLow, Status: TaskStatusQueued})
+
+	pending := q.ListQueuedByPriority()
+	if len(pending) != 2 {
+		t.Fatalf("ListQueuedByPriority = %d; want 2", len(pending))
+	}
+	// High priority must come first.
+	if pending[0].ID != "t1" {
+		t.Errorf("priority order broken: got %v", []string{pending[0].ID, pending[1].ID})
+	}
+}
+
+func TestReplay_DoesNotPersist(t *testing.T) {
+	r := &recordingRepo{}
+	q := NewTaskQueue().WithRepo(r)
+
+	q.Replay(&Task{ID: "t1", Priority: TaskPriorityNormal, Status: TaskStatusQueued})
+
+	if r.count() != 0 {
+		t.Errorf("Replay should not call repo.Save; got %d", r.count())
 	}
 }

@@ -12,6 +12,12 @@ import (
 	"github.com/s1ckdark/hydra/internal/web/ws"
 )
 
+// bootGracePeriod is the time after Start that the supervisor waits
+// before reconciling assigned/running tasks against actual worker
+// connectivity. Sized comfortably above HeartbeatMonitor's 45s
+// staleThreshold so a normally-cycling worker has time to reconnect.
+const bootGracePeriod = 60 * time.Second
+
 // TaskSupervisor periodically reassigns work from failed/timed-out workers
 // and push-schedules queued tasks onto the best available worker.
 type TaskSupervisor struct {
@@ -99,14 +105,70 @@ func (s *TaskSupervisor) Start(ctx context.Context) {
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
+	bootDeadline := time.Now().Add(bootGracePeriod)
+	bootReconciled := false
+
 	for {
 		select {
 		case <-ctx.Done():
 			log.Println("[supervisor] task supervisor stopped")
 			return
 		case <-ticker.C:
+			if !bootReconciled && time.Now().After(bootDeadline) {
+				s.reconcileBoot(ctx)
+				bootReconciled = true
+			}
 			s.check(ctx)
 		}
+	}
+}
+
+// reconcileBoot is a one-shot pass invoked after bootGracePeriod elapses.
+// It walks the assigned/running task set, identifies workers that have
+// not reconnected, and triggers reassignment for them. Workers that did
+// reconnect during the grace window keep their tasks; the live disconnect
+// handler covers any subsequent drop.
+//
+// Per-device dedup: if a worker had three assigned tasks, we call
+// ReassignTasksFromDevice once for it (the queue method handles all
+// non-terminal tasks for that device atomically).
+//
+// Safe to call when wsHub is nil — used in tests that don't wire a hub.
+func (s *TaskSupervisor) reconcileBoot(ctx context.Context) {
+	if s.wsHub == nil {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	orphanedDevices := make(map[string]struct{})
+	for _, t := range s.taskQueue.ListByStatus(domain.TaskStatusAssigned) {
+		if t.AssignedDeviceID == "" {
+			continue
+		}
+		if !s.wsHub.IsConnected(t.AssignedDeviceID) {
+			orphanedDevices[t.AssignedDeviceID] = struct{}{}
+		}
+	}
+	for _, t := range s.taskQueue.ListByStatus(domain.TaskStatusRunning) {
+		if t.AssignedDeviceID == "" {
+			continue
+		}
+		if !s.wsHub.IsConnected(t.AssignedDeviceID) {
+			orphanedDevices[t.AssignedDeviceID] = struct{}{}
+		}
+	}
+
+	if len(orphanedDevices) == 0 {
+		log.Printf("[supervisor] boot reconcile: all assigned/running workers reconnected")
+		return
+	}
+
+	for deviceID := range orphanedDevices {
+		reassigned := s.taskQueue.ReassignTasksFromDevice(deviceID)
+		log.Printf("[supervisor] boot reconcile: reassigned %d tasks from non-reconnected worker %s",
+			len(reassigned), deviceID)
 	}
 }
 

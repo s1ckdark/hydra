@@ -57,6 +57,9 @@ func (s *stubTaskRepoForGroup) GetByGroup(_ context.Context, gid string) ([]*dom
 func (s *stubTaskRepoForGroup) MarkStaleTasksFailed(_ context.Context, _ time.Time) (int, error) {
 	return 0, nil
 }
+func (s *stubTaskRepoForGroup) LoadNonTerminal(_ context.Context) ([]*domain.Task, error) {
+	return nil, nil
+}
 
 func newGroupHandlerForTest(t *testing.T, groups []*domain.TaskGroup, tasks []*domain.Task) *Handler {
 	t.Helper()

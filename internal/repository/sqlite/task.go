@@ -102,6 +102,24 @@ func (r *TaskRepository) GetByGroup(ctx context.Context, groupID string) ([]*dom
 	return scanTasks(rows)
 }
 
+// LoadNonTerminal returns every task whose status is not in a terminal
+// state (completed/failed/cancelled). Used at server boot to rehydrate
+// the in-memory queue.
+func (r *TaskRepository) LoadNonTerminal(ctx context.Context) ([]*domain.Task, error) {
+	rows, err := r.db.QueryContext(ctx,
+		taskSelectColumns+
+			` WHERE status NOT IN (?, ?, ?) ORDER BY created_at ASC`,
+		string(domain.TaskStatusCompleted),
+		string(domain.TaskStatusFailed),
+		string(domain.TaskStatusCancelled),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanTasks(rows)
+}
+
 const taskSelectColumns = `
 	SELECT id, parent_id, orch_id, type, status, priority,
 		   required_capabilities, preferred_device_id, assigned_device_id,
