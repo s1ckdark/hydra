@@ -144,40 +144,51 @@ struct MenuBarView: View {
     /// followed by a second async tick to force focus on the just-created
     /// window since SwiftUI doesn't reliably activate it from this context.
     private func openDashboardWindow() {
-        // Critical: setActivationPolicy must run synchronously here, BEFORE
-        // any Task. Calling it from inside a Task races macOS internals on
-        // some Sonoma builds and silently no-ops, which is the symptom we
-        // saw — dock icon never appears even though the menu-bar action
-        // fires. AppKit honours the policy switch reliably only when called
-        // on the calling thread before yielding to the runloop.
-        let beforePolicy = NSApp.activationPolicy().rawValue
+        // Set policy synchronously here, before any Task — calling it from
+        // inside a Task races macOS internals on some Sonoma builds and
+        // silently no-ops.
         NSApp.setActivationPolicy(.regular)
-        let afterPolicy = NSApp.activationPolicy().rawValue
-        print("[menubar] open dashboard: policy \(beforePolicy) → \(afterPolicy)")
+        print("[menubar] open dashboard: policy \(NSApp.activationPolicy().rawValue)")
 
         Task { @MainActor in
-            // Yield one runloop tick so the popover finishes dismissing —
-            // activation events fired during dismissal are sometimes dropped.
+            // Yield so the popover finishes dismissing — activation events
+            // fired during dismissal are sometimes dropped.
             try? await Task.sleep(for: .milliseconds(50))
 
-            // Two activation paths cover both AppKit and SwiftUI scene
-            // graph state. Some Sonoma builds honour only one of these.
+            // Activate via Apple Events (NSAppleScript). Sonoma+ blocks
+            // direct NSApp.activate() / NSRunningApplication.activate()
+            // when an app is "non-foreground" (e.g. menu-bar popover
+            // context), as a focus-stealing-prevention measure. AppleScript
+            // routes the request through the OS as if the user typed
+            // "tell application X to activate" — different policy path,
+            // and reliably brings the app to the front.
+            let bundleID = Bundle.main.bundleIdentifier ?? "io.hydra.Hydra"
+            let script = """
+            tell application id "\(bundleID)" to activate
+            """
+            if let appleScript = NSAppleScript(source: script) {
+                var err: NSDictionary?
+                appleScript.executeAndReturnError(&err)
+                if let err = err {
+                    print("[menubar] AppleScript activate error: \(err)")
+                }
+            }
+
+            // Belt-and-suspenders: also call AppKit-side activation in
+            // case AppleScript routing changes upstream. Cheap to do both.
             NSRunningApplication.current.activate()
             NSApp.activate()
 
             let candidates = NSApp.windows.filter {
                 $0.canBecomeKey && !($0 is NSPanel)
             }
-            print("[menubar] candidate windows after activate: \(candidates.map { "\($0.title)/\($0.identifier?.rawValue ?? "nil")" })")
+            print("[menubar] candidate windows: \(candidates.map { "\($0.title)/\($0.identifier?.rawValue ?? "nil")" })")
 
-            // Reuse a live window if one exists. orderFrontRegardless is
-            // more aggressive than makeKeyAndOrderFront — it surfaces the
-            // window even if the app isn't currently active, which matters
-            // when the policy switch is still settling.
             if let existing = candidates.first {
                 if existing.isMiniaturized { existing.deminiaturize(nil) }
+                existing.collectionBehavior.insert(.canJoinAllSpaces)
                 existing.orderFrontRegardless()
-                existing.makeKey()
+                existing.makeKeyAndOrderFront(nil)
                 return
             }
 
@@ -191,8 +202,9 @@ struct MenuBarView: View {
             print("[menubar] candidate windows after openWindow: \(next.map { $0.title })")
             for window in next {
                 if window.isMiniaturized { window.deminiaturize(nil) }
+                window.collectionBehavior.insert(.canJoinAllSpaces)
                 window.orderFrontRegardless()
-                window.makeKey()
+                window.makeKeyAndOrderFront(nil)
             }
         }
     }
