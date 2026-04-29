@@ -105,3 +105,36 @@ func TestReassignTasksFromDevice_PopulatesBlockedIDs(t *testing.T) {
 		t.Fatalf("expected 2 blocked, got %v", got.BlockedDeviceIDs)
 	}
 }
+
+func TestAttachAssigned_AddsToTasksMapNotQueue(t *testing.T) {
+	q := NewTaskQueue()
+	task := newTask("t1", TaskPriorityNormal)
+	task.Status = TaskStatusAssigned
+	task.AssignedDeviceID = "dev-1"
+
+	q.AttachAssigned(task)
+
+	if got := q.Get("t1"); got == nil {
+		t.Fatal("Get should return the task after AttachAssigned")
+	}
+	if pending := q.ListQueuedByPriority(); len(pending) != 0 {
+		t.Errorf("ListQueuedByPriority should be empty after AttachAssigned, got %d", len(pending))
+	}
+	assigned := q.GetAssignedTasks("dev-1")
+	if len(assigned) != 1 || assigned[0].ID != "t1" {
+		t.Errorf("GetAssignedTasks(dev-1) = %v; want [t1]", assigned)
+	}
+}
+
+func TestAttachAssigned_DoesNotPersist(t *testing.T) {
+	r := &recordingRepo{}
+	q := NewTaskQueue().WithRepo(r)
+
+	task := newTask("t1", TaskPriorityNormal)
+	task.Status = TaskStatusRunning
+	q.AttachAssigned(task)
+
+	if got := r.count(); got != 0 {
+		t.Errorf("AttachAssigned should not call repo.Save; got %d calls", got)
+	}
+}

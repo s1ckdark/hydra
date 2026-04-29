@@ -24,6 +24,7 @@ func (r *stubTaskRepo) GetByGroup(_ context.Context, _ string) ([]*Task, error) 
 func (r *stubTaskRepo) MarkStaleTasksFailed(_ context.Context, _ time.Time) (int, error) {
 	return 0, nil
 }
+func (r *stubTaskRepo) LoadNonTerminal(_ context.Context) ([]*Task, error) { return nil, nil }
 
 func TestTaskQueue_EnqueueWritesThrough(t *testing.T) {
 	q := NewTaskQueue()

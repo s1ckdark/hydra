@@ -141,6 +141,29 @@ func (q *TaskQueue) Enqueue(task *Task) {
 	q.persist(task)
 }
 
+// AttachAssigned re-inserts a task that already has a non-pending status
+// (assigned or running), typically replayed from the repository at boot.
+// The task lands in q.tasks (so Get / ListByStatus / GetAssignedTasks see
+// it) but is NOT placed in q.queue, since it is not awaiting initial
+// scheduling.
+//
+// The caller is responsible for ensuring task.Status is one of:
+//
+//	TaskStatusAssigned, TaskStatusRunning
+//
+// Use Enqueue for TaskStatusQueued / TaskStatusPending.
+//
+// AttachAssigned does not call persist — the task is already present in
+// the repo (it came from there).
+func (q *TaskQueue) AttachAssigned(t *Task) {
+	if t == nil {
+		return
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.tasks[t.ID] = t
+}
+
 // insertByPriority inserts task maintaining priority order (urgent > high > normal > low)
 func (q *TaskQueue) insertByPriority(task *Task) {
 	pri := priorityValue(task.Priority)
