@@ -196,6 +196,15 @@ struct DeviceDetailView: View {
     @State private var showSSHBanner = false
     @State private var sshBannerManuallyDismissed = false
 
+    @State private var keyCopyStatus: KeyCopyStatus = .idle
+    @State private var keyCopyResetTask: Task<Void, Never>?
+
+    enum KeyCopyStatus: Equatable {
+        case idle
+        case copied(filename: String)
+        case failed(message: String)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -221,6 +230,8 @@ struct DeviceDetailView: View {
                         InfoField(label: "GPU", value: "\(device.gpuCount)x \(device.gpuModel ?? "Unknown")")
                     }
                 }
+
+                publicKeyCopyRow
 
                 // SSH recovery banner
                 if showSSHBanner && !sshBannerManuallyDismissed {
@@ -405,6 +416,75 @@ struct DeviceDetailView: View {
             gpuStatus = nil
             metrics = nil
             startGPUPolling()
+        }
+    }
+
+    private var publicKeyCopyRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "key.fill")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("이 호스트 SSH 공개키")
+                    .font(.caption)
+                Text(keyCopyStatusMessage)
+                    .font(.caption2)
+                    .foregroundStyle(keyCopyStatusColor)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button(action: copyPublicKey) {
+                Label(keyCopyButtonTitle, systemImage: keyCopyButtonIcon)
+                    .font(.caption)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("디바이스 ~/.ssh/authorized_keys에 등록할 공개키를 클립보드로 복사합니다.")
+        }
+        .padding(8)
+        .background(.quaternary.opacity(0.4))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private var keyCopyStatusMessage: String {
+        switch keyCopyStatus {
+        case .idle: return "원격 ~/.ssh/authorized_keys 에 붙여넣어 사용"
+        case .copied(let name): return "복사됨 — \(name)"
+        case .failed(let msg): return msg
+        }
+    }
+
+    private var keyCopyStatusColor: Color {
+        switch keyCopyStatus {
+        case .idle: return .secondary
+        case .copied: return .green
+        case .failed: return .red
+        }
+    }
+
+    private var keyCopyButtonTitle: String {
+        if case .copied = keyCopyStatus { return "복사됨" }
+        return "공개키 복사"
+    }
+
+    private var keyCopyButtonIcon: String {
+        if case .copied = keyCopyStatus { return "checkmark" }
+        return "doc.on.doc"
+    }
+
+    private func copyPublicKey() {
+        keyCopyResetTask?.cancel()
+        do {
+            let key = try SSHKeyLocator.defaultPublicKey()
+            SSHKeyLocator.copyToClipboard(key)
+            keyCopyStatus = .copied(filename: key.filename)
+        } catch {
+            keyCopyStatus = .failed(message: error.localizedDescription)
+        }
+        keyCopyResetTask = Task {
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled {
+                await MainActor.run { keyCopyStatus = .idle }
+            }
         }
     }
 
