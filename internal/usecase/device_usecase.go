@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -151,6 +152,14 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 	// Fetch from Tailscale API
 	devices, err := uc.tailscale.ListDevices(ctx)
 	if err != nil {
+		// Tailscale unreachable (token expired, network blip, etc.) — fall back
+		// to the freshest local snapshot so dashboards stay usable. Without this
+		// the home/devices/GPU endpoints all 500 on a single upstream hiccup.
+		if fallback := uc.staleFallback(ctx); len(fallback) > 0 {
+			log.Printf("[devices] tailscale fetch failed, serving %d stale devices: %v", len(fallback), err)
+			uc.applyCapabilityOverrides(fallback)
+			return fallback, nil
+		}
 		return nil, err
 	}
 
@@ -196,6 +205,26 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 
 	uc.applyCapabilityOverrides(devices)
 	return devices, nil
+}
+
+// staleFallback returns the freshest device list available from local sources
+// when the Tailscale API is unreachable. Tries in-memory cache first (may hold
+// GPU probe results not yet flushed to DB), then the SQLite repo. Returns nil
+// if neither has data. Ignores cacheTTL — callers reach this only after the
+// upstream fetch failed, so any local snapshot beats a 500.
+func (uc *DeviceUseCase) staleFallback(ctx context.Context) []*domain.Device {
+	uc.cacheMu.RLock()
+	cached := uc.cachedDevices
+	uc.cacheMu.RUnlock()
+	if len(cached) > 0 {
+		return cached
+	}
+	if uc.repos != nil && uc.repos.Devices != nil {
+		if devs, err := uc.repos.Devices.GetAll(ctx); err == nil && len(devs) > 0 {
+			return devs
+		}
+	}
+	return nil
 }
 
 // mergeGPUFromDB restores GPU info from DB into freshly fetched Tailscale devices.
@@ -271,6 +300,20 @@ func (uc *DeviceUseCase) probeGPU(ctx context.Context, devices []*domain.Device)
 func (uc *DeviceUseCase) GetDevice(ctx context.Context, nameOrID string) (*domain.Device, error) {
 	device, err := uc.tailscale.GetDevice(ctx, nameOrID)
 	if err != nil {
+		// Same fail-open policy as ListDevices: if Tailscale is down, look the
+		// device up in the local snapshot. Without this, /api/devices/:id/metrics
+		// 500s even for the self-host whose self-report sits ready in the cache.
+		if fallback := uc.staleFallback(ctx); len(fallback) > 0 {
+			needle := strings.ToLower(nameOrID)
+			for _, d := range fallback {
+				if d.ID == nameOrID || strings.ToLower(d.Name) == needle || strings.ToLower(d.Hostname) == needle {
+					log.Printf("[devices] tailscale single-device fetch failed, serving stale %s: %v", nameOrID, err)
+					cp := *d
+					uc.applyCapabilityOverrides([]*domain.Device{&cp})
+					return &cp, nil
+				}
+			}
+		}
 		return nil, err
 	}
 	uc.applyCapabilityOverrides([]*domain.Device{device})

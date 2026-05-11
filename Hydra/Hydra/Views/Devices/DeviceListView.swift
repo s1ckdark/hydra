@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -184,6 +185,9 @@ struct DeviceDetailView: View {
     @State private var gpuStatus: GPUNodeStatus?
     @State private var metrics: DeviceMetrics?
     @State private var pollTask: Task<Void, Never>?
+    @State private var pingResult: PingResult?
+    @State private var pingError: String?
+    @State private var pingInProgress = false
 
     // SSH recovery state. The banner is gated on showSSHBanner, which is only
     // raised when the metrics endpoint reports a backend SSH error (m.hasError),
@@ -303,6 +307,56 @@ struct DeviceDetailView: View {
                         } else {
                             ProgressView("Loading system metrics...")
                                 .font(.caption)
+                        }
+                    }
+                }
+
+                // Connectivity — TCP-connect speed test
+                GroupBox("Connectivity") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Button {
+                                Task { await runPing() }
+                            } label: {
+                                Label("Speed Test", systemImage: "speedometer")
+                            }
+                            .disabled(pingInProgress)
+                            if pingInProgress {
+                                ProgressView().controlSize(.small)
+                                Text("Probing \(device.tailscaleIp):22 …")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+
+                        if let r = pingResult {
+                            HStack(alignment: .firstTextBaseline, spacing: 24) {
+                                pingStat(label: "min", ms: r.minMs, color: .green)
+                                pingStat(label: "avg", ms: r.avgMs, color: pingColor(r.avgMs))
+                                pingStat(label: "max", ms: r.maxMs, color: pingColor(r.maxMs))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("loss")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    Text("\(r.loss)/\(r.samples)")
+                                        .font(.system(.body, design: .monospaced))
+                                        .foregroundStyle(r.loss == 0 ? Color.primary : Color.red)
+                                }
+                            }
+                            pingChart(for: r)
+
+                            Text("Target \(r.target):\(r.port) · \(r.success) of \(r.samples) succeeded")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        } else if let err = pingError {
+                            Label(err, systemImage: "xmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        } else if !pingInProgress {
+                            Text("Click Speed Test to measure TCP connect latency to this device's Tailscale IP.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -524,6 +578,102 @@ struct DeviceDetailView: View {
             // Transport / API errors are not necessarily SSH failures; leave
             // the banner state untouched so a flapping connection does not
             // open a recovery flow that the user can not act on.
+        }
+    }
+
+    private func runPing() async {
+        pingInProgress = true
+        pingError = nil
+        defer { pingInProgress = false }
+        do {
+            pingResult = try await APIClient.shared.pingDevice(id: device.id, count: 5)
+        } catch {
+            pingResult = nil
+            pingError = error.localizedDescription
+        }
+    }
+
+    @ViewBuilder
+    private func pingStat(label: String, ms: Double, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(String(format: "%.1f ms", ms))
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(color)
+        }
+    }
+
+    private func pingColor(_ ms: Double) -> Color {
+        if ms < 50 { return .green }
+        if ms < 200 { return .orange }
+        return .red
+    }
+
+    @ViewBuilder
+    private func pingChart(for r: PingResult) -> some View {
+        if let samples = r.samplesMs, !samples.isEmpty {
+            Chart {
+                // Connected line over successful samples only — Charts will
+                // bridge across a failed index, but the ✗ marker below makes
+                // the loss position unambiguous.
+                ForEach(Array(samples.enumerated()), id: \.offset) { idx, ms in
+                    if ms > 0 {
+                        LineMark(
+                            x: .value("Sample", idx + 1),
+                            y: .value("RTT", ms)
+                        )
+                        .foregroundStyle(.blue)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                    }
+                }
+                // Per-sample points: color by speed, annotate with ms.
+                ForEach(Array(samples.enumerated()), id: \.offset) { idx, ms in
+                    if ms > 0 {
+                        PointMark(
+                            x: .value("Sample", idx + 1),
+                            y: .value("RTT", ms)
+                        )
+                        .foregroundStyle(pingColor(ms))
+                        .symbolSize(80)
+                        .annotation(position: .top) {
+                            Text(String(format: "%.0f", ms))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        PointMark(
+                            x: .value("Sample", idx + 1),
+                            y: .value("RTT", 0)
+                        )
+                        .foregroundStyle(.red)
+                        .symbol(.cross)
+                        .symbolSize(100)
+                    }
+                }
+                RuleMark(y: .value("Avg", r.avgMs))
+                    .foregroundStyle(.secondary)
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4]))
+                    .annotation(position: .top, alignment: .trailing) {
+                        Text(String(format: "avg %.1f ms", r.avgMs))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+            }
+            .chartYAxisLabel("ms")
+            .chartXAxis {
+                AxisMarks(values: Array(1...r.samples)) { value in
+                    AxisValueLabel {
+                        if let i = value.as(Int.self) {
+                            Text("#\(i)").font(.caption2)
+                        }
+                    }
+                    AxisGridLine()
+                }
+            }
+            .frame(height: 150)
+            .padding(.top, 4)
         }
     }
 

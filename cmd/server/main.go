@@ -316,6 +316,10 @@ func main() {
 	// 0.0.0.0 would expose an unauthenticated metric-injection vector.
 	apiWrite.POST("/devices/:id/metrics", h.APIDeviceMetricsPush)
 
+	// Network reachability probe — measures TCP connect RTT to the device's
+	// Tailscale IP. Sits on apiWrite because it consumes server CPU + network.
+	apiWrite.POST("/devices/:id/ping", h.APIDevicePing)
+
 	// Config routes (Tailscale network auth required)
 	apiWrite.GET("/config/tailscale", h.APIGetTailscaleConfig)
 	apiWrite.PUT("/config/tailscale", h.APIPutTailscaleConfig)

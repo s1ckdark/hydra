@@ -54,6 +54,17 @@ actor APIClient {
         return try await post("/api/devices/\(id)/execute", body: ExecuteRequest(command: command, timeout_seconds: timeout))
     }
 
+    private struct PingRequest: Encodable {
+        let count: Int
+        let port: Int
+    }
+
+    /// Runs a TCP-connect speed test against the device's Tailscale IP.
+    /// Default count=5 mirrors the server-side cap; port 22 is the SSH probe.
+    func pingDevice(id: String, count: Int = 5, port: Int = 22) async throws -> PingResult {
+        return try await post("/api/devices/\(id)/ping", body: PingRequest(count: count, port: port))
+    }
+
     /// Reports the device's enabled capabilities to the server. Used by
     /// CapabilityReporter on app launch and reconnect so the AI scheduler
     /// can route capability-tagged tasks here.
