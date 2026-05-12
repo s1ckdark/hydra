@@ -7,13 +7,17 @@
 #
 # SwiftPM produces:
 #   .build/<triple>/<config>/Hydra              (the executable)
-#   .build/<triple>/<config>/Hydra_Hydra.bundle (resources, including
-#                                                 compiled Assets.car)
+#   .build/<triple>/<config>/Hydra_Hydra.bundle (raw resources — Xcode would
+#                                                 also compile Assets.xcassets
+#                                                 into Assets.car here, but
+#                                                 SwiftPM does NOT, so we run
+#                                                 actool ourselves below)
 #
 # `Hydra.app/Contents/Resources/Assets.car` is what macOS reads to resolve
 # `CFBundleIconName=AppIcon` from Info.plist into the actual icon image, so we
-# also lift Assets.car directly into the .app's Resources/ alongside the
-# nested resource bundle that `Bundle.module` looks up at runtime.
+# compile the xcassets via `actool` and drop the result directly into the
+# .app's Resources/ alongside the nested SPM resource bundle that
+# `Bundle.module` looks up at runtime.
 #
 # Usage:
 #   ./scripts/bundle-app.sh [debug|release]   (default: release)
@@ -31,7 +35,7 @@ esac
 
 cd "$(dirname "$0")/.."
 
-echo "[1/5] swift build -c $CONFIG"
+echo "[1/6] swift build -c $CONFIG"
 swift build -c "$CONFIG" --product Hydra
 
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
@@ -44,7 +48,7 @@ if [[ ! -x "$EXECUTABLE" ]]; then
 fi
 
 APP="$BIN_DIR/Hydra.app"
-echo "[2/5] assembling $APP"
+echo "[2/6] assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
@@ -54,22 +58,41 @@ cp "$EXECUTABLE" "$APP/Contents/MacOS/Hydra"
 cp "Info.plist" "$APP/Contents/Info.plist"
 
 if [[ -d "$RESOURCE_BUNDLE" ]]; then
-    echo "[3/5] copying resource bundle"
+    echo "[3/6] copying resource bundle"
     cp -R "$RESOURCE_BUNDLE" "$APP/Contents/Resources/"
-    # Lift compiled asset catalog to the .app level so the OS finds AppIcon
-    # via CFBundleIconName without descending into a nested SPM resource bundle.
-    if [[ -f "$RESOURCE_BUNDLE/Contents/Resources/Assets.car" ]]; then
-        cp "$RESOURCE_BUNDLE/Contents/Resources/Assets.car" "$APP/Contents/Resources/Assets.car"
+fi
+
+echo "[4/6] compiling Assets.car via actool"
+XCASSETS="Hydra/Assets.xcassets"
+if [[ -d "$XCASSETS" ]]; then
+    ACTOOL_OUT="$(mktemp -d)"
+    # macOS-only build; --app-icon ties the catalog's AppIcon set to the
+    # CFBundleIconName key in Info.plist. --output-partial-info-plist is
+    # required by actool even though we don't merge it back.
+    actool "$XCASSETS" \
+        --compile "$ACTOOL_OUT" \
+        --platform macosx \
+        --minimum-deployment-target 14.0 \
+        --app-icon AppIcon \
+        --output-partial-info-plist "$ACTOOL_OUT/Info.partial.plist" \
+        >/dev/null
+    if [[ -f "$ACTOOL_OUT/Assets.car" ]]; then
+        cp "$ACTOOL_OUT/Assets.car" "$APP/Contents/Resources/Assets.car"
+    else
+        echo "warning: actool produced no Assets.car — icon will be missing" >&2
     fi
+    rm -rf "$ACTOOL_OUT"
+else
+    echo "warning: $XCASSETS not found — skipping icon compile" >&2
 fi
 
 # touch the bundle so Launch Services re-reads it on next open
 touch "$APP"
 
-echo "[4/5] ad-hoc code sign"
+echo "[5/6] ad-hoc code sign"
 codesign --force --deep --sign - "$APP" >/dev/null
 
-echo "[5/5] done"
+echo "[6/6] done"
 echo
 echo "  $APP"
 echo "  open \"$APP\""
