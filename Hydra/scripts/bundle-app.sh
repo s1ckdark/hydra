@@ -35,7 +35,7 @@ esac
 
 cd "$(dirname "$0")/.."
 
-echo "[1/6] swift build -c $CONFIG"
+echo "[1/7] swift build -c $CONFIG"
 swift build -c "$CONFIG" --product Hydra
 
 BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
@@ -48,7 +48,7 @@ if [[ ! -x "$EXECUTABLE" ]]; then
 fi
 
 APP="$BIN_DIR/Hydra.app"
-echo "[2/6] assembling $APP"
+echo "[2/7] assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
@@ -58,11 +58,11 @@ cp "$EXECUTABLE" "$APP/Contents/MacOS/Hydra"
 cp "Info.plist" "$APP/Contents/Info.plist"
 
 if [[ -d "$RESOURCE_BUNDLE" ]]; then
-    echo "[3/6] copying resource bundle"
+    echo "[3/7] copying resource bundle"
     cp -R "$RESOURCE_BUNDLE" "$APP/Contents/Resources/"
 fi
 
-echo "[4/6] compiling Assets.car via actool"
+echo "[4/7] compiling Assets.car via actool"
 XCASSETS="Hydra/Assets.xcassets"
 if [[ -d "$XCASSETS" ]]; then
     ACTOOL_OUT="$(mktemp -d)"
@@ -86,13 +86,21 @@ else
     echo "warning: $XCASSETS not found — skipping icon compile" >&2
 fi
 
+echo "[5/7] go build hydra-server (embedded backend)"
+# The Hydra menu-bar app spawns this binary at launch so the user does not
+# have to run `make run-server` separately. cmd/server lives at the repo
+# root (one level above this Hydra/ working dir).
+SERVER_BIN="$APP/Contents/Resources/hydra-server"
+(cd .. && go build -o "$SERVER_BIN" ./cmd/server)
+chmod +x "$SERVER_BIN"
+
 # touch the bundle so Launch Services re-reads it on next open
 touch "$APP"
 
-echo "[5/6] ad-hoc code sign"
+echo "[6/7] ad-hoc code sign"
 codesign --force --deep --sign - "$APP" >/dev/null
 
-echo "[6/6] done"
+echo "[7/7] done"
 echo
 echo "  $APP"
 echo "  open \"$APP\""

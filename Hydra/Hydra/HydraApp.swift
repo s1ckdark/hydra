@@ -146,6 +146,11 @@ struct HydraApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        Task { await EmbeddedServer.shared.start() }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        EmbeddedServer.shared.stop()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
