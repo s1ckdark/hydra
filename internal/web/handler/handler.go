@@ -1007,6 +1007,27 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 		return internalError(c, "failed to list devices", err)
 	}
 
+	// Decorate with self-report freshness: when the Tailscale API auth is
+	// broken the upstream snapshot freezes and every device looks frozen-
+	// online forever. Devices that POST self-metrics still prove they are
+	// alive, so we promote their LastSeen/Status from the metrics cache
+	// before the response goes out. This only affects the response — the
+	// underlying device store stays as Tailscale gave it to us.
+	if h.monitorUC != nil {
+		now := time.Now()
+		const selfReportFresh = 5 * time.Minute
+		for _, d := range devices {
+			cached := h.monitorUC.GetLatestCached(d.ID)
+			if cached == nil || cached.Source != domain.MetricsSourceSelfReport {
+				continue
+			}
+			if now.Sub(cached.CollectedAt) < selfReportFresh && cached.CollectedAt.After(d.LastSeen) {
+				d.LastSeen = cached.CollectedAt
+				d.Status = domain.DeviceStatusOnline
+			}
+		}
+	}
+
 	return c.JSON(http.StatusOK, devices)
 }
 

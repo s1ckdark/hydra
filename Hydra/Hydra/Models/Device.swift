@@ -17,7 +17,20 @@ struct Device: Codable, Identifiable {
     let gpuModel: String?
     let gpuCount: Int
 
-    var isOnline: Bool { status == "online" }
+    /// "online" alone is not enough: when Tailscale API auth breaks the
+    /// server keeps serving its last cached snapshot with status="online"
+    /// frozen in place (lastSeen drifts further into the past with every
+    /// poll). Treat anything older than the freshness window as offline so
+    /// the menu-bar count reflects reality instead of the stale snapshot.
+    static let onlineFreshnessWindow: TimeInterval = 300  // 5 minutes
+    var isOnline: Bool {
+        status == "online" && Date().timeIntervalSince(lastSeen) < Self.onlineFreshnessWindow
+    }
+    /// True when the server claims this device is online but our freshness
+    /// cap says otherwise — useful to flag "tailscale auth probably broken".
+    var isStaleOnline: Bool {
+        status == "online" && Date().timeIntervalSince(lastSeen) >= Self.onlineFreshnessWindow
+    }
     var displayName: String { name.isEmpty ? hostname : name }
 
     /// Best short label that actually distinguishes this device.
