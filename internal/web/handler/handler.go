@@ -1007,21 +1007,23 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 		return internalError(c, "failed to list devices", err)
 	}
 
-	// Decorate with self-report freshness: when the Tailscale API auth is
-	// broken the upstream snapshot freezes and every device looks frozen-
-	// online forever. Devices that POST self-metrics still prove they are
-	// alive, so we promote their LastSeen/Status from the metrics cache
-	// before the response goes out. This only affects the response — the
-	// underlying device store stays as Tailscale gave it to us.
+	// Decorate with metric freshness: when the Tailscale API auth is broken
+	// the upstream snapshot freezes and every device looks frozen-online
+	// forever. Any device for which we've recently collected a metric with
+	// no error — whether via self-report (macOS GUI) or via the background
+	// SSH collector — is provably alive, so we promote its LastSeen/Status
+	// before the response goes out. We require an empty Error string so a
+	// failed SSH attempt (which still lands in the cache) doesn't count as
+	// proof of life. The underlying device store is untouched.
 	if h.monitorUC != nil {
 		now := time.Now()
-		const selfReportFresh = 5 * time.Minute
+		const freshSignal = 5 * time.Minute
 		for _, d := range devices {
 			cached := h.monitorUC.GetLatestCached(d.ID)
-			if cached == nil || cached.Source != domain.MetricsSourceSelfReport {
+			if cached == nil || cached.Error != "" {
 				continue
 			}
-			if now.Sub(cached.CollectedAt) < selfReportFresh && cached.CollectedAt.After(d.LastSeen) {
+			if now.Sub(cached.CollectedAt) < freshSignal && cached.CollectedAt.After(d.LastSeen) {
 				d.LastSeen = cached.CollectedAt
 				d.Status = domain.DeviceStatusOnline
 			}
@@ -1860,6 +1862,21 @@ func (h *Handler) APIGPUMonitor(c echo.Context) error {
 		}(i, d)
 	}
 	wg.Wait()
+
+	// Promote SSH-reachable GPU nodes into the metric freshness cache so
+	// APIDeviceList sees them as alive on the next call without waiting
+	// for the slower 30-second background SSH cycle. Only nodes that
+	// returned actual GPU rows count — an error or empty payload means
+	// the SSH attempt failed (timeout / refused / parse) and we can't
+	// claim the host is alive.
+	if h.monitorUC != nil {
+		for _, r := range results {
+			if r.Error != "" || len(r.GPUs) == 0 {
+				continue
+			}
+			h.monitorUC.MarkReachable(r.DeviceID, domain.MetricsSourceSSH)
+		}
+	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"timestamp": time.Now(),

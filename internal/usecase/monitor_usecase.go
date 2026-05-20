@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"net"
 	"sync"
 	"time"
 
@@ -66,6 +67,24 @@ func (uc *MonitorUseCase) PushSelfMetrics(m *domain.DeviceMetrics) {
 	uc.latestMu.Lock()
 	defer uc.latestMu.Unlock()
 	uc.latest[m.DeviceID] = m
+}
+
+// MarkReachable records a fresh "this device responded just now" signal
+// without a full metrics payload. Used by lightweight probes (the GPU
+// monitor's nvidia-smi call, future ping checks, etc.) so device-list
+// freshness consumers can promote the device to online before the slower
+// background SSH cycle finishes a full sweep.
+func (uc *MonitorUseCase) MarkReachable(deviceID string, source domain.MetricsSource) {
+	if deviceID == "" {
+		return
+	}
+	uc.latestMu.Lock()
+	defer uc.latestMu.Unlock()
+	uc.latest[deviceID] = &domain.DeviceMetrics{
+		DeviceID:    deviceID,
+		CollectedAt: time.Now(),
+		Source:      source,
+	}
 }
 
 // GetDeviceMetrics gets the current metrics for a device
@@ -180,6 +199,48 @@ func (uc *MonitorUseCase) GetMetricsHistory(ctx context.Context, deviceID string
 		return &domain.MetricsHistory{DeviceID: deviceID}, nil
 	}
 	return uc.repos.Metrics.GetHistory(ctx, deviceID, limit)
+}
+
+// StartReachabilityProbe runs a lightweight TCP :22 connect against every
+// known device on each tick and marks reachable hosts in the freshness
+// cache. Cheap (parallel, 1s timeout per device) so it can run on a
+// short interval and keep the menu-bar device count accurate even when
+// the full SSH metric collector is slow or the Tailscale API is broken.
+// SSH-disabled devices (iOS) will always look offline through this path;
+// they need a separate self-report channel to be counted as alive.
+func (uc *MonitorUseCase) StartReachabilityProbe(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			devices, err := uc.deviceUC.ListDevices(ctx, false)
+			if err != nil {
+				continue
+			}
+			var wg sync.WaitGroup
+			for _, d := range devices {
+				addr := d.TailscaleIP
+				if addr == "" {
+					continue
+				}
+				wg.Add(1)
+				go func(deviceID, ip string) {
+					defer wg.Done()
+					conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "22"), time.Second)
+					if err != nil {
+						return
+					}
+					conn.Close()
+					uc.MarkReachable(deviceID, domain.MetricsSourceSSH)
+				}(d.ID, addr)
+			}
+			wg.Wait()
+		}
+	}
 }
 
 // StartBackgroundCollection starts background metrics collection
