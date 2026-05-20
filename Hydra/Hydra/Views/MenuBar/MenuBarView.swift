@@ -34,6 +34,14 @@ struct MenuBarView: View {
                                     Text(node.deviceName.components(separatedBy: ".").first ?? node.deviceName)
                                         .font(.caption)
                                         .fontWeight(.medium)
+                                    if let staleAt = gpuVM.staleSince[node.deviceId] {
+                                        Image(systemName: "clock.arrow.circlepath")
+                                            .font(.caption2)
+                                            .foregroundStyle(.orange)
+                                        Text(staleAt, format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                                 // Line 2: bar + stats
                                 HStack(spacing: 6) {
