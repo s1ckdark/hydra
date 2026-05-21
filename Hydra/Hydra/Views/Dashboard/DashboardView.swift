@@ -86,10 +86,11 @@ struct DashboardView: View {
         }
         .toolbar {
             ToolbarItem {
-                Button(action: { Task { await vm.load() } }) {
+                Button(action: { Task { await vm.load(force: true) } }) {
                     Image(systemName: "arrow.clockwise")
                 }
                 .disabled(vm.isLoading)
+                .help("Force refresh — re-probe and re-collect metrics from every device")
             }
         }
         .navigationTitle("Dashboard")

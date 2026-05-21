@@ -69,7 +69,12 @@ class DashboardViewModel: ObservableObject {
     private let api = APIClient.shared
     private var pollTask: Task<Void, Never>?
 
-    func load() async {
+    /// Loads the current dashboard state. Pass `force: true` for a user-
+    /// initiated refresh — the server then bypasses its Tailscale cache,
+    /// re-probes :22 on every device, and re-collects SSH metrics before
+    /// responding. The default `false` is used by the background poller
+    /// so the lighter cached path runs every tick.
+    func load(force: Bool = false) async {
         isLoading = true
         error = nil
         await checkServerHealth()
@@ -78,7 +83,7 @@ class DashboardViewModel: ObservableObject {
             // device list view. The default API response hides iOS/Android
             // entries; this opt-in pulls them back in for Taildrop targets.
             let includeMobile = UserDefaults.standard.bool(forKey: "showMobileDevices")
-            async let d = api.listDevices(includeMobile: includeMobile)
+            async let d = api.listDevices(refresh: force, includeMobile: includeMobile)
             async let c = api.listOrchs()
             devices = try await d
             orchs = try await c

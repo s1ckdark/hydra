@@ -134,6 +134,75 @@ func (uc *MonitorUseCase) GetDeviceMetrics(ctx context.Context, deviceNameOrID s
 	return uc.collector.CollectMetrics(ctx, device)
 }
 
+// refreshAllDeadline caps how long a user-triggered refresh can take
+// before we return whatever we have. SSH collection against a host with
+// dead sshd can hang for 30s+ per device; without a ceiling the toolbar
+// button would freeze the UI for minutes. Anything slower than this
+// will resolve later via background collection.
+const refreshAllDeadline = 8 * time.Second
+
+// RefreshAll runs a synchronous probe + collection pass against every
+// known device and caches what finishes in time. Used by the user-
+// triggered refresh (toolbar button) so an "is the iMac back?" check
+// doesn't have to wait for the next background tick. Capped at
+// refreshAllDeadline — slow hosts get caught by the next background
+// pass instead of stalling the response.
+func (uc *MonitorUseCase) RefreshAll(parent context.Context) {
+	ctx, cancel := context.WithTimeout(parent, refreshAllDeadline)
+	defer cancel()
+
+	devices, err := uc.deviceUC.ListDevices(ctx, false)
+	if err != nil {
+		return
+	}
+	// Phase 1: parallel TCP :22 probe. Cheap (1.5s timeout per device).
+	var probeWg sync.WaitGroup
+	for _, d := range devices {
+		if d.TailscaleIP == "" {
+			continue
+		}
+		probeWg.Add(1)
+		go func(deviceID, ip string) {
+			defer probeWg.Done()
+			conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip, "22"), 1500*time.Millisecond)
+			if err != nil {
+				return
+			}
+			conn.Close()
+			uc.MarkReachable(deviceID, domain.MetricsSourceReachability)
+		}(d.ID, d.TailscaleIP)
+	}
+	probeWg.Wait()
+
+	// Phase 2: full metrics collection. GetAllMetrics now picks up
+	// probe-reachable devices in addition to Tailscale-online ones, so
+	// a host that Tailscale incorrectly thinks is offline will still
+	// get attempted — and on success, the resulting non-reachability
+	// metric promotes its status in the next /api/devices response.
+	// We run the collection in a goroutine so the deadline can force
+	// us to return even if a stuck SSH dial is still pending; partial
+	// results that did arrive are cached before we bail.
+	done := make(chan *domain.MetricsSnapshot, 1)
+	go func() {
+		snapshot, err := uc.GetAllMetrics(ctx)
+		if err != nil || snapshot == nil {
+			done <- nil
+			return
+		}
+		done <- snapshot
+	}()
+	select {
+	case snapshot := <-done:
+		if snapshot != nil {
+			uc.cacheLatest(snapshot)
+		}
+	case <-ctx.Done():
+		// Deadline hit — abandon the collection goroutine (it will
+		// finish in the background eventually) and return so the
+		// API response can go out promptly.
+	}
+}
+
 // GetAllMetrics gets metrics for all online devices
 func (uc *MonitorUseCase) GetAllMetrics(ctx context.Context) (*domain.MetricsSnapshot, error) {
 	devices, err := uc.deviceUC.ListDevices(ctx, false)
@@ -141,11 +210,32 @@ func (uc *MonitorUseCase) GetAllMetrics(ctx context.Context) (*domain.MetricsSna
 		return nil, err
 	}
 
-	// Filter to online devices with SSH
+	// Collect metrics from SSH-enabled devices that either Tailscale says
+	// are online OR the reachability probe has recently confirmed are
+	// reachable on :22. Tailscale's `status` can lag reality — a host
+	// that stopped heartbeating but still answers SSH is a real candidate
+	// for collection, and the resulting non-reachability metric is what
+	// then promotes its status back to online via the source-gated rule
+	// in APIDeviceList.
+	const reachabilityWindow = 2 * time.Minute
 	var sshDevices []*domain.Device
 	for _, d := range devices {
+		if !d.SSHEnabled {
+			continue
+		}
 		if d.CanSSH() {
 			sshDevices = append(sshDevices, d)
+			continue
+		}
+		cached := uc.GetLatestCached(d.ID)
+		if cached != nil && cached.Error == "" &&
+			time.Since(cached.CollectedAt) < reachabilityWindow {
+			// Coerce to online for the collector pass — the original
+			// device object stays untouched (ListDevices returns the
+			// cache backing array, mutating it would leak elsewhere).
+			promoted := *d
+			promoted.Status = domain.DeviceStatusOnline
+			sshDevices = append(sshDevices, &promoted)
 		}
 	}
 

@@ -56,10 +56,11 @@ struct DeviceListView: View {
                     .help(isEditing ? "Done editing" : "Edit device order & visibility")
                 }
                 ToolbarItem {
-                    Button(action: { Task { await dashboardVM.load() } }) {
+                    Button(action: { Task { await dashboardVM.load(force: true) } }) {
                         Image(systemName: "arrow.clockwise")
                     }
                     .disabled(isEditing)
+                    .help("Force refresh — re-probe and re-collect metrics from every device")
                 }
             }
             .onChange(of: showMobile) {

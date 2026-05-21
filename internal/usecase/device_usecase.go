@@ -163,6 +163,33 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 		return nil, err
 	}
 
+	// Defensive shrink detection: Tailscale has been observed returning
+	// 200-OK with a partial (sometimes empty) device list when the
+	// upstream is in a degraded state. Naively caching that would erase
+	// devices we *know* exist, which is worse than a fetch error
+	// because we can't even fall back. If the response is dramatically
+	// smaller than our freshest known set (in-memory cache first, then
+	// the SQLite repo on cold start), keep the known good set. The next
+	// fetch (or background tick) will overwrite this once Tailscale
+	// recovers and returns the full picture.
+	uc.cacheMu.RLock()
+	prevCache := uc.cachedDevices
+	uc.cacheMu.RUnlock()
+	if len(prevCache) == 0 && uc.repos != nil && uc.repos.Devices != nil {
+		if dbDevices, dbErr := uc.repos.Devices.GetAll(ctx); dbErr == nil && len(dbDevices) > 0 {
+			prevCache = dbDevices
+		}
+	}
+	if len(prevCache) >= 4 && len(devices) < len(prevCache)/2 {
+		log.Printf("[devices] tailscale returned only %d of %d known devices — keeping stale set", len(devices), len(prevCache))
+		uc.cacheMu.Lock()
+		uc.cachedDevices = prevCache
+		uc.cacheTime = time.Now() // refresh TTL so we don't re-hit broken Tailscale every minute
+		uc.cacheMu.Unlock()
+		uc.applyCapabilityOverrides(prevCache)
+		return prevCache, nil
+	}
+
 	// Merge GPU info from DB (Tailscale API doesn't know about GPUs)
 	if uc.repos != nil && uc.repos.Devices != nil {
 		uc.mergeGPUFromDB(ctx, devices)

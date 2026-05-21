@@ -1002,7 +1002,17 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 	}
 
 	forceRefresh := c.QueryParam("refresh") == "true"
-	devices, err := h.deviceUC.ListDevices(ctx, forceRefresh)
+	// On an explicit user refresh, synchronously re-probe :22 and re-
+	// collect SSH metrics so the response reflects "right now". We
+	// deliberately do NOT pass refresh=true to ListDevices — Tailscale's
+	// upstream API has been seen returning partial/empty snapshots
+	// while still 200-OK, which would otherwise overwrite a healthy
+	// cache with a near-empty one. Status freshness comes from the
+	// metric promotion below, not from re-fetching Tailscale.
+	if forceRefresh && h.monitorUC != nil {
+		h.monitorUC.RefreshAll(ctx)
+	}
+	devices, err := h.deviceUC.ListDevices(ctx, false)
 	if err != nil {
 		return internalError(c, "failed to list devices", err)
 	}

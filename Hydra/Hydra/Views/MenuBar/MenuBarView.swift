@@ -118,7 +118,7 @@ struct MenuBarView: View {
 
             Button("Refresh Now") {
                 Task {
-                    await vm.load()
+                    await vm.load(force: true)
                     await gpuVM.refresh()
                 }
             }
