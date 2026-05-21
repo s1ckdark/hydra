@@ -103,11 +103,31 @@ func (uc *MonitorUseCase) GetDeviceMetrics(ctx context.Context, deviceNameOrID s
 	}
 
 	if !device.CanSSH() {
-		return &domain.DeviceMetrics{
-			DeviceID:    device.ID,
-			CollectedAt: time.Now(),
-			Error:       "device is offline or SSH is disabled",
-		}, nil
+		// Tailscale's view of a device's `status` can lag reality — a host
+		// that stops heartbeating but remains SSH-reachable still gets
+		// reported as offline. If the background SSH collector recently
+		// succeeded against this device, the SSH path is provably alive,
+		// so attempt a fresh collection instead of erroring out (which
+		// would hide System Status / GPU panels for an otherwise-healthy
+		// host). See APIDeviceList for the matching list-side promotion.
+		const reachabilityWindow = 2 * time.Minute
+		cached := uc.GetLatestCached(device.ID)
+		sshReachable := cached != nil && cached.Error == "" &&
+			time.Since(cached.CollectedAt) < reachabilityWindow &&
+			device.SSHEnabled
+		if !sshReachable {
+			return &domain.DeviceMetrics{
+				DeviceID:    device.ID,
+				CollectedAt: time.Now(),
+				Error:       "device is offline or SSH is disabled",
+			}, nil
+		}
+		// Coerce status to online for the collector — copy first so we
+		// don't mutate the Tailscale-returned struct that GetDevice may
+		// have handed us by reference from the cache.
+		promoted := *device
+		promoted.Status = domain.DeviceStatusOnline
+		device = &promoted
 	}
 
 	return uc.collector.CollectMetrics(ctx, device)

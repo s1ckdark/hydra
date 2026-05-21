@@ -17,19 +17,16 @@ struct Device: Codable, Identifiable {
     let gpuModel: String?
     let gpuCount: Int
 
-    /// "online" alone is not enough: when Tailscale API auth breaks the
-    /// server keeps serving its last cached snapshot with status="online"
-    /// frozen in place (lastSeen drifts further into the past with every
-    /// poll). Treat anything older than the freshness window as offline so
-    /// the menu-bar count reflects reality instead of the stale snapshot.
-    static let onlineFreshnessWindow: TimeInterval = 300  // 5 minutes
+    /// Trust the server's reported status. The 5-minute "freshness"
+    /// override that used to live here was a defense against frozen
+    /// Tailscale snapshots, but the server now (a) applies its own
+    /// 24h stale-lastSeen filter to /api/devices and (b) promotes
+    /// LastSeen/Status from fresh metrics before responding — so the
+    /// client gating on a tighter 5-minute window only created a
+    /// red dot / "Offline" badge for devices that don't self-report
+    /// metrics (iPhone, iPad, anything without MetricsReporter).
     var isOnline: Bool {
-        status == "online" && Date().timeIntervalSince(lastSeen) < Self.onlineFreshnessWindow
-    }
-    /// True when the server claims this device is online but our freshness
-    /// cap says otherwise — useful to flag "tailscale auth probably broken".
-    var isStaleOnline: Bool {
-        status == "online" && Date().timeIntervalSince(lastSeen) >= Self.onlineFreshnessWindow
+        status == "online"
     }
     var displayName: String { name.isEmpty ? hostname : name }
 
