@@ -1030,6 +1030,36 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 		}
 	}
 
+	// Hide noise from the default response so the macOS menu-bar count
+	// reflects actual compute capacity:
+	//   - mobile devices (iOS/Android) — not worker nodes
+	//   - stale entries — Tailscale leaves zombies registered after a node
+	//     is replaced (e.g., duplicate hostnames with one 13-day-old "online"
+	//     record). lastSeen older than 24h, after the freshness promotion
+	//     above, is treated as gone.
+	// Callers that need the raw list (CLI debugging, admin tools) can pass
+	// ?all=true; granular escape hatches: ?include_mobile=true / ?include_stale=true.
+	includeAll := c.QueryParam("all") == "true"
+	includeMobile := includeAll || c.QueryParam("include_mobile") == "true"
+	includeStale := includeAll || c.QueryParam("include_stale") == "true"
+	if !includeMobile || !includeStale {
+		const staleAfter = 24 * time.Hour
+		now := time.Now()
+		// Allocate fresh — ListDevices returns the cache's backing array
+		// directly, so reslicing it would corrupt the cache on next read.
+		filtered := make([]*domain.Device, 0, len(devices))
+		for _, d := range devices {
+			if !includeMobile && d.IsMobile() {
+				continue
+			}
+			if !includeStale && !d.LastSeen.IsZero() && now.Sub(d.LastSeen) > staleAfter {
+				continue
+			}
+			filtered = append(filtered, d)
+		}
+		devices = filtered
+	}
+
 	return c.JSON(http.StatusOK, devices)
 }
 
