@@ -165,6 +165,11 @@ func main() {
 	monitorCtx, monitorCancel := context.WithCancel(context.Background())
 	defer monitorCancel()
 	go monitorUC.StartBackgroundCollection(monitorCtx, 30*time.Second)
+	// Lightweight TCP :22 reachability probe — fills the freshness cache
+	// for *every* SSH-capable host (not just GPU nodes) within ~15s, so
+	// the menu-bar device count reflects reality even when the Tailscale
+	// API is broken and the full SSH metric collector lags behind.
+	go monitorUC.StartReachabilityProbe(monitorCtx, 15*time.Second)
 
 	// Start task supervisor (periodic health check + timeout detection)
 	taskSupervisor := usecase.NewTaskSupervisor(taskQueue, wsHub, deviceUC, monitorUC)
