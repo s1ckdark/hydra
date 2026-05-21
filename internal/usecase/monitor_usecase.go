@@ -74,12 +74,28 @@ func (uc *MonitorUseCase) PushSelfMetrics(m *domain.DeviceMetrics) {
 // monitor's nvidia-smi call, future ping checks, etc.) so device-list
 // freshness consumers can promote the device to online before the slower
 // background SSH cycle finishes a full sweep.
+//
+// A reachability mark must never downgrade a stronger signal: if a recent
+// SSH or self-report metric already lives in the cache, leave it alone.
+// Otherwise the 15s reachability probe would clobber the 30s SSH success
+// between cycles, causing the status indicator to flicker every interval
+// (the freshness-promotion rule in APIDeviceList ignores Reachability-
+// source entries — see MetricsSourceReachability).
 func (uc *MonitorUseCase) MarkReachable(deviceID string, source domain.MetricsSource) {
 	if deviceID == "" {
 		return
 	}
 	uc.latestMu.Lock()
 	defer uc.latestMu.Unlock()
+	if source == domain.MetricsSourceReachability {
+		if existing, ok := uc.latest[deviceID]; ok &&
+			existing != nil &&
+			existing.Source != domain.MetricsSourceReachability &&
+			existing.Error == "" &&
+			time.Since(existing.CollectedAt) < 2*time.Minute {
+			return
+		}
+	}
 	uc.latest[deviceID] = &domain.DeviceMetrics{
 		DeviceID:    deviceID,
 		CollectedAt: time.Now(),
