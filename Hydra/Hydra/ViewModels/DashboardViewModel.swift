@@ -74,7 +74,11 @@ class DashboardViewModel: ObservableObject {
         error = nil
         await checkServerHealth()
         do {
-            async let d = api.listDevices()
+            // Honor the "Show mobile devices" toggle persisted on the
+            // device list view. The default API response hides iOS/Android
+            // entries; this opt-in pulls them back in for Taildrop targets.
+            let includeMobile = UserDefaults.standard.bool(forKey: "showMobileDevices")
+            async let d = api.listDevices(includeMobile: includeMobile)
             async let c = api.listOrchs()
             devices = try await d
             orchs = try await c

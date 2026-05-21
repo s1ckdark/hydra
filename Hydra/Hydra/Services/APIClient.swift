@@ -37,8 +37,11 @@ actor APIClient {
 
     // MARK: - Devices
 
-    func listDevices(refresh: Bool = false) async throws -> [Device] {
-        let path = refresh ? "/api/devices?refresh=true" : "/api/devices"
+    func listDevices(refresh: Bool = false, includeMobile: Bool = false) async throws -> [Device] {
+        var items: [String] = []
+        if refresh { items.append("refresh=true") }
+        if includeMobile { items.append("include_mobile=true") }
+        let path = items.isEmpty ? "/api/devices" : "/api/devices?" + items.joined(separator: "&")
         return try await get(path)
     }
 
@@ -63,6 +66,48 @@ actor APIClient {
     /// Default count=5 mirrors the server-side cap; port 22 is the SSH probe.
     func pingDevice(id: String, count: Int = 5, port: Int = 22) async throws -> PingResult {
         return try await post("/api/devices/\(id)/ping", body: PingRequest(count: count, port: port))
+    }
+
+    /// Result for a Taildrop send. Fields mirror the JSON returned by the
+    /// server's APIDeviceTaildrop handler.
+    struct TaildropResponse: Decodable {
+        let status: String
+        let target: String
+        let filename: String
+        let bytes: Int64
+    }
+
+    /// Sends a file to the target device via the host's `tailscale file cp`
+    /// CLI. The actual transfer happens server-side; we just upload the file
+    /// over multipart. Long-running — caller should keep the UI responsive
+    /// with a ProgressView until this returns.
+    func sendTaildrop(deviceId: String, fileURL: URL) async throws -> TaildropResponse {
+        let url = makeURL("/api/devices/\(deviceId)/taildrop")
+        let boundary = "hydra-taildrop-" + UUID().uuidString
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        // Taildrop can take minutes for large files; bump above the
+        // default 30s without going so high a stuck cp hangs the UI forever.
+        request.timeoutInterval = 600
+        applyAuth(&request)
+
+        let fileData = try Data(contentsOf: fileURL)
+        let filename = fileURL.lastPathComponent
+
+        func append(_ s: String, to data: inout Data) {
+            if let d = s.data(using: .utf8) { data.append(d) }
+        }
+        var body = Data()
+        append("--\(boundary)\r\n", to: &body)
+        append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n", to: &body)
+        append("Content-Type: application/octet-stream\r\n\r\n", to: &body)
+        body.append(fileData)
+        append("\r\n--\(boundary)--\r\n", to: &body)
+
+        let (data, response) = try await session.upload(for: request, from: body)
+        try checkResponse(response, data)
+        return try decoder.decode(TaildropResponse.self, from: data)
     }
 
     /// Reports the device's enabled capabilities to the server. Used by

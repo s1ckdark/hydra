@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import UniformTypeIdentifiers
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -10,6 +11,10 @@ struct DeviceListView: View {
     @State private var selectedDevice: Device?
     @State private var searchText = ""
     @State private var isEditing = false
+    // Default-off: mirrors the server-side /api/devices filter so the worker
+    // list isn't polluted by phones/tablets unless the user wants to send
+    // them files via Taildrop.
+    @AppStorage("showMobileDevices") private var showMobile = false
 
     var filteredDevices: [Device] {
         let ordered = prefs.apply(to: dashboardVM.devices, id: \.id)
@@ -38,6 +43,13 @@ struct DeviceListView: View {
             .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
             .toolbar {
                 ToolbarItem {
+                    Toggle(isOn: $showMobile) {
+                        Image(systemName: showMobile ? "iphone" : "iphone.slash")
+                    }
+                    .toggleStyle(.button)
+                    .help(showMobile ? "Hide mobile devices" : "Show mobile devices (iOS/Android) for Taildrop")
+                }
+                ToolbarItem {
                     Button(action: { withAnimation { isEditing.toggle() } }) {
                         Image(systemName: isEditing ? "checkmark.circle.fill" : "list.bullet.indent")
                     }
@@ -49,6 +61,9 @@ struct DeviceListView: View {
                     }
                     .disabled(isEditing)
                 }
+            }
+            .onChange(of: showMobile) {
+                Task { await dashboardVM.load() }
             }
             .onChange(of: dashboardVM.devices) {
                 prefs.merge(deviceIds: dashboardVM.devices.map(\.id))
@@ -224,9 +239,11 @@ struct DeviceDetailView: View {
                     StatusBadge(isOnline: device.isOnline)
                 }
 
+                // Tailscale addresses (MagicDNS / IPv4 / IPv6)
+                TailscaleAddressesCard(device: device)
+
                 // Info grid
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    InfoField(label: "Tailscale IP", value: device.tailscaleIp)
                     InfoField(label: "OS", value: device.os)
                     InfoField(label: "User", value: device.user)
                     InfoField(label: "SSH", value: device.sshEnabled ? "Enabled" : "Disabled")
@@ -234,6 +251,10 @@ struct DeviceDetailView: View {
                         InfoField(label: "GPU", value: "\(device.gpuCount)x \(device.gpuModel ?? "Unknown")")
                     }
                 }
+
+                // Taildrop — send a file to this device via the host's
+                // `tailscale file cp` CLI.
+                TaildropSection(device: device)
 
                 publicKeyCopyRow
 
@@ -311,14 +332,15 @@ struct DeviceDetailView: View {
                     }
                 }
 
-                // Connectivity — TCP-connect speed test
-                GroupBox("Connectivity") {
+                // Ping — TCP-connect reachability test, matching the
+                // Tailscale admin's "Test connection reliability" panel.
+                GroupBox("Ping") {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Button {
                                 Task { await runPing() }
                             } label: {
-                                Label("Speed Test", systemImage: "speedometer")
+                                Label("Ping device", systemImage: "speedometer")
                             }
                             .disabled(pingInProgress)
                             if pingInProgress {
@@ -899,4 +921,227 @@ struct StatusBadge: View {
 extension Device: Hashable {
     static func == (lhs: Device, rhs: Device) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
+// MARK: - Tailscale addresses card
+
+/// Displays the device's MagicDNS hostname plus its IPv4 and IPv6 addresses
+/// in a card with per-row copy buttons, mirroring the Tailscale admin UI's
+/// "Tailscale addresses" panel.
+struct TailscaleAddressesCard: View {
+    let device: Device
+
+    private var ipv4: String? {
+        device.ipAddresses.first { !$0.contains(":") } ?? (device.tailscaleIp.isEmpty ? nil : device.tailscaleIp)
+    }
+    private var ipv6: String? {
+        device.ipAddresses.first { $0.contains(":") }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Tailscale addresses")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 6)
+
+            VStack(spacing: 0) {
+                if !device.name.isEmpty {
+                    AddressRow(value: device.name, kind: "MagicDNS")
+                    Divider()
+                }
+                if let v4 = ipv4 {
+                    AddressRow(value: v4, kind: "IPv4")
+                    if ipv6 != nil { Divider() }
+                }
+                if let v6 = ipv6 {
+                    AddressRow(value: v6, kind: "IPv6")
+                }
+            }
+            .background(.quaternary.opacity(0.4))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+}
+
+private struct AddressRow: View {
+    let value: String
+    let kind: String
+
+    @State private var justCopied = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+                Text(kind)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button {
+                copy()
+            } label: {
+                Image(systemName: justCopied ? "checkmark" : "doc.on.doc")
+                    .foregroundStyle(justCopied ? .green : .secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Copy \(kind)")
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+    }
+
+    private func copy() {
+        #if canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
+        #endif
+        justCopied = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            await MainActor.run { justCopied = false }
+        }
+    }
+}
+
+// MARK: - Taildrop section
+
+/// Sends a file to the device via the server's /api/devices/:id/taildrop
+/// endpoint, which shells out to `tailscale file cp` on the host. Supports
+/// both drag-drop and a "Select a File…" button.
+struct TaildropSection: View {
+    let device: Device
+
+    @State private var isSending = false
+    @State private var sendingFilename: String?
+    @State private var status: Status?
+    @State private var isDropTargeted = false
+
+    enum Status: Equatable {
+        case success(target: String, filename: String)
+        case failure(message: String)
+    }
+
+    var body: some View {
+        GroupBox("Taildrop") {
+            VStack(alignment: .leading, spacing: 8) {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(
+                        style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])
+                    )
+                    .foregroundStyle(isDropTargeted ? Color.accentColor : .secondary)
+                    .frame(minHeight: 120)
+                    .background(
+                        (isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    )
+                    .overlay {
+                        if isSending {
+                            VStack(spacing: 6) {
+                                ProgressView()
+                                Text(sendingFilename.map { "Sending \($0)…" } ?? "Sending…")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            VStack(spacing: 8) {
+                                Image(systemName: "gift")
+                                    .font(.title2)
+                                    .foregroundStyle(.secondary)
+                                Text("Select or drag and drop a file to send it to this device…")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                Button("Select a File…") {
+                                    pickFile()
+                                }
+                                .controlSize(.regular)
+                            }
+                            .padding(8)
+                        }
+                    }
+                    .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                        handleDrop(providers: providers)
+                    }
+                    .disabled(isSending)
+
+                if let status {
+                    statusBanner(status)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func statusBanner(_ s: Status) -> some View {
+        switch s {
+        case .success(let target, let filename):
+            Label("Sent \(filename) to \(target)", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+        case .failure(let message):
+            Label(message, systemImage: "xmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+        }
+    }
+
+    private func pickFile() {
+        #if canImport(AppKit)
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        if panel.runModal() == .OK, let url = panel.url {
+            send(url: url)
+        }
+        #endif
+    }
+
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        guard let provider = providers.first else { return false }
+        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+            guard let url else { return }
+            Task { @MainActor in send(url: url) }
+        }
+        return true
+    }
+
+    private func send(url: URL) {
+        guard !isSending else { return }
+        isSending = true
+        sendingFilename = url.lastPathComponent
+        status = nil
+        Task {
+            defer {
+                Task { @MainActor in
+                    isSending = false
+                    sendingFilename = nil
+                }
+            }
+            do {
+                let response = try await APIClient.shared.sendTaildrop(deviceId: device.id, fileURL: url)
+                await MainActor.run {
+                    status = .success(target: response.target, filename: response.filename)
+                    scheduleStatusClear()
+                }
+            } catch {
+                await MainActor.run {
+                    status = .failure(message: error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func scheduleStatusClear() {
+        Task {
+            try? await Task.sleep(for: .seconds(5))
+            await MainActor.run {
+                if case .success = status { status = nil }
+            }
+        }
+    }
 }

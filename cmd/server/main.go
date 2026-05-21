@@ -325,6 +325,11 @@ func main() {
 	// Tailscale IP. Sits on apiWrite because it consumes server CPU + network.
 	apiWrite.POST("/devices/:id/ping", h.APIDevicePing)
 
+	// Taildrop send — upload a file and have the host's `tailscale file cp`
+	// CLI forward it to the target device. Sits on apiWrite because it
+	// initiates an outgoing transfer.
+	apiWrite.POST("/devices/:id/taildrop", h.APIDeviceTaildrop)
+
 	// Config routes (Tailscale network auth required)
 	apiWrite.GET("/config/tailscale", h.APIGetTailscaleConfig)
 	apiWrite.PUT("/config/tailscale", h.APIPutTailscaleConfig)
