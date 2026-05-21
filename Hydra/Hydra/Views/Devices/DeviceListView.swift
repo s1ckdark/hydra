@@ -376,7 +376,12 @@ struct DeviceDetailView: View {
                                 .font(.caption)
                                 .foregroundStyle(.red)
                         } else if !pingInProgress {
-                            Text("Click Speed Test to measure TCP connect latency to this device's Tailscale IP.")
+                            // Placeholder chart so the section keeps its
+                            // shape before the first probe runs — matches
+                            // the Tailscale admin's "Test connection
+                            // reliability" panel.
+                            pingPlaceholderChart()
+                            Text("Click Ping device to measure TCP connect latency to this device's Tailscale IP.")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -631,6 +636,37 @@ struct DeviceDetailView: View {
         if ms < 50 { return .green }
         if ms < 200 { return .orange }
         return .red
+    }
+
+    /// Empty-state chart that mirrors the populated chart's footprint
+    /// (height + y-axis ticks) so the panel doesn't visually collapse
+    /// before the first ping. The 0/300/600 ms scale matches the
+    /// Tailscale admin reference; real results expand the domain past
+    /// 600 ms automatically via Charts' default axis behavior.
+    @ViewBuilder
+    private func pingPlaceholderChart() -> some View {
+        Chart {
+            // Invisible anchor points pin the y-axis range to 0–600 ms
+            // without rendering any visible line.
+            PointMark(x: .value("Sample", 1), y: .value("RTT", 0))
+                .foregroundStyle(.clear)
+            PointMark(x: .value("Sample", 5), y: .value("RTT", 600))
+                .foregroundStyle(.clear)
+        }
+        .chartYAxisLabel("ms")
+        .chartYAxis {
+            AxisMarks(values: [0, 300, 600]) { value in
+                AxisGridLine()
+                AxisValueLabel {
+                    if let v = value.as(Int.self) {
+                        Text("\(v) ms").font(.caption2).foregroundStyle(.tertiary)
+                    }
+                }
+            }
+        }
+        .chartXAxis(.hidden)
+        .frame(height: 150)
+        .padding(.top, 4)
     }
 
     @ViewBuilder
