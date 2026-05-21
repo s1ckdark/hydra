@@ -1009,18 +1009,22 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 
 	// Decorate with metric freshness: when the Tailscale API auth is broken
 	// the upstream snapshot freezes and every device looks frozen-online
-	// forever. Any device for which we've recently collected a metric with
-	// no error — whether via self-report (macOS GUI) or via the background
-	// SSH collector — is provably alive, so we promote its LastSeen/Status
-	// before the response goes out. We require an empty Error string so a
-	// failed SSH attempt (which still lands in the cache) doesn't count as
-	// proof of life. The underlying device store is untouched.
+	// forever. Any device for which we've recently collected a *real* metric
+	// with no error — self-report (macOS GUI) or background SSH — is provably
+	// alive, so we promote its LastSeen/Status before the response goes out.
+	// Reachability-only entries (TCP :22 open) are explicitly excluded so
+	// the status indicator doesn't claim "online" for a host that merely
+	// has sshd listening but hasn't actually returned any data; that keeps
+	// offline reporting honest when Tailscale and the SSH collector agree.
 	if h.monitorUC != nil {
 		now := time.Now()
 		const freshSignal = 5 * time.Minute
 		for _, d := range devices {
 			cached := h.monitorUC.GetLatestCached(d.ID)
 			if cached == nil || cached.Error != "" {
+				continue
+			}
+			if cached.Source == domain.MetricsSourceReachability {
 				continue
 			}
 			if now.Sub(cached.CollectedAt) < freshSignal && cached.CollectedAt.After(d.LastSeen) {

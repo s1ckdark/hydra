@@ -105,17 +105,18 @@ func (uc *MonitorUseCase) GetDeviceMetrics(ctx context.Context, deviceNameOrID s
 	if !device.CanSSH() {
 		// Tailscale's view of a device's `status` can lag reality — a host
 		// that stops heartbeating but remains SSH-reachable still gets
-		// reported as offline. If the background SSH collector recently
-		// succeeded against this device, the SSH path is provably alive,
-		// so attempt a fresh collection instead of erroring out (which
-		// would hide System Status / GPU panels for an otherwise-healthy
-		// host). See APIDeviceList for the matching list-side promotion.
-		const reachabilityWindow = 2 * time.Minute
+		// reported as offline. We only override that opinion when a *real*
+		// metrics collection (SSH or self-report) recently succeeded —
+		// reachability-only entries are too weak a signal to claim the
+		// device is online. This is the metrics-endpoint counterpart of
+		// the source-gated promotion in APIDeviceList.
+		const realMetricWindow = 2 * time.Minute
 		cached := uc.GetLatestCached(device.ID)
-		sshReachable := cached != nil && cached.Error == "" &&
-			time.Since(cached.CollectedAt) < reachabilityWindow &&
+		hasRealHit := cached != nil && cached.Error == "" &&
+			cached.Source != domain.MetricsSourceReachability &&
+			time.Since(cached.CollectedAt) < realMetricWindow &&
 			device.SSHEnabled
-		if !sshReachable {
+		if !hasRealHit {
 			return &domain.DeviceMetrics{
 				DeviceID:    device.ID,
 				CollectedAt: time.Now(),
@@ -255,7 +256,7 @@ func (uc *MonitorUseCase) StartReachabilityProbe(ctx context.Context, interval t
 						return
 					}
 					conn.Close()
-					uc.MarkReachable(deviceID, domain.MetricsSourceSSH)
+					uc.MarkReachable(deviceID, domain.MetricsSourceReachability)
 				}(d.ID, addr)
 			}
 			wg.Wait()

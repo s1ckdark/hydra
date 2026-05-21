@@ -83,6 +83,13 @@ type MetricsSource string
 const (
 	MetricsSourceSSH        MetricsSource = "ssh"
 	MetricsSourceSelfReport MetricsSource = "self"
+	// MetricsSourceReachability is a lightweight TCP :22 probe — it
+	// proves the SSH port is open, not that the device is actually
+	// responding usefully. Callers that need a real signal of liveness
+	// (status promotion, "is this device really online?") should treat
+	// reachability entries as weaker than SSH/self-report and require
+	// one of those before claiming online.
+	MetricsSourceReachability MetricsSource = "reachability"
 )
 
 // DeviceMetrics represents all metrics for a device
