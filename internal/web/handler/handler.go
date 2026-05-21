@@ -1047,10 +1047,14 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 	// Hide noise from the default response so the macOS menu-bar count
 	// reflects actual compute capacity:
 	//   - mobile devices (iOS/Android) — not worker nodes
-	//   - stale entries — Tailscale leaves zombies registered after a node
-	//     is replaced (e.g., duplicate hostnames with one 13-day-old "online"
-	//     record). lastSeen older than 24h, after the freshness promotion
-	//     above, is treated as gone.
+	//   - zombies — entries Tailscale still claims are online but whose
+	//     lastSeen is more than 24h old. A legitimate online host would
+	//     have been freshness-promoted above; anything still claiming
+	//     "online" with a 13-day-old lastSeen (the intlmac duplicate
+	//     case) is a Tailscale-side stale registration that was never
+	//     cleaned up. We deliberately do NOT hide devices reporting
+	//     status=offline regardless of age — that's a real offline
+	//     device the user wants to see (red dot + Offline badge).
 	// Callers that need the raw list (CLI debugging, admin tools) can pass
 	// ?all=true; granular escape hatches: ?include_mobile=true / ?include_stale=true.
 	includeAll := c.QueryParam("all") == "true"
@@ -1066,7 +1070,8 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 			if !includeMobile && d.IsMobile() {
 				continue
 			}
-			if !includeStale && !d.LastSeen.IsZero() && now.Sub(d.LastSeen) > staleAfter {
+			if !includeStale && d.Status == domain.DeviceStatusOnline &&
+				!d.LastSeen.IsZero() && now.Sub(d.LastSeen) > staleAfter {
 				continue
 			}
 			filtered = append(filtered, d)
