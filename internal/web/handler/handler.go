@@ -1062,6 +1062,7 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 	includeStale := includeAll || c.QueryParam("include_stale") == "true"
 	if !includeMobile || !includeStale {
 		const staleAfter = 24 * time.Hour
+		const probeAlive = 2 * time.Minute
 		now := time.Now()
 		// Allocate fresh — ListDevices returns the cache's backing array
 		// directly, so reslicing it would corrupt the cache on next read.
@@ -1072,6 +1073,19 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 			}
 			if !includeStale && d.Status == domain.DeviceStatusOnline &&
 				!d.LastSeen.IsZero() && now.Sub(d.LastSeen) > staleAfter {
+				// Last chance: if the reachability probe (or any cached
+				// metric) saw this device within the last 2 minutes, it
+				// is alive on the network — Tailscale's lastSeen just
+				// hasn't been updated. Only entries with *no* recent
+				// signal at all are treated as zombies.
+				if h.monitorUC != nil {
+					if cached := h.monitorUC.GetLatestCached(d.ID); cached != nil &&
+						cached.Error == "" &&
+						now.Sub(cached.CollectedAt) < probeAlive {
+						filtered = append(filtered, d)
+						continue
+					}
+				}
 				continue
 			}
 			filtered = append(filtered, d)
