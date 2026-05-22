@@ -118,6 +118,7 @@ struct AISettingsTab: View {
                     RoleOverrideView(title: "Head Selection", role: "head")
                     RoleOverrideView(title: "Task Scheduling", role: "schedule")
                     RoleOverrideView(title: "Capacity Estimation", role: "capacity")
+                    RoleOverrideView(title: "Chat agent — natural-language input", role: "chat")
                 }
             } header: {
                 Text("③ Advanced (optional)")
@@ -271,6 +272,7 @@ struct AISettingsTab: View {
             ("head_selection",      "head"),
             ("task_scheduling",     "schedule"),
             ("capacity_estimation", "capacity"),
+            ("chat_input",          "chat"),
         ]
         for (jsonKey, roleSlug) in roleKeys {
             let raw = defaults.object(forKey: "aiRole_\(roleSlug)_useDefault")
