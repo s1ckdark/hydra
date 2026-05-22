@@ -205,12 +205,15 @@ func main() {
 	// chat-role provider; gracefully disabled if unavailable so the
 	// server still serves the rest of its endpoints.
 	//
-	// OrchManager: CreateOrch/DeleteOrch signatures differ from the agent
-	// interface (variadic mode, different delete params) — stubbed nil for
-	// follow-up wiring. CommandRunner/GPULister have no usecase backing yet
-	// — also nil. All four slots degrade gracefully at runtime.
+	// GPULister is left nil: MonitorUseCase exposes per-device metrics but
+	// has no bulk GPU-snapshot method. The get_gpu action degrades to
+	// "gpu service unavailable" until a snapshot surface is added to
+	// MonitorUseCase.
 	if chatLLM := buildChatLLM(aiRegistry); chatLLM != nil {
-		agentRegistry := agent.NewActionRegistry(deviceUC, orchUC, monitorUC, nil, nil, nil)
+		orchMgr := newOrchManagerAdapter(orchUC, deviceUC)
+		cmdRunner := newCommandRunnerAdapter(deviceUC, sshExecutor)
+		var gpuLister agent.GPULister // nil — no bulk GPU snapshot path exists yet
+		agentRegistry := agent.NewActionRegistry(deviceUC, orchUC, monitorUC, gpuLister, cmdRunner, orchMgr)
 		agentValidator := agent.NewValidator(deviceUC, orchUC)
 		agentUC := agent.NewAgentUseCase(chatLLM, agentRegistry, agentValidator)
 		h.SetAgentUseCase(agentUC)
