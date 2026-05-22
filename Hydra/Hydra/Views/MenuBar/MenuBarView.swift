@@ -92,6 +92,10 @@ struct MenuBarView: View {
 
             Divider()
 
+            ChatSection()
+
+            Divider()
+
             HStack {
                 Image(systemName: "desktopcomputer")
                 Text("\(vm.onlineDevices.count)/\(vm.devices.count) online")
@@ -131,7 +135,7 @@ struct MenuBarView: View {
             .keyboardShortcut("q")
         }
         .padding(8)
-        .frame(width: 300)
+        .frame(width: 420)
         .onAppear {
             Task { await vm.load() }
             gpuVM.startPolling(interval: 10)
