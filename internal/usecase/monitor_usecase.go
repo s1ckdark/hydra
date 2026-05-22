@@ -119,20 +119,19 @@ func (uc *MonitorUseCase) GetDeviceMetrics(ctx context.Context, deviceNameOrID s
 	}
 
 	if !device.CanSSH() {
-		// Tailscale's view of a device's `status` can lag reality — a host
-		// that stops heartbeating but remains SSH-reachable still gets
-		// reported as offline. We only override that opinion when a *real*
-		// metrics collection (SSH or self-report) recently succeeded —
-		// reachability-only entries are too weak a signal to claim the
-		// device is online. This is the metrics-endpoint counterpart of
-		// the source-gated promotion in APIDeviceList.
-		const realMetricWindow = 2 * time.Minute
+		// Tailscale's view of `status` can lag reality — a host that
+		// stops heartbeating but remains SSH-reachable still gets
+		// reported as offline. ANY fresh error-free signal in the
+		// cache (probe, SSH, or self-report) is enough to attempt
+		// a live collection: probe alone proves the network path
+		// works, and if the SSH path itself is broken the collector
+		// will return a concrete error that surfaces here.
+		const liveAttemptWindow = 2 * time.Minute
 		cached := uc.GetLatestCached(device.ID)
-		hasRealHit := cached != nil && cached.Error == "" &&
-			cached.Source != domain.MetricsSourceReachability &&
-			time.Since(cached.CollectedAt) < realMetricWindow &&
+		hasFreshSignal := cached != nil && cached.Error == "" &&
+			time.Since(cached.CollectedAt) < liveAttemptWindow &&
 			device.SSHEnabled
-		if !hasRealHit {
+		if !hasFreshSignal {
 			return &domain.DeviceMetrics{
 				DeviceID:    device.ID,
 				CollectedAt: time.Now(),
@@ -147,7 +146,18 @@ func (uc *MonitorUseCase) GetDeviceMetrics(ctx context.Context, deviceNameOrID s
 		device = &promoted
 	}
 
-	return uc.collector.CollectMetrics(ctx, device)
+	m, err := uc.collector.CollectMetrics(ctx, device)
+	if err == nil && m != nil && m.Error == "" {
+		// Tag the source so APIDeviceList's freshness-promotion rule
+		// can distinguish a real metric from a probe entry, and cache
+		// it so the next /api/devices call promotes status without
+		// waiting for the next background collector tick.
+		m.Source = domain.MetricsSourceSSH
+		uc.latestMu.Lock()
+		uc.latest[device.ID] = m
+		uc.latestMu.Unlock()
+	}
+	return m, err
 }
 
 // refreshAllDeadline caps how long a user-triggered refresh can take
@@ -267,6 +277,13 @@ func (uc *MonitorUseCase) GetAllMetrics(ctx context.Context) (*domain.MetricsSna
 	metrics, err := uc.collector.CollectMetricsParallel(ctx, sshDevices)
 	if err != nil {
 		return nil, err
+	}
+	// Tag the source so freshness-promotion in APIDeviceList can
+	// distinguish a real SSH metric from a probe-only entry.
+	for _, m := range metrics {
+		if m != nil && m.Error == "" {
+			m.Source = domain.MetricsSourceSSH
+		}
 	}
 
 	for _, m := range metrics {
