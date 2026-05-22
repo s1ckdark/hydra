@@ -113,6 +113,21 @@ actor APIClient {
         return try decoder.decode(TaildropResponse.self, from: data)
     }
 
+    // MARK: - Chat agent
+
+    /// Submits one user message + full history to /api/agent/chat. The
+    /// server returns either a clarifying question (type="ask") or a plan
+    /// (type="plan").
+    func chat(_ request: ChatRequest) async throws -> ChatResponse {
+        return try await post("/api/agent/chat", body: request)
+    }
+
+    /// Runs a previously returned plan. The server re-validates before
+    /// any action runs.
+    func executePlan(_ plan: AgentPlan) async throws -> AgentExecuteResponse {
+        return try await post("/api/agent/execute", body: AgentExecuteRequest(plan: plan))
+    }
+
     /// Reports the device's enabled capabilities to the server. Used by
     /// CapabilityReporter on app launch and reconnect so the AI scheduler
     /// can route capability-tagged tasks here.
