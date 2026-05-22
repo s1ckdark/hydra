@@ -97,7 +97,10 @@ func main() {
 		hydrateStats.Pending, hydrateStats.Queued, hydrateStats.Assigned, hydrateStats.Running, hydrateStats.Skipped, hydrateStats.Total())
 
 	// Initialize infrastructure
-	tsClient := tailscale.NewClient(cfg.Tailscale.APIKey, cfg.Tailscale.Tailnet)
+	tsClient, err := tailscale.NewCLIClient()
+	if err != nil {
+		log.Fatalf("[startup] tailscale CLI not found: %v\n(install Tailscale.app or `brew install tailscale`)", err)
+	}
 
 	sshExecutor := ssh.NewExecutor(ssh.Config{
 		User:            cfg.SSH.User,

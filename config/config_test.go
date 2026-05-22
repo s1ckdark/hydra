@@ -50,19 +50,18 @@ func TestDefaultConfig(t *testing.T) {
 }
 
 func TestConfig_Validate(t *testing.T) {
-	// No API key or OAuth -> error
+	// Tailscale device discovery now uses the local CLI, so no API key or
+	// OAuth credentials are required. Validate() is always a no-op.
 	cfg := DefaultConfig()
-	if err := cfg.Validate(); err == nil {
-		t.Error("Validate() should fail without API key or OAuth")
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() should always return nil, got: %v", err)
 	}
 
-	// With API key -> ok
 	cfg.Tailscale.APIKey = "tskey-1234"
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Validate() with API key: %v", err)
 	}
 
-	// With OAuth -> ok
 	cfg2 := DefaultConfig()
 	cfg2.Tailscale.OAuthClientID = "client-id"
 	if err := cfg2.Validate(); err != nil {

@@ -344,10 +344,9 @@ func setRoleOverride(key string, p *ProviderConfig) {
 	viper.Set(key+".model", p.Model)
 }
 
-// Validate validates the configuration
+// Validate validates the configuration.
+// Tailscale device discovery now uses the local CLI (`tailscale status --json`)
+// so no API key or OAuth credentials are required for the server to boot.
 func (c *Config) Validate() error {
-	if c.Tailscale.APIKey == "" && c.Tailscale.OAuthClientID == "" {
-		return fmt.Errorf("TAILSCALE_API_KEY or OAuth credentials required")
-	}
 	return nil
 }

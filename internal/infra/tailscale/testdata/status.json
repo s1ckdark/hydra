@@ -1,0 +1,60 @@
+{
+  "Version": "1.96.5-t4ee448d3a-g74ffbefc2",
+  "Self": {
+    "ID": "n9HdyxhBHR11CNTRL",
+    "PublicKey": "nodekey:4f2b224f3a164cb2202768ae84086d715908f2a5a615de152da4f6136c657f47",
+    "HostName": "dave’s MacBook Pro",
+    "DNSName": "m4max.tail476516.ts.net.",
+    "OS": "macOS",
+    "UserID": 7668736769259754,
+    "TailscaleIPs": [
+      "100.67.7.48",
+      "fd7a:115c:a1e0::5201:738"
+    ],
+    "Online": true,
+    "Active": false,
+    "LastSeen": "0001-01-01T00:00:00Z",
+    "Tags": null
+  },
+  "Peer": {
+    "nodekey:0b775b237427120412fe5fa77d08f29ddf2c08379be1a3e2f8067da0b1402e0c": {
+      "ID": "njYRheyHMQ11CNTRL",
+      "PublicKey": "nodekey:0b775b237427120412fe5fa77d08f29ddf2c08379be1a3e2f8067da0b1402e0c",
+      "HostName": "high16",
+      "DNSName": "high-16.tail476516.ts.net.",
+      "OS": "linux",
+      "UserID": 7668736769259754,
+      "TailscaleIPs": [
+        "100.64.46.13",
+        "fd7a:115c:a1e0::b101:2e0f"
+      ],
+      "Online": true,
+      "Active": true,
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "Tags": null
+    },
+    "nodekey:2da0fbe891ab19fd2c7c2f0eeb475fbf2d3994e299f439f260804ba59b79773e": {
+      "ID": "nzTwDd8ZsV11CNTRL",
+      "PublicKey": "nodekey:2da0fbe891ab19fd2c7c2f0eeb475fbf2d3994e299f439f260804ba59b79773e",
+      "HostName": "racknerd-7f8887f",
+      "DNSName": "racknerd.tail476516.ts.net.",
+      "OS": "linux",
+      "UserID": 7668736769259754,
+      "TailscaleIPs": [
+        "100.121.119.63",
+        "fd7a:115c:a1e0::9b01:77a3"
+      ],
+      "Online": false,
+      "Active": false,
+      "LastSeen": "2026-05-20T09:00:00Z",
+      "Tags": null
+    }
+  },
+  "User": {
+    "7668736769259754": {
+      "ID": 7668736769259754,
+      "LoginName": "s1ckdark@naver.com",
+      "DisplayName": "s1ckdark"
+    }
+  }
+}

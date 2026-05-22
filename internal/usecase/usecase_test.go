@@ -156,19 +156,39 @@ func TestDeviceUseCase_ListDevices_Cache(t *testing.T) {
 	// First call populates cache
 	uc.ListDevices(ctx, false)
 
-	// Modify mock data
-	ts.devices = []*domain.Device{{ID: "only-one"}}
+	// Modify mock data — still 4 devices so shrink-defense doesn't trigger
+	ts.devices = []*domain.Device{
+		{ID: "x1", Name: "new1", TailscaleIP: "100.64.0.1", Status: domain.DeviceStatusOnline},
+		{ID: "x2", Name: "new2", TailscaleIP: "100.64.0.2", Status: domain.DeviceStatusOnline},
+		{ID: "x3", Name: "new3", TailscaleIP: "100.64.0.3", Status: domain.DeviceStatusOnline},
+		{ID: "x4", Name: "new4", TailscaleIP: "100.64.0.4", Status: domain.DeviceStatusOnline},
+	}
 
-	// Should still return cached data
+	// Should still return cached data (cache TTL not expired)
 	devices, _ := uc.ListDevices(ctx, false)
 	if len(devices) != 4 {
 		t.Errorf("cached devices = %d, want 4", len(devices))
 	}
+	// Cached devices should still be the original ones
+	if devices[0].ID == "x1" {
+		t.Error("cache should not have refreshed yet")
+	}
 
 	// Force refresh should get new data
 	devices, _ = uc.ListDevices(ctx, true)
-	if len(devices) != 1 {
-		t.Errorf("refreshed devices = %d, want 1", len(devices))
+	if len(devices) != 4 {
+		t.Errorf("refreshed devices = %d, want 4", len(devices))
+	}
+	// Should now be the new device set
+	found := false
+	for _, d := range devices {
+		if d.ID == "x1" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("force refresh should return new devices")
 	}
 }
 

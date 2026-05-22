@@ -210,6 +210,24 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 	// Save to repository for persistence
 	if uc.repos != nil && uc.repos.Devices != nil {
 		_ = uc.repos.Devices.SaveMany(ctx, devices)
+
+		// Reconcile: delete DB records whose IDs are no longer in the fresh
+		// set (e.g. old numeric REST-API IDs after switching to CLI NodeIDs).
+		// Gated on len >= 4 so we never wipe the DB based on a suspiciously
+		// tiny response.
+		if len(devices) >= 4 {
+			fresh := make(map[string]bool, len(devices))
+			for _, d := range devices {
+				fresh[d.ID] = true
+			}
+			if dbDevs, err := uc.repos.Devices.GetAll(ctx); err == nil {
+				for _, old := range dbDevs {
+					if !fresh[old.ID] {
+						_ = uc.repos.Devices.Delete(ctx, old.ID)
+					}
+				}
+			}
+		}
 	}
 
 	// Check GPU on candidates in the background (non-blocking)
