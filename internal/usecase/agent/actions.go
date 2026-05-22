@@ -208,7 +208,13 @@ func (r *ActionRegistry) runExecuteCommand(ctx context.Context, a Action) Action
 	return okResult(a.Type, out)
 }
 
-func (r *ActionRegistry) runRecentTasks(_ context.Context, a Action) ActionResult {
+// runRecentTasks is a stub: it returns an empty list with status=ok.
+// TODO: wire to the task repo (TaskUseCase.RecentTasks) once that
+// surface exists. We deliberately do NOT return an error here — the
+// LLM may include this action speculatively, and surfacing it as an
+// empty list keeps multi-action plans running. Pin the empty-array
+// contract with a test so the future swap is a visible diff.
+func (r *ActionRegistry) runRecentTasks(ctx context.Context, a Action) ActionResult {
 	return okResult(a.Type, []any{})
 }
 

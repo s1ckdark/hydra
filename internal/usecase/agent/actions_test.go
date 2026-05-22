@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/s1ckdark/hydra/internal/domain"
@@ -60,5 +62,60 @@ func TestValidateDenyListBlocksRMRf(t *testing.T) {
 	}}}
 	if errs := v.Validate(context.Background(), plan); len(errs) == 0 {
 		t.Fatalf("rm -rf should be blocked")
+	}
+}
+
+func TestValidateDenyListBlocksRMRfVar(t *testing.T) {
+	v := NewValidator(&stubDeviceLister{devices: []*domain.Device{{ID: "a"}}}, nil)
+	for _, cmd := range []string{"rm -rf /var/log", "rm -rf ~/secrets", "rm -fr /etc"} {
+		plan := Plan{Actions: []Action{{
+			Type: "execute_command",
+			Args: json.RawMessage(`{"device_id":"a","command":"` + cmd + `"}`),
+		}}}
+		if errs := v.Validate(context.Background(), plan); len(errs) == 0 {
+			t.Errorf("expected %q to be blocked", cmd)
+		}
+	}
+}
+
+func TestValidateDenyListIgnoresFalsePositives(t *testing.T) {
+	v := NewValidator(&stubDeviceLister{devices: []*domain.Device{{ID: "a"}}}, nil)
+	for _, cmd := range []string{"echo gracefulShutdown", "cat rebootedAt.txt", "ls /var/log"} {
+		plan := Plan{Actions: []Action{{
+			Type: "execute_command",
+			Args: json.RawMessage(`{"device_id":"a","command":"` + cmd + `"}`),
+		}}}
+		if errs := v.Validate(context.Background(), plan); len(errs) > 0 {
+			t.Errorf("expected %q to pass, got %v", cmd, errs[0])
+		}
+	}
+}
+
+type erroringDeviceLister struct{}
+
+func (e *erroringDeviceLister) ListDevices(ctx context.Context, force bool) ([]*domain.Device, error) {
+	return nil, errors.New("tailscale down")
+}
+
+func TestValidateSurfaceListDevicesError(t *testing.T) {
+	v := NewValidator(&erroringDeviceLister{}, nil)
+	plan := Plan{Actions: []Action{{
+		Type: "get_metrics",
+		Args: json.RawMessage(`{"device_id":"a"}`),
+	}}}
+	errs := v.Validate(context.Background(), plan)
+	if len(errs) != 1 {
+		t.Fatalf("want 1 error, got %d: %v", len(errs), errs)
+	}
+	if !strings.Contains(errs[0].Error(), "device cache unavailable") {
+		t.Fatalf("error = %q", errs[0])
+	}
+}
+
+func TestRecentTasksReturnsEmptyArray(t *testing.T) {
+	reg := NewActionRegistry(&stubDeviceLister{}, nil, nil, nil, nil, nil)
+	res := reg.Run(context.Background(), Action{Type: "recent_tasks", Args: json.RawMessage(`{}`)})
+	if res.Status != "ok" || string(res.Output) != "[]" {
+		t.Fatalf("got status=%q output=%s err=%q", res.Status, res.Output, res.Error)
 	}
 }

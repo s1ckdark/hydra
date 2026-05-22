@@ -5,21 +5,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
+	"regexp"
 )
 
-// commandDenyList blocks the LLM from accidentally proposing destructive
-// shell commands. The user can still type one directly through the chat
-// if they really want — this is purely a guardrail against hallucinated
-// `rm -rf /` cleanup suggestions.
-var commandDenyList = []string{
-	"rm -rf /",
-	"rm -rf /*",
-	"mkfs",
-	"dd if=",
-	":(){",
-	"shutdown",
-	"reboot",
+// commandDenyPatterns are the regex patterns blocked from the LLM-proposed
+// execute_command actions. These are guardrails against hallucinated
+// destructive cleanup commands, not a sandbox — the user can still type
+// any command directly into the chat. Anchored on word/path boundaries
+// to avoid false positives like `gracefulShutdown` matching `shutdown`.
+var commandDenyPatterns = []*regexp.Regexp{
+	// rm -r / rm -rf rooted at /, ~, $HOME, or any first-level system dir.
+	regexp.MustCompile(`(?i)\brm\s+-[a-zA-Z]*r[a-zA-Z]*\s+(/|~|\$HOME)`),
+	// filesystem-level zap
+	regexp.MustCompile(`(?i)\bmkfs\b`),
+	regexp.MustCompile(`(?i)\bdd\s+if=`),
+	// fork bomb
+	regexp.MustCompile(`:\(\)\s*\{`),
+	// host control — match only as the executable token, not substring
+	regexp.MustCompile(`(?i)(^|[\s;&|])shutdown\b`),
+	regexp.MustCompile(`(?i)(^|[\s;&|])reboot\b`),
+	regexp.MustCompile(`(?i)(^|[\s;&|])halt\b`),
 }
 
 // Validator sanity-checks a plan against the current device cache before
@@ -41,7 +46,10 @@ func NewValidator(d DeviceLister, o OrchLister) *Validator {
 func (v *Validator) Validate(ctx context.Context, plan Plan) []error {
 	deviceIDs := map[string]bool{}
 	if v.devices != nil {
-		devs, _ := v.devices.ListDevices(ctx, false)
+		devs, lerr := v.devices.ListDevices(ctx, false)
+		if lerr != nil {
+			return []error{fmt.Errorf("device cache unavailable: %w", lerr)}
+		}
 		for _, d := range devs {
 			deviceIDs[d.ID] = true
 		}
@@ -91,10 +99,9 @@ func (v *Validator) validateOne(devices map[string]bool, idx int, a Action) erro
 		if err := mustDevice(args.DeviceID); err != nil {
 			return err
 		}
-		lower := strings.ToLower(args.Command)
-		for _, bad := range commandDenyList {
-			if strings.Contains(lower, bad) {
-				return fmt.Errorf("action %d (%s): command matches deny-list (%q)", idx, a.Type, bad)
+		for _, p := range commandDenyPatterns {
+			if p.MatchString(args.Command) {
+				return fmt.Errorf("action %d (%s): command matches deny-list (%s)", idx, a.Type, p.String())
 			}
 		}
 		return nil
