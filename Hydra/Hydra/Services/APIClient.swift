@@ -37,10 +37,13 @@ actor APIClient {
 
     // MARK: - Devices
 
-    func listDevices(refresh: Bool = false, includeMobile: Bool = false) async throws -> [Device] {
+    /// Lists devices. Mobile devices (iPhone/iPad) are visible by default
+    /// since they're used as orchestration controllers. Pass
+    /// `includeMobile: false` to suppress them in worker-only views.
+    func listDevices(refresh: Bool = false, includeMobile: Bool = true) async throws -> [Device] {
         var items: [String] = []
         if refresh { items.append("refresh=true") }
-        if includeMobile { items.append("include_mobile=true") }
+        if !includeMobile { items.append("include_mobile=false") }
         let path = items.isEmpty ? "/api/devices" : "/api/devices?" + items.joined(separator: "&")
         return try await get(path)
     }

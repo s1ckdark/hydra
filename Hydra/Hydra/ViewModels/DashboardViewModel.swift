@@ -79,11 +79,13 @@ class DashboardViewModel: ObservableObject {
         error = nil
         await checkServerHealth()
         do {
-            // Honor the "Show mobile devices" toggle persisted on the
-            // device list view. The default API response hides iOS/Android
-            // entries; this opt-in pulls them back in for Taildrop targets.
-            let includeMobile = UserDefaults.standard.bool(forKey: "showMobileDevices")
-            async let d = api.listDevices(refresh: force, includeMobile: includeMobile)
+            // Mobile devices visible by default (iPhone / iPad act as
+            // orchestration controllers). The toggle on the device list
+            // view is now an opt-OUT — when the user wants a worker-only
+            // view, hideMobileDevices flips to true and we pass
+            // include_mobile=false to the server.
+            let hideMobile = UserDefaults.standard.bool(forKey: "hideMobileDevices")
+            async let d = api.listDevices(refresh: force, includeMobile: !hideMobile)
             async let c = api.listOrchs()
             devices = try await d
             orchs = try await c

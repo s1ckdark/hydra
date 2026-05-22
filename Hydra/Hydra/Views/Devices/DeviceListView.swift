@@ -11,10 +11,10 @@ struct DeviceListView: View {
     @State private var selectedDevice: Device?
     @State private var searchText = ""
     @State private var isEditing = false
-    // Default-off: mirrors the server-side /api/devices filter so the worker
-    // list isn't polluted by phones/tablets unless the user wants to send
-    // them files via Taildrop.
-    @AppStorage("showMobileDevices") private var showMobile = false
+    // Mobile devices are visible by default — iPhone / iPad serve as
+    // orchestration controllers. The toggle is now an opt-OUT for the
+    // worker-only view; default false = mobile shown, true = hidden.
+    @AppStorage("hideMobileDevices") private var hideMobile = false
 
     var filteredDevices: [Device] {
         let ordered = prefs.apply(to: dashboardVM.devices, id: \.id)
@@ -43,11 +43,11 @@ struct DeviceListView: View {
             .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
             .toolbar {
                 ToolbarItem {
-                    Toggle(isOn: $showMobile) {
-                        Image(systemName: showMobile ? "iphone" : "iphone.slash")
+                    Toggle(isOn: $hideMobile) {
+                        Image(systemName: hideMobile ? "iphone.slash" : "iphone")
                     }
                     .toggleStyle(.button)
-                    .help(showMobile ? "Hide mobile devices" : "Show mobile devices (iOS/Android) for Taildrop")
+                    .help(hideMobile ? "Show mobile devices (iPhone / iPad)" : "Hide mobile devices — worker-only view")
                 }
                 ToolbarItem {
                     Button(action: { withAnimation { isEditing.toggle() } }) {
@@ -63,7 +63,7 @@ struct DeviceListView: View {
                     .help("Force refresh — re-probe and re-collect metrics from every device")
                 }
             }
-            .onChange(of: showMobile) {
+            .onChange(of: hideMobile) {
                 Task { await dashboardVM.load() }
             }
             .onChange(of: dashboardVM.devices) {

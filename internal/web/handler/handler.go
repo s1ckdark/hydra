@@ -1058,7 +1058,11 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 	// Callers that need the raw list (CLI debugging, admin tools) can pass
 	// ?all=true; granular escape hatches: ?include_mobile=true / ?include_stale=true.
 	includeAll := c.QueryParam("all") == "true"
-	includeMobile := includeAll || c.QueryParam("include_mobile") == "true"
+	// Mobile devices (iPhone / iPad) are visible by default — they're
+	// first-class Tailnet members and the user runs companion apps on
+	// them to view orchestration state. Pass ?include_mobile=false to
+	// hide them when a worker-only view is wanted.
+	includeMobile := includeAll || c.QueryParam("include_mobile") != "false"
 	includeStale := includeAll || c.QueryParam("include_stale") == "true"
 	if !includeMobile || !includeStale {
 		const staleAfter = 24 * time.Hour
@@ -1071,7 +1075,13 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 			if !includeMobile && d.IsMobile() {
 				continue
 			}
-			if !includeStale && d.Status == domain.DeviceStatusOnline &&
+			// Skip the zombie check for mobile devices — they have no
+			// sshd listening, so the reachability probe always fails for
+			// them, and zombie-filtering would erase the entire iPhone /
+			// iPad set whenever their Tailscale lastSeen drifts past 24h
+			// (which it does whenever the screen is off for a day).
+			// Trust Tailscale's status field directly here.
+			if !includeStale && !d.IsMobile() && d.Status == domain.DeviceStatusOnline &&
 				!d.LastSeen.IsZero() && now.Sub(d.LastSeen) > staleAfter {
 				// Last chance: if the reachability probe (or any cached
 				// metric) saw this device within the last 2 minutes, it
