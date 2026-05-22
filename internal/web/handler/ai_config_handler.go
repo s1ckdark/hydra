@@ -39,6 +39,7 @@ type AIConfigRequest struct {
 	HeadSelection      *providerConfigJSON `json:"head_selection,omitempty"`
 	TaskScheduling     *providerConfigJSON `json:"task_scheduling,omitempty"`
 	CapacityEstimation *providerConfigJSON `json:"capacity_estimation,omitempty"`
+	ChatInput          *providerConfigJSON `json:"chat_input,omitempty"`
 	AlwaysConsult      *bool               `json:"always_consult,omitempty"`
 }
 
@@ -50,6 +51,7 @@ func (h *Handler) APIGetAIConfig(c echo.Context) error {
 		"head_selection":      maskedProviderPtr(ai.HeadSelection),
 		"task_scheduling":     maskedProviderPtr(ai.TaskScheduling),
 		"capacity_estimation": maskedProviderPtr(ai.CapacityEstimation),
+		"chat_input":          maskedProviderPtr(ai.Chat),
 		"always_consult":      ai.AlwaysConsult,
 	})
 }
@@ -73,6 +75,7 @@ func (h *Handler) APIPutAIConfig(c echo.Context) error {
 		{"head_selection", req.HeadSelection},
 		{"task_scheduling", req.TaskScheduling},
 		{"capacity_estimation", req.CapacityEstimation},
+		{"chat_input", req.ChatInput},
 	}
 	for _, o := range overrides {
 		if o.p == nil || o.p.Provider == "" {
@@ -92,6 +95,7 @@ func (h *Handler) APIPutAIConfig(c echo.Context) error {
 		HeadSelection:      h.cfg.Agent.AI.HeadSelection,
 		TaskScheduling:     h.cfg.Agent.AI.TaskScheduling,
 		CapacityEstimation: h.cfg.Agent.AI.CapacityEstimation,
+		Chat:               h.cfg.Agent.AI.Chat,
 	}
 	if req.AlwaysConsult != nil {
 		newAI.AlwaysConsult = *req.AlwaysConsult
@@ -107,6 +111,10 @@ func (h *Handler) APIPutAIConfig(c echo.Context) error {
 	if req.CapacityEstimation != nil {
 		pc := req.CapacityEstimation.toConfig()
 		newAI.CapacityEstimation = &pc
+	}
+	if req.ChatInput != nil {
+		pc := req.ChatInput.toConfig()
+		newAI.Chat = &pc
 	}
 
 	oldAI := h.cfg.Agent.AI
