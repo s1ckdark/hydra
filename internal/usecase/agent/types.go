@@ -1,0 +1,73 @@
+// Package agent provides the chat-driven orchestration agent that takes
+// natural-language input, asks an LLM for a structured plan, validates
+// it against the current device cache, and executes it on user approval.
+//
+// All mutation is gated on an explicit user Run click — the Chat endpoint
+// only returns plans; the Execute endpoint runs them.
+package agent
+
+import "encoding/json"
+
+// ChatType discriminates between the LLM asking a follow-up question and
+// the LLM proposing a runnable plan. Every response is exactly one kind.
+type ChatType string
+
+const (
+	ChatTypeAsk  ChatType = "ask"
+	ChatTypePlan ChatType = "plan"
+)
+
+// ChatTurn is one entry in the running conversation. The client owns the
+// history; the backend just reads it on each call.
+type ChatTurn struct {
+	Role    string `json:"role"` // "user" | "assistant_ask" | "assistant_plan" | "system_result"
+	Content string `json:"content,omitempty"`
+	Plan    *Plan  `json:"plan,omitempty"`
+}
+
+// ChatRequest carries the full conversation history plus the latest user
+// utterance. History is capped on the client side at 20 turns.
+type ChatRequest struct {
+	History []ChatTurn `json:"history"`
+	Message string     `json:"message"`
+}
+
+// ChatResponse is what /api/agent/chat returns. Exactly one of Plan is
+// populated, gated by Type.
+type ChatResponse struct {
+	Type    ChatType `json:"type"`
+	Message string   `json:"message"`
+	Plan    *Plan    `json:"plan,omitempty"`
+}
+
+// Plan is the LLM's proposal: a one-line intent plus an ordered list of
+// actions to run. The Execute endpoint takes this back verbatim.
+type Plan struct {
+	Intent  string   `json:"intent"`
+	Actions []Action `json:"actions"`
+}
+
+// Action is one operation the agent wants to perform. Args is a raw JSON
+// object whose shape depends on Type; the action handler unmarshals it.
+type Action struct {
+	Type string          `json:"type"`
+	Args json.RawMessage `json:"args"`
+}
+
+// ActionResult is one row in the Execute response.
+type ActionResult struct {
+	Type   string          `json:"type"`
+	Status string          `json:"status"` // "ok" | "error"
+	Output json.RawMessage `json:"output,omitempty"`
+	Error  string          `json:"error,omitempty"`
+}
+
+// ExecuteRequest is the body of /api/agent/execute.
+type ExecuteRequest struct {
+	Plan Plan `json:"plan"`
+}
+
+// ExecuteResponse is what /api/agent/execute returns.
+type ExecuteResponse struct {
+	Results []ActionResult `json:"results"`
+}
