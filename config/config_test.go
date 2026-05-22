@@ -227,6 +227,18 @@ func TestConfig_SaveAndLoad_AIConfig(t *testing.T) {
 	}
 }
 
+func TestAIConfig_ChatRoleFallsBackToDefault(t *testing.T) {
+	c := AgentConfig{
+		AI: AIConfig{
+			Default: ProviderConfig{Provider: "claude", APIKey: "sk-default"},
+		},
+	}
+	got := c.AI.Resolve("chat")
+	if got.Provider != "claude" || got.APIKey != "sk-default" {
+		t.Fatalf("chat fallback = %+v", got)
+	}
+}
+
 func TestConfig_SaveAndLoad_AIConfig_ClearsRoleOverride(t *testing.T) {
 	tmpDir := t.TempDir()
 	t.Setenv("NAGA_CONFIG_DIR", tmpDir)

@@ -117,6 +117,7 @@ type AIConfig struct {
 	HeadSelection      *ProviderConfig `mapstructure:"head_selection"`
 	TaskScheduling     *ProviderConfig `mapstructure:"task_scheduling"`
 	CapacityEstimation *ProviderConfig `mapstructure:"capacity_estimation"`
+	Chat               *ProviderConfig `mapstructure:"chat"`
 	AlwaysConsult      bool            `mapstructure:"always_consult"`
 }
 
@@ -132,6 +133,8 @@ func (a AIConfig) Resolve(role string) ProviderConfig {
 		override = a.TaskScheduling
 	case "capacity":
 		override = a.CapacityEstimation
+	case "chat":
+		override = a.Chat
 	}
 	if override != nil && override.Provider != "" {
 		return *override
@@ -301,6 +304,7 @@ func Save(cfg *Config) error {
 	setRoleOverride("agent.ai.head_selection", cfg.Agent.AI.HeadSelection)
 	setRoleOverride("agent.ai.task_scheduling", cfg.Agent.AI.TaskScheduling)
 	setRoleOverride("agent.ai.capacity_estimation", cfg.Agent.AI.CapacityEstimation)
+	setRoleOverride("agent.ai.chat", cfg.Agent.AI.Chat)
 	viper.Set("agent.ai.always_consult", cfg.Agent.AI.AlwaysConsult)
 
 	configPath := filepath.Join(configDir, "config.yaml")
