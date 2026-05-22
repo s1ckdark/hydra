@@ -16,6 +16,7 @@ import (
 	"github.com/s1ckdark/hydra/config"
 	"github.com/s1ckdark/hydra/internal/domain"
 	"github.com/s1ckdark/hydra/internal/usecase"
+	"github.com/s1ckdark/hydra/internal/usecase/agent"
 	"github.com/s1ckdark/hydra/internal/web/ws"
 )
 
@@ -63,6 +64,7 @@ type Handler struct {
 	orchUC             *usecase.OrchUseCase
 	monitorUC          *usecase.MonitorUseCase
 	failoverUC         *usecase.FailoverUseCase
+	agentUC            *agent.AgentUseCase
 	executor           RemoteExecutor
 	sshRecoverer       SSHRecoverer
 	cfg                *config.Config
@@ -124,6 +126,10 @@ func (h *Handler) SetTaskSupervisor(s *usecase.TaskSupervisor) {
 func (h *Handler) SetAIArbiterRebuilder(rebuild func(ai config.AIConfig)) {
 	h.aiArbiterRebuilder = rebuild
 }
+
+// SetAgentUseCase wires the chat agent. Optional — if not set, the
+// agent endpoints return 503 with a clear error.
+func (h *Handler) SetAgentUseCase(a *agent.AgentUseCase) { h.agentUC = a }
 
 // SetTaskGroupRepos wires the read and write dependencies for /api/groups
 // and /api/tasks/batch. The concrete type passed as g must implement both

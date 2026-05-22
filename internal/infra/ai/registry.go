@@ -12,6 +12,7 @@ type Registry struct {
 	headSelector      HeadSelector
 	taskScheduler     TaskScheduler
 	capacityEstimator CapacityEstimator
+	chatProvider      ChatProvider
 	fallback          *RuleBasedScheduler
 }
 
@@ -29,6 +30,12 @@ func (r *Registry) SetHeadSelector(h HeadSelector) { r.headSelector = h }
 
 // SetTaskScheduler configures the provider used for task scheduling.
 func (r *Registry) SetTaskScheduler(ts TaskScheduler) { r.taskScheduler = ts }
+
+// SetChatProvider configures the provider used for free-form chat completions.
+func (r *Registry) SetChatProvider(cp ChatProvider) { r.chatProvider = cp }
+
+// ChatProvider returns the configured chat provider or nil.
+func (r *Registry) ChatProvider() ChatProvider { return r.chatProvider }
 
 // SelectHead implements HeadSelector, delegating to the configured provider
 // or falling back to rule-based scoring.

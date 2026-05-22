@@ -29,6 +29,57 @@ func NewProvider(apiKey, endpoint, model string) *Provider {
 	}
 }
 
+// Complete implements ai.ChatProvider using Z.AI's OpenAI-compatible API.
+func (p *Provider) Complete(ctx context.Context, system, prompt string) (string, error) {
+	if p.apiKey == "" {
+		return "", fmt.Errorf("Z.AI API key not configured")
+	}
+	messages := []map[string]string{}
+	if system != "" {
+		messages = append(messages, map[string]string{"role": "system", "content": system})
+	}
+	messages = append(messages, map[string]string{"role": "user", "content": prompt})
+
+	reqBody := map[string]interface{}{
+		"model":      p.model,
+		"max_tokens": 1024,
+		"messages":   messages,
+	}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+	url := p.endpoint + "/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Z.AI API returned status %d", resp.StatusCode)
+	}
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("empty response from Z.AI")
+	}
+	return result.Choices[0].Message.Content, nil
+}
+
 // ScheduleTask implements ai.TaskScheduler.
 func (p *Provider) ScheduleTask(ctx context.Context, task *domain.Task, workers []ai.WorkerSnapshot) (*ai.ScheduleDecision, error) {
 	if p.apiKey == "" {

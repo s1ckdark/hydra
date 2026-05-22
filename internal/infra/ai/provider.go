@@ -21,6 +21,13 @@ type CapacityEstimator interface {
 	EstimateCapacity(ctx context.Context, worker WorkerSnapshot, pendingTasks []*domain.Task) (*CapacityEstimate, error)
 }
 
+// ChatProvider is the minimal interface for free-form chat completions used
+// by the chat agent. It differs from TaskScheduler/HeadSelector in that it
+// accepts an explicit system prompt separate from the user turn.
+type ChatProvider interface {
+	Complete(ctx context.Context, system, prompt string) (string, error)
+}
+
 // WorkerSnapshot captures a worker's current resource state.
 type WorkerSnapshot struct {
 	DeviceID        string

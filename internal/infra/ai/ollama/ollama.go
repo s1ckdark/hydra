@@ -89,6 +89,17 @@ func (p *Provider) EstimateCapacity(ctx context.Context, worker ai.WorkerSnapsho
 	return &estimate, nil
 }
 
+// Complete implements ai.ChatProvider. Concatenates system + user into a single
+// user message because Ollama's /api/chat supports a system role but older
+// models may ignore it; prepending is universally understood.
+func (p *Provider) Complete(ctx context.Context, system, prompt string) (string, error) {
+	full := prompt
+	if system != "" {
+		full = system + "\n\n" + prompt
+	}
+	return p.chat(ctx, full)
+}
+
 // chat sends a prompt to Ollama's native /api/chat endpoint with thinking disabled.
 func (p *Provider) chat(ctx context.Context, prompt string) (string, error) {
 	reqBody := chatRequest{

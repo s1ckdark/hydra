@@ -79,6 +79,53 @@ func (p *Provider) ScheduleTask(ctx context.Context, task *domain.Task, workers 
 	return &decision, nil
 }
 
+// Complete implements ai.ChatProvider. It sends system+user to the Claude
+// Messages API and returns the raw text reply.
+func (p *Provider) Complete(ctx context.Context, system, prompt string) (string, error) {
+	if p.apiKey == "" {
+		return "", fmt.Errorf("anthropic API key not configured")
+	}
+	reqBody := map[string]interface{}{
+		"model":      p.model,
+		"max_tokens": 1024,
+		"system":     system,
+		"messages": []map[string]string{
+			{"role": "user", "content": prompt},
+		},
+	}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", anthropicURL, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", p.apiKey)
+	req.Header.Set("anthropic-version", anthropicVer)
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("claude API returned status %d", resp.StatusCode)
+	}
+	var result struct {
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	if len(result.Content) == 0 {
+		return "", fmt.Errorf("empty response from claude")
+	}
+	return result.Content[0].Text, nil
+}
+
 func (p *Provider) call(ctx context.Context, prompt string, maxTokens int) (string, error) {
 	reqBody := map[string]interface{}{
 		"model":      p.model,

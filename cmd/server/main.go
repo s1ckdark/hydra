@@ -21,6 +21,7 @@ import (
 	"github.com/s1ckdark/hydra/internal/infra/tailscale"
 	"github.com/s1ckdark/hydra/internal/repository/sqlite"
 	"github.com/s1ckdark/hydra/internal/usecase"
+	"github.com/s1ckdark/hydra/internal/usecase/agent"
 	"github.com/s1ckdark/hydra/internal/web/handler"
 	"github.com/s1ckdark/hydra/internal/web/ws"
 )
@@ -200,6 +201,24 @@ func main() {
 	h.SetExecutor(sshExecutor)
 	h.SetSSHRecoverer(sshExecutor)
 
+	// Chat agent — natural-language orchestration. Requires a configured
+	// chat-role provider; gracefully disabled if unavailable so the
+	// server still serves the rest of its endpoints.
+	//
+	// OrchManager: CreateOrch/DeleteOrch signatures differ from the agent
+	// interface (variadic mode, different delete params) — stubbed nil for
+	// follow-up wiring. CommandRunner/GPULister have no usecase backing yet
+	// — also nil. All four slots degrade gracefully at runtime.
+	if chatLLM := buildChatLLM(aiRegistry); chatLLM != nil {
+		agentRegistry := agent.NewActionRegistry(deviceUC, orchUC, monitorUC, nil, nil, nil)
+		agentValidator := agent.NewValidator(deviceUC, orchUC)
+		agentUC := agent.NewAgentUseCase(chatLLM, agentRegistry, agentValidator)
+		h.SetAgentUseCase(agentUC)
+		log.Printf("[agent] chat agent enabled")
+	} else {
+		log.Printf("[agent] chat agent disabled (no chat-role provider configured)")
+	}
+
 	// Routes
 	e.GET("/", h.Dashboard)
 	e.GET("/devices", h.DeviceList)
@@ -329,6 +348,12 @@ func main() {
 	// CLI forward it to the target device. Sits on apiWrite because it
 	// initiates an outgoing transfer.
 	apiWrite.POST("/devices/:id/taildrop", h.APIDeviceTaildrop)
+
+	// Chat agent — natural-language orchestration. Both endpoints sit on
+	// apiWrite because Execute can mutate; Chat shares the auth posture
+	// for symmetry.
+	apiWrite.POST("/agent/chat", h.APIAgentChat)
+	apiWrite.POST("/agent/execute", h.APIAgentExecute)
 
 	// Config routes (Tailscale network auth required)
 	apiWrite.GET("/config/tailscale", h.APIGetTailscaleConfig)

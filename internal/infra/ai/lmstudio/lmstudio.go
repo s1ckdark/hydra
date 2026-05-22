@@ -89,6 +89,53 @@ func (p *Provider) EstimateCapacity(ctx context.Context, worker ai.WorkerSnapsho
 	return &estimate, nil
 }
 
+// Complete implements ai.ChatProvider using LM Studio's OpenAI-compatible API.
+func (p *Provider) Complete(ctx context.Context, system, prompt string) (string, error) {
+	messages := []map[string]string{}
+	if system != "" {
+		messages = append(messages, map[string]string{"role": "system", "content": system})
+	}
+	messages = append(messages, map[string]string{"role": "user", "content": prompt})
+
+	reqBody := map[string]interface{}{
+		"model":      p.model,
+		"max_tokens": 1024,
+		"messages":   messages,
+	}
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", p.endpoint+"/v1/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("lmstudio request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return "", fmt.Errorf("lmstudio API returned status %d: %s", resp.StatusCode, string(errBody))
+	}
+	var result struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("empty response from lmstudio")
+	}
+	return result.Choices[0].Message.Content, nil
+}
+
 // chatCompletion sends a prompt to LM Studio's OpenAI-compatible endpoint.
 func (p *Provider) chatCompletion(ctx context.Context, prompt string) (string, error) {
 	reqBody := map[string]interface{}{
