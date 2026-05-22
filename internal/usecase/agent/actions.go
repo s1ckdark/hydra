@@ -30,17 +30,30 @@ type GPULister interface {
 	GetGPUSnapshot(ctx context.Context) ([]*domain.GPUNodeMetrics, error)
 }
 
-// ActionRegistry dispatches Actions to their handlers. Read actions only
-// in this commit; write actions arrive in T3.
+// CommandRunner runs a shell command on a device. Mirrors the
+// DeviceUseCase / handler surface.
+type CommandRunner interface {
+	ExecuteOnDevice(ctx context.Context, deviceID, command string, timeoutSec int) (*domain.TaskResult, error)
+}
+
+// OrchManager covers create/delete used by write actions.
+type OrchManager interface {
+	CreateOrch(ctx context.Context, name, headID string, workerIDs []string) (*domain.Orch, error)
+	DeleteOrch(ctx context.Context, id string, force bool) error
+}
+
+// ActionRegistry dispatches Actions to their handlers.
 type ActionRegistry struct {
 	devices DeviceLister
 	orchs   OrchLister
 	metrics MetricsReader
 	gpu     GPULister
+	cmd     CommandRunner
+	orchMgr OrchManager
 }
 
-func NewActionRegistry(d DeviceLister, o OrchLister, m MetricsReader, g GPULister) *ActionRegistry {
-	return &ActionRegistry{devices: d, orchs: o, metrics: m, gpu: g}
+func NewActionRegistry(d DeviceLister, o OrchLister, m MetricsReader, g GPULister, c CommandRunner, om OrchManager) *ActionRegistry {
+	return &ActionRegistry{devices: d, orchs: o, metrics: m, gpu: g, cmd: c, orchMgr: om}
 }
 
 // Run dispatches a single Action and returns its ActionResult.
@@ -54,12 +67,23 @@ func (r *ActionRegistry) Run(ctx context.Context, a Action) ActionResult {
 		return r.runGetMetrics(ctx, a)
 	case "get_gpu":
 		return r.runGetGPU(ctx, a)
+	case "create_orch":
+		return r.runCreateOrch(ctx, a)
+	case "delete_orch":
+		return r.runDeleteOrch(ctx, a)
+	case "execute_command":
+		return r.runExecuteCommand(ctx, a)
+	case "recent_tasks":
+		return r.runRecentTasks(ctx, a)
 	default:
 		return errResult(a.Type, fmt.Errorf("unknown action %q", a.Type))
 	}
 }
 
 func (r *ActionRegistry) runListDevices(ctx context.Context, a Action) ActionResult {
+	if r.devices == nil {
+		return errResult(a.Type, errors.New("device service unavailable"))
+	}
 	devs, err := r.devices.ListDevices(ctx, false)
 	if err != nil {
 		return errResult(a.Type, err)
@@ -114,9 +138,78 @@ func (r *ActionRegistry) runGetGPU(ctx context.Context, a Action) ActionResult {
 func okResult(t string, v any) ActionResult {
 	raw, err := json.Marshal(v)
 	if err != nil {
-		return errResult(t, err)
+		return errResult(t, fmt.Errorf("marshal output: %w", err))
 	}
 	return ActionResult{Type: t, Status: "ok", Output: raw}
+}
+
+type createOrchArgs struct {
+	Name      string   `json:"name"`
+	HeadID    string   `json:"head_id"`
+	WorkerIDs []string `json:"worker_ids"`
+}
+
+func (r *ActionRegistry) runCreateOrch(ctx context.Context, a Action) ActionResult {
+	if r.orchMgr == nil {
+		return errResult(a.Type, errors.New("orch manager unavailable"))
+	}
+	var args createOrchArgs
+	if err := json.Unmarshal(a.Args, &args); err != nil {
+		return errResult(a.Type, fmt.Errorf("args: %w", err))
+	}
+	o, err := r.orchMgr.CreateOrch(ctx, args.Name, args.HeadID, args.WorkerIDs)
+	if err != nil {
+		return errResult(a.Type, err)
+	}
+	return okResult(a.Type, o)
+}
+
+type deleteOrchArgs struct {
+	OrchID string `json:"orch_id"`
+	Force  bool   `json:"force"`
+}
+
+func (r *ActionRegistry) runDeleteOrch(ctx context.Context, a Action) ActionResult {
+	if r.orchMgr == nil {
+		return errResult(a.Type, errors.New("orch manager unavailable"))
+	}
+	var args deleteOrchArgs
+	if err := json.Unmarshal(a.Args, &args); err != nil {
+		return errResult(a.Type, fmt.Errorf("args: %w", err))
+	}
+	if err := r.orchMgr.DeleteOrch(ctx, args.OrchID, args.Force); err != nil {
+		return errResult(a.Type, err)
+	}
+	return okResult(a.Type, map[string]string{"status": "deleted", "orch_id": args.OrchID})
+}
+
+type execCmdArgs struct {
+	DeviceID       string `json:"device_id"`
+	Command        string `json:"command"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
+}
+
+func (r *ActionRegistry) runExecuteCommand(ctx context.Context, a Action) ActionResult {
+	if r.cmd == nil {
+		return errResult(a.Type, errors.New("command runner unavailable"))
+	}
+	var args execCmdArgs
+	if err := json.Unmarshal(a.Args, &args); err != nil {
+		return errResult(a.Type, fmt.Errorf("args: %w", err))
+	}
+	timeout := args.TimeoutSeconds
+	if timeout <= 0 {
+		timeout = 30
+	}
+	out, err := r.cmd.ExecuteOnDevice(ctx, args.DeviceID, args.Command, timeout)
+	if err != nil {
+		return errResult(a.Type, err)
+	}
+	return okResult(a.Type, out)
+}
+
+func (r *ActionRegistry) runRecentTasks(_ context.Context, a Action) ActionResult {
+	return okResult(a.Type, []any{})
 }
 
 func errResult(t string, err error) ActionResult {
