@@ -180,7 +180,13 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 			prevCache = dbDevices
 		}
 	}
-	if len(prevCache) >= 4 && len(devices) < len(prevCache)/2 {
+	// Reject any shrink larger than 25% from a known-good baseline. The
+	// half-threshold ("< prevCount/2") was too lax — an 8 → 4 dip
+	// (exactly half) slipped through, and the user saw the dashboard
+	// flicker each time Tailscale momentarily dropped half its devices.
+	// 25% allows a normal device removal (e.g., user retired one node)
+	// without false positives.
+	if len(prevCache) >= 4 && len(devices)*4 < len(prevCache)*3 {
 		log.Printf("[devices] tailscale returned only %d of %d known devices — keeping stale set", len(devices), len(prevCache))
 		uc.cacheMu.Lock()
 		uc.cachedDevices = prevCache
