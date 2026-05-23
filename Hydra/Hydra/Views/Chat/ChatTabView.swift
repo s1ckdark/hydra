@@ -5,6 +5,7 @@ import SwiftUI
 /// to breathe and a focused input.
 struct ChatTabView: View {
     @EnvironmentObject var vm: ChatViewModel
+    @EnvironmentObject var appState: AppState
     @State private var draft = ""
     @FocusState private var inputFocused: Bool
 
@@ -52,6 +53,9 @@ struct ChatTabView: View {
         }
         .padding(.bottom, 8)
         .onAppear { inputFocused = true }
+        .onChange(of: appState.activeTab) { _, tab in
+            if tab == .chat { inputFocused = true }
+        }
     }
 
     private var emptyState: some View {
