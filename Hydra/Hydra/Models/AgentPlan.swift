@@ -40,6 +40,17 @@ struct AgentExecuteResponse: Codable {
     let results: [ActionResult]
 }
 
+extension AgentPlan {
+    /// One-line action label for the menubar's compact PlanCard:
+    /// the first action's `type`, with `(+N more)` appended when the
+    /// plan has more than one action.
+    var compactActionLabel: String {
+        guard let first = actions.first else { return "" }
+        if actions.count == 1 { return first.type }
+        return "\(first.type) (+\(actions.count - 1) more)"
+    }
+}
+
 /// AnyCodable wraps the JSON-typed values we round-trip through the
 /// agent endpoints without modelling every action's shape.
 struct AnyCodable: Codable {
