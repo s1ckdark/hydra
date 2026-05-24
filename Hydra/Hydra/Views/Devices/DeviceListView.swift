@@ -195,15 +195,19 @@ struct DeviceRowView: View {
 
 struct DeviceDetailView: View {
     let device: Device
+    @EnvironmentObject var dashboardVM: DashboardViewModel
     @State private var command = ""
     @State private var result: TaskResult?
     @State private var isExecuting = false
     @State private var gpuStatus: GPUNodeStatus?
     @State private var metrics: DeviceMetrics?
     @State private var pollTask: Task<Void, Never>?
-    @State private var pingResult: PingResult?
-    @State private var pingError: String?
-    @State private var pingInProgress = false
+
+    // Ping state lives on the shared ViewModel so it survives device
+    // switches and stays scoped to the current device.id.
+    private var pingResult: PingResult? { dashboardVM.pingResults[device.id] }
+    private var pingError: String? { dashboardVM.pingErrors[device.id] }
+    private var pingInProgress: Bool { dashboardVM.pingingDeviceIds.contains(device.id) }
 
     // SSH recovery state. The banner is gated on showSSHBanner, which is only
     // raised when the metrics endpoint reports a backend SSH error (m.hasError),
@@ -339,7 +343,7 @@ struct DeviceDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Button {
-                                Task { await runPing() }
+                                Task { await dashboardVM.runPing(deviceId: device.id) }
                             } label: {
                                 Label("Ping device", systemImage: "speedometer")
                             }
@@ -606,18 +610,6 @@ struct DeviceDetailView: View {
             // Transport / API errors are not necessarily SSH failures; leave
             // the banner state untouched so a flapping connection does not
             // open a recovery flow that the user can not act on.
-        }
-    }
-
-    private func runPing() async {
-        pingInProgress = true
-        pingError = nil
-        defer { pingInProgress = false }
-        do {
-            pingResult = try await APIClient.shared.pingDevice(id: device.id, count: 5)
-        } catch {
-            pingResult = nil
-            pingError = error.localizedDescription
         }
     }
 

@@ -18,6 +18,14 @@ class DashboardViewModel: ObservableObject {
     @Published var quickCommandResult: TaskResult?
     @Published var isExecutingQuickCommand = false
 
+    // Per-device ping cache. Lives on the shared ViewModel (not in
+    // DeviceDetailView's @State) so switching the selected device does not
+    // leak the previous device's chart into the new one — the detail view
+    // simply reads `pingResults[device.id]` and re-renders cleanly.
+    @Published var pingResults: [String: PingResult] = [:]
+    @Published var pingErrors: [String: String] = [:]
+    @Published var pingingDeviceIds: Set<String> = []
+
     enum ServerStatus: String {
         case connected, disconnected, unknown
     }
@@ -112,6 +120,23 @@ class DashboardViewModel: ObservableObject {
     func stopPolling() {
         pollTask?.cancel()
         pollTask = nil
+    }
+
+    /// Probes the device's :22 reachability and caches the result by
+    /// `deviceId`. The detail view reads the cache, so switching devices
+    /// preserves each device's last measurement instead of showing the
+    /// previously-selected device's chart.
+    func runPing(deviceId: String, count: Int = 5) async {
+        pingingDeviceIds.insert(deviceId)
+        pingErrors[deviceId] = nil
+        defer { pingingDeviceIds.remove(deviceId) }
+        do {
+            let result = try await api.pingDevice(id: deviceId, count: count)
+            pingResults[deviceId] = result
+        } catch {
+            pingResults[deviceId] = nil
+            pingErrors[deviceId] = error.localizedDescription
+        }
     }
 
     func executeQuickCommand() async {
