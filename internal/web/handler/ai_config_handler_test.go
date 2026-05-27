@@ -209,6 +209,36 @@ func TestAPIPutAIConfig_InvokesArbiterRebuilder(t *testing.T) {
 	}
 }
 
+func TestAPIPutAIConfig_InvokesAgentRebuilder(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Tailscale.APIKey = "tskey-test"
+	t.Setenv("NAGA_CONFIG_DIR", t.TempDir())
+
+	var rebuiltWith *config.AIConfig
+	h := &Handler{cfg: cfg}
+	h.SetAgentRebuilder(func(newAI config.AIConfig) {
+		c := newAI
+		rebuiltWith = &c
+	})
+
+	e := echo.New()
+	body := `{"default":{"provider":"zai","api_key":"zk-new","endpoint":"https://api.z.ai/api/coding/paas/v4","model":"glm-4.6"}}`
+	req := httptest.NewRequest(http.MethodPut, "/api/config/ai", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.APIPutAIConfig(c); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if rebuiltWith == nil {
+		t.Fatal("agentRebuilder was not invoked — Ask AI would keep the boot-time provider")
+	}
+	if rebuiltWith.Default.Provider != "zai" || rebuiltWith.Default.Endpoint != "https://api.z.ai/api/coding/paas/v4" {
+		t.Errorf("agent rebuilder received wrong config: %+v", rebuiltWith)
+	}
+}
+
 func TestAPIPutAIConfig_OmittedRoleOverridesPreserved(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Tailscale.APIKey = "tskey-test"

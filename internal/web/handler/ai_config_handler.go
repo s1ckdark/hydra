@@ -135,6 +135,11 @@ func (h *Handler) APIPutAIConfig(c echo.Context) error {
 	if h.aiArbiterRebuilder != nil {
 		h.aiArbiterRebuilder(newAI)
 	}
+	// Rebuild the chat agent too, so Ask AI / agent chat pick up the new
+	// provider live instead of staying on the boot-time LLM.
+	if h.agentRebuilder != nil {
+		h.agentRebuilder(newAI)
+	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "updated"})
 }
