@@ -6,6 +6,7 @@ import Foundation
 @MainActor
 final class AppState: ObservableObject {
     enum Tab: Hashable {
+        case chat
         case dashboard
         case devices
         case orchs
