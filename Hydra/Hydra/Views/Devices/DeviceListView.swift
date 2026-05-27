@@ -463,9 +463,12 @@ struct DeviceDetailView: View {
                     }
                 }
 
-                // Execute command — same agent + allow/ask/deny policy as the
-                // dashboard Quick Command, scoped to THIS device. Runs land in
-                // the shared activity log, filtered here to this device.
+                // Execute command — DIRECT shell console for THIS device,
+                // gated by the allow/ask/auto policy. The AI/agent path now
+                // lives solely in the Chat drawer (⌘/), which already carries
+                // this device as context — so this box is intentionally
+                // direct-only. Runs land in the shared activity log, filtered
+                // here to this device.
                 if device.isOnline && device.sshEnabled {
                     GroupBox("Execute Command") {
                         VStack(alignment: .leading, spacing: 8) {
@@ -481,36 +484,29 @@ struct DeviceDetailView: View {
                                 .pickerStyle(.segmented)
                                 .labelsHidden()
                                 .frame(width: 220)
-                                .help("Allow = run all · Ask = approve each · Auto = AI runs safe ones, asks on risky")
+                                .help("Allow = run all · Ask = approve each · Auto = AI judges safety, asks on risky")
                                 Spacer()
                             }
 
-                            TextField("Command, or describe a goal for the AI agent…", text: $command)
-                                .textFieldStyle(.roundedBorder)
-                                .font(.system(.body, design: .monospaced))
-
                             HStack {
-                                // ✨ Agent: NL goal → plan, gated by policy.
-                                Button {
-                                    let t = command
-                                    command = ""
-                                    Task { await dashboardVM.agentSubmit(text: t, deviceId: device.id, policy: policy) }
-                                } label: {
-                                    Label(dashboardVM.agentBusy ? "Thinking…" : "Ask AI",
-                                          systemImage: dashboardVM.agentBusy ? "hourglass" : "sparkles")
-                                }
-                                .disabled(command.isEmpty || dashboardVM.agentBusy)
+                                TextField("Shell command to run on this device…", text: $command)
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.system(.body, design: .monospaced))
+                                    .onSubmit { runDirect() }
 
                                 // ▶ direct command, gated by policy.
-                                Button {
-                                    let t = command
-                                    command = ""
-                                    Task { await dashboardVM.directSubmit(text: t, deviceId: device.id, policy: policy) }
-                                } label: {
+                                Button { runDirect() } label: {
                                     Label("Execute", systemImage: "play.fill")
                                 }
                                 .disabled(command.isEmpty)
                             }
+
+                            // Discoverability hint: the AI/agent path moved to
+                            // the Chat drawer, which already knows this device.
+                            Label("Need the AI agent? Open Chat (⌘/) — it already knows this device.",
+                                  systemImage: "sparkles")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
 
                             // Activity for THIS device, newest first.
                             let entries = dashboardVM.activity.filter { $0.deviceId == device.id }
@@ -546,6 +542,16 @@ struct DeviceDetailView: View {
             metrics = nil
             startGPUPolling()
         }
+    }
+
+    /// Runs the typed command directly on this device, gated by the policy.
+    /// The AI/agent path is intentionally absent here — it lives in the
+    /// Chat drawer, which already carries this device as context.
+    private func runDirect() {
+        let t = command
+        guard !t.isEmpty else { return }
+        command = ""
+        Task { await dashboardVM.directSubmit(text: t, deviceId: device.id, policy: policy) }
     }
 
     private var publicKeyCopyRow: some View {
