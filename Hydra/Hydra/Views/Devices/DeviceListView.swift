@@ -206,10 +206,8 @@ struct DeviceDetailView: View {
     let device: Device
     @EnvironmentObject var dashboardVM: DashboardViewModel
     @State private var command = ""
-    @State private var result: TaskResult?
-    @State private var isExecuting = false
-    @State private var isGeneratingCommand = false
-    @State private var commandGenError: String?
+    @AppStorage("aiExecPolicy") private var policyRaw = ExecPolicy.ask.rawValue
+    private var policy: ExecPolicy { ExecPolicy(rawValue: policyRaw) ?? .ask }
     @State private var gpuStatus: GPUNodeStatus?
     @State private var metrics: DeviceMetrics?
     @State private var pollTask: Task<Void, Never>?
@@ -465,57 +463,65 @@ struct DeviceDetailView: View {
                     }
                 }
 
-                // Execute command
+                // Execute command — same agent + allow/ask/deny policy as the
+                // dashboard Quick Command, scoped to THIS device. Runs land in
+                // the shared activity log, filtered here to this device.
                 if device.isOnline && device.sshEnabled {
                     GroupBox("Execute Command") {
                         VStack(alignment: .leading, spacing: 8) {
-                            TextField("Command, or describe it for AI…", text: $command)
+                            HStack {
+                                Text("Policy:")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Picker("", selection: $policyRaw) {
+                                    ForEach(ExecPolicy.allCases) { p in
+                                        Text(p.label).tag(p.rawValue)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                .labelsHidden()
+                                .frame(width: 220)
+                                .help("Allow = run automatically · Ask = approve each · Deny = block")
+                                Spacer()
+                            }
+
+                            TextField("Command, or describe a goal for the AI agent…", text: $command)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(.body, design: .monospaced))
 
                             HStack {
-                                // AI: natural language → a shell command for
-                                // THIS device's OS. Fills the field for review;
-                                // the user still runs it explicitly with Execute.
+                                // ✨ Agent: NL goal → plan, gated by policy.
                                 Button {
-                                    Task { await generateCommand() }
+                                    let t = command
+                                    command = ""
+                                    Task { await dashboardVM.agentSubmit(text: t, deviceId: device.id, policy: policy) }
                                 } label: {
-                                    Label(isGeneratingCommand ? "Generating…" : "Ask AI",
-                                          systemImage: isGeneratingCommand ? "hourglass" : "sparkles")
+                                    Label(dashboardVM.agentBusy ? "Thinking…" : "Ask AI",
+                                          systemImage: dashboardVM.agentBusy ? "hourglass" : "sparkles")
                                 }
-                                .disabled(command.isEmpty || isGeneratingCommand || isExecuting)
+                                .disabled(command.isEmpty || dashboardVM.agentBusy)
 
-                                Button(action: {
-                                    Task { await executeCommand() }
-                                }) {
-                                    Label(isExecuting ? "Running..." : "Execute", systemImage: "play.fill")
+                                // ▶ direct command, gated by policy.
+                                Button {
+                                    let t = command
+                                    command = ""
+                                    Task { await dashboardVM.directSubmit(text: t, deviceId: device.id, policy: policy) }
+                                } label: {
+                                    Label("Execute", systemImage: "play.fill")
                                 }
-                                .disabled(command.isEmpty || isExecuting || isGeneratingCommand)
+                                .disabled(command.isEmpty)
                             }
 
-                            if let genErr = commandGenError {
-                                Label(genErr, systemImage: "sparkles")
-                                    .font(.caption2)
-                                    .foregroundStyle(.orange)
-                            }
-
-                            if let result = result {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text(result.hasError ? "Error" : "Output")
-                                            .font(.caption.bold())
-                                        Spacer()
-                                        Text(String(format: "%.0fms", result.durationMs))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Text(result.hasError ? (result.error ?? "") : result.output)
-                                        .font(.system(.caption, design: .monospaced))
-                                        .foregroundStyle(result.hasError ? .red : .primary)
-                                        .padding(8)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .background(.quaternary)
-                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                            // Activity for THIS device, newest first.
+                            let entries = dashboardVM.activity.filter { $0.deviceId == device.id }
+                            if !entries.isEmpty {
+                                Divider()
+                                Text("Activity")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.secondary)
+                                ForEach(entries) { entry in
+                                    ActivityRow(entry: entry, vm: dashboardVM)
+                                    if entry.id != entries.last?.id { Divider() }
                                 }
                             }
                         }
@@ -937,39 +943,6 @@ struct DeviceDetailView: View {
         }
     }
 
-    /// Natural-language → shell command for this device, via the shared
-    /// /api/agent/command endpoint. Scopes the request to the device's OS
-    /// and name, then fills the command field for the user to review.
-    private func generateCommand() async {
-        let prompt = command.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty else { return }
-        isGeneratingCommand = true
-        commandGenError = nil
-        defer { isGeneratingCommand = false }
-        do {
-            let resp = try await APIClient.shared.generateCommand(
-                prompt: prompt, os: device.os, deviceName: device.shortName)
-            if resp.refused {
-                commandGenError = "AI declined: \(resp.reason ?? "unsafe request")"
-            } else if resp.command.isEmpty {
-                commandGenError = "AI returned an empty command."
-            } else {
-                command = resp.command
-            }
-        } catch {
-            commandGenError = error.localizedDescription
-        }
-    }
-
-    private func executeCommand() async {
-        isExecuting = true
-        do {
-            result = try await APIClient.shared.executeOnDevice(id: device.id, command: command)
-        } catch {
-            result = TaskResult(deviceId: device.id, deviceName: device.displayName, gpu: "", output: "", error: error.localizedDescription, durationMs: 0)
-        }
-        isExecuting = false
-    }
 }
 
 struct InfoField: View {

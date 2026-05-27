@@ -450,7 +450,10 @@ struct QuickCommandSection: View {
 
                     // ✨ Agent: NL goal → plan, gated by the policy.
                     Button {
-                        Task { await vm.agentSubmit(policy: policy) }
+                        let t = vm.quickCommand
+                        let did = vm.quickCommandDeviceId
+                        vm.quickCommand = ""
+                        Task { await vm.agentSubmit(text: t, deviceId: did, policy: policy) }
                     } label: {
                         Image(systemName: vm.agentBusy ? "hourglass" : "sparkles")
                     }
@@ -459,7 +462,10 @@ struct QuickCommandSection: View {
 
                     // ▶ direct command on the target, gated by the policy.
                     Button {
-                        Task { await vm.directSubmit(policy: policy) }
+                        let t = vm.quickCommand
+                        let did = vm.quickCommandDeviceId
+                        vm.quickCommand = ""
+                        Task { await vm.directSubmit(text: t, deviceId: did, policy: policy) }
                     } label: {
                         Image(systemName: "play.fill")
                     }
@@ -491,7 +497,8 @@ struct QuickCommandSection: View {
 
 // MARK: - Activity row (unified: direct command + AI agent run)
 
-private struct ActivityRow: View {
+/// Shared by the dashboard Quick Command and the device detail view.
+struct ActivityRow: View {
     let entry: ActivityEntry
     @ObservedObject var vm: DashboardViewModel
     @State private var expanded = false

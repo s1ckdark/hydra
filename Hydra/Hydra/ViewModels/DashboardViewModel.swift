@@ -186,12 +186,12 @@ class DashboardViewModel: ObservableObject {
 
     /// Runs the literal Quick Command on the selected device, gated by the
     /// allow/ask/deny policy. Logs to the activity list regardless of outcome.
-    func directSubmit(policy: ExecPolicy) async {
-        let cmd = quickCommand.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cmd.isEmpty, let deviceId = quickCommandDeviceId else { return }
-        let device = devices.first { $0.id == deviceId }
+    func directSubmit(text: String, deviceId: String?, policy: ExecPolicy) async {
+        let cmd = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cmd.isEmpty, let did = deviceId else { return }
+        let device = devices.first { $0.id == did }
         var entry = ActivityEntry(source: .user, title: cmd, deviceName: device?.shortName,
-                                  deviceId: deviceId, command: cmd, status: .pending,
+                                  deviceId: did, command: cmd, status: .pending,
                                   planIntent: nil, plan: nil, message: nil,
                                   results: nil, outputText: nil, timestamp: Date())
         switch policy {
@@ -200,23 +200,22 @@ class DashboardViewModel: ObservableObject {
         case .allow: entry.status = .running
         }
         activity.insert(entry, at: 0)
-        quickCommand = ""
         if policy == .allow { await runDirectCommand(entry.id) }
     }
 
     /// Sends the Quick Command text to the AI agent as a natural-language
     /// goal. The agent returns a plan (gated by policy) or a clarifying
     /// question. Each submit is independent and appears in the activity list.
-    func agentSubmit(policy: ExecPolicy) async {
-        let nl = quickCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+    func agentSubmit(text: String, deviceId: String?, policy: ExecPolicy) async {
+        let nl = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !nl.isEmpty else { return }
-        let device = quickCommandDeviceId.flatMap { id in devices.first { $0.id == id } }
+        let device = deviceId.flatMap { id in devices.first { $0.id == id } }
         // Ground the agent on the selected target so execute_command actions
         // hit the right device; the agent's system prompt already lists ids.
         let message = device.map { "[Target device: \($0.shortName) (id=\($0.id), os=\($0.os))]\n\(nl)" } ?? nl
 
         let entry = ActivityEntry(source: .ai, title: nl, deviceName: device?.shortName,
-                                  deviceId: device?.id, command: nil, status: .planning,
+                                  deviceId: deviceId, command: nil, status: .planning,
                                   planIntent: nil, plan: nil, message: nil,
                                   results: nil, outputText: nil, timestamp: Date())
         let id = entry.id
@@ -236,7 +235,6 @@ class DashboardViewModel: ObservableObject {
             } else {
                 update(id) { e in e.status = .needsInput; e.message = resp.message }
             }
-            quickCommand = ""
         } catch {
             update(id) { e in e.status = .failed; e.message = error.localizedDescription }
         }
