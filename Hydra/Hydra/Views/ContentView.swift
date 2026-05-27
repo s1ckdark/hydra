@@ -30,6 +30,23 @@ struct ContentView: View {
                 #endif
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Drawer is otherwise only reachable via ⌘/ or the menubar.
+            // Surface an in-window affordance, shown only while closed
+            // (the drawer carries its own close button when open).
+            .overlay(alignment: .topTrailing) {
+                if !appState.isChatDrawerOpen {
+                    Button {
+                        appState.isChatDrawerOpen = true
+                    } label: {
+                        Image(systemName: "bubble.left.and.bubble.right")
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Open chat (⌘/)")
+                    .padding(.top, 6)
+                    .padding(.trailing, 12)
+                    .transition(.opacity)
+                }
+            }
 
             if appState.isChatDrawerOpen {
                 DrawerResizeHandle(width: $appState.chatDrawerWidth)
