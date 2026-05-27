@@ -12,6 +12,9 @@ struct SettingsView: View {
 
             AISettingsTab()
                 .tabItem { Label("AI", systemImage: "brain") }
+
+            AppearanceSettingsTab()
+                .tabItem { Label("Appearance", systemImage: "paintbrush") }
         }
         .frame(width: 560, height: 520)
     }
