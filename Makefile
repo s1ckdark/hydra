@@ -97,8 +97,8 @@ clean: ## Remove build artifacts
 
 db-init: ## Initialize database with migrations
 	@echo "Initializing database..."
-	@mkdir -p ~/.naga
-	sqlite3 ~/.naga/naga.db < migrations/001_init.sql
+	@mkdir -p ~/.hydra
+	sqlite3 ~/.hydra/hydra.db < migrations/001_init.sql
 
 ## Tailscale Serve
 
@@ -118,13 +118,13 @@ hydra-app-run: hydra-app ## Build and launch the Hydra .app
 
 docker-build: ## Build Docker image
 	@echo "Building Docker image..."
-	docker build -t naga:$(VERSION) .
+	docker build -t hydra:$(VERSION) .
 
 docker-run: ## Run Docker container
 	docker run -it --rm \
-		-v ~/.naga:/root/.naga \
+		-v ~/.hydra:/root/.hydra \
 		-p 8080:8080 \
-		naga:$(VERSION)
+		hydra:$(VERSION)
 
 ## Help
 
