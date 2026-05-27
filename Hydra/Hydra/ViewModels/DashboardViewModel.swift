@@ -1,5 +1,29 @@
 import Foundation
 
+/// One Quick-Command agent run: a natural-language request taken through
+/// the agent (plan → user-confirmed run → results). Kept in-memory for the
+/// session and shown as a history list under the Quick Command card.
+struct AgentRun: Identifiable {
+    let id = UUID()
+    let request: String
+    let deviceName: String?
+    var status: Status
+    var planIntent: String?
+    var plan: AgentPlan?
+    var message: String?
+    var results: [ActionResult]?
+    let timestamp: Date
+
+    enum Status {
+        case planning      // waiting for the agent to return a plan/ask
+        case awaitingRun   // plan ready, waiting for the user to click Run
+        case needsInput    // agent asked a clarifying question
+        case running       // executing the plan
+        case done          // all actions ok
+        case failed        // chat/execute error or an action failed
+    }
+}
+
 @MainActor
 class DashboardViewModel: ObservableObject {
     @Published var devices: [Device] = []
@@ -17,9 +41,9 @@ class DashboardViewModel: ObservableObject {
     @Published var quickCommandDeviceId: String?
     @Published var quickCommandResult: TaskResult?
     @Published var isExecutingQuickCommand = false
-    // AI command assistant (natural-language → shell command)
-    @Published var isGeneratingCommand = false
-    @Published var commandGenError: String?
+    // AI agent runs (plan → confirmed run → results), newest first.
+    @Published var agentHistory: [AgentRun] = []
+    @Published var agentBusy = false
 
     // Per-device ping cache. Lives on the shared ViewModel (not in
     // DeviceDetailView's @State) so switching the selected device does not
@@ -156,33 +180,80 @@ class DashboardViewModel: ObservableObject {
         isExecutingQuickCommand = false
     }
 
-    /// Asks the AI to turn the natural-language text currently in
-    /// `quickCommand` into a shell command, scoped to the selected device's
-    /// OS, and replaces the field with the result for the user to review
-    /// before running. Refusals/errors surface via `commandGenError`.
-    func generateQuickCommand() async {
-        let prompt = quickCommand.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty else { return }
-        isGeneratingCommand = true
-        commandGenError = nil
-        defer { isGeneratingCommand = false }
+    /// Sends the Quick Command text to the agent as a natural-language goal.
+    /// The agent replies with a plan (→ awaitingRun, the user clicks Run) or a
+    /// clarifying question (→ needsInput). Each submit is independent (no
+    /// carried conversation) and appears as a row in agentHistory.
+    func agentSubmit() async {
+        let nl = quickCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !nl.isEmpty else { return }
         let device = quickCommandDeviceId.flatMap { id in devices.first { $0.id == id } }
+        // Ground the agent on the selected target so execute_command actions
+        // hit the right device; the agent's system prompt already lists ids.
+        let message: String
+        if let d = device {
+            message = "[Target device: \(d.shortName) (id=\(d.id), os=\(d.os))]\n\(nl)"
+        } else {
+            message = nl
+        }
+
+        let run = AgentRun(request: nl, deviceName: device?.shortName,
+                           status: .planning, planIntent: nil, plan: nil,
+                           message: nil, results: nil, timestamp: Date())
+        let runID = run.id
+        agentHistory.insert(run, at: 0)
+        agentBusy = true
+        defer { agentBusy = false }
+
         do {
-            let resp = try await api.generateCommand(
-                prompt: prompt,
-                os: device?.os ?? "",
-                deviceName: device?.shortName ?? ""
-            )
-            if resp.refused {
-                commandGenError = "AI declined: \(resp.reason ?? "unsafe request")"
-            } else if resp.command.isEmpty {
-                commandGenError = "AI returned an empty command."
+            let resp = try await api.chat(ChatRequest(history: [], message: message))
+            if resp.type == "plan", let plan = resp.plan {
+                updateRun(runID) {
+                    $0.status = .awaitingRun
+                    $0.plan = plan
+                    $0.planIntent = plan.intent
+                    $0.message = resp.message
+                }
             } else {
-                quickCommand = resp.command
+                updateRun(runID) {
+                    $0.status = .needsInput
+                    $0.message = resp.message
+                }
+            }
+            quickCommand = ""   // ready for the next request
+        } catch {
+            updateRun(runID) {
+                $0.status = .failed
+                $0.message = error.localizedDescription
+            }
+        }
+    }
+
+    /// Executes the plan attached to an awaitingRun history entry, then
+    /// records the per-action results on that entry.
+    func agentRun(_ runID: UUID) async {
+        guard let plan = agentHistory.first(where: { $0.id == runID })?.plan else { return }
+        updateRun(runID) { $0.status = .running }
+        do {
+            let resp = try await api.executePlan(plan)
+            updateRun(runID) {
+                $0.results = resp.results
+                $0.status = resp.results.contains { $0.status != "ok" } ? .failed : .done
             }
         } catch {
-            commandGenError = error.localizedDescription
+            updateRun(runID) {
+                $0.status = .failed
+                $0.message = ($0.message.map { $0 + "\n" } ?? "") + "execute error: " + error.localizedDescription
+            }
         }
+    }
+
+    /// Mutates the history entry with the given id in place. Re-finds the
+    /// index each call so it stays correct across the await suspension points
+    /// in agentSubmit / agentRun.
+    private func updateRun(_ id: UUID, _ mutate: (inout AgentRun) -> Void) {
+        guard let i = agentHistory.firstIndex(where: { $0.id == id }) else { return }
+        mutate(&agentHistory[i])
     }
 
     // MARK: - Private

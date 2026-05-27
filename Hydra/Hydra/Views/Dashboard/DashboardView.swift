@@ -428,33 +428,29 @@ struct QuickCommandSection: View {
 
                 // Command input
                 HStack {
-                    TextField("Command, or describe it for AI…", text: $vm.quickCommand)
+                    TextField("Command, or describe a goal for the AI agent…", text: $vm.quickCommand)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.caption, design: .monospaced))
 
-                    // AI assistant: natural language → shell command. Fills
-                    // the field with the generated command for review; the
-                    // user still runs it explicitly with ▶.
+                    // ✨ Agent: send the text as a natural-language goal. The
+                    // agent returns a plan; the user clicks Run to execute it.
+                    // Result lands in the history list below.
                     Button {
-                        Task { await vm.generateQuickCommand() }
+                        Task { await vm.agentSubmit() }
                     } label: {
-                        Image(systemName: vm.isGeneratingCommand ? "hourglass" : "sparkles")
+                        Image(systemName: vm.agentBusy ? "hourglass" : "sparkles")
                     }
-                    .help("Ask AI to turn this into a shell command")
-                    .disabled(vm.quickCommand.isEmpty || vm.isGeneratingCommand || vm.isExecutingQuickCommand)
+                    .help("Ask the AI agent to plan & run this")
+                    .disabled(vm.quickCommand.isEmpty || vm.agentBusy)
 
+                    // ▶ run the literal command directly on the target (no AI).
                     Button {
                         Task { await vm.executeQuickCommand() }
                     } label: {
                         Image(systemName: vm.isExecutingQuickCommand ? "hourglass" : "play.fill")
                     }
+                    .help("Run this command directly on the selected device")
                     .disabled(vm.quickCommand.isEmpty || vm.quickCommandDeviceId == nil || vm.isExecutingQuickCommand)
-                }
-
-                if let genErr = vm.commandGenError {
-                    Label(genErr, systemImage: "sparkles")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
                 }
 
                 // Result
@@ -480,9 +476,128 @@ struct QuickCommandSection: View {
                             .lineLimit(8)
                     }
                 }
+
+                // AI agent history — each natural-language run, newest first.
+                if !vm.agentHistory.isEmpty {
+                    Divider()
+                    Text("AI Agent")
+                        .font(.caption.bold())
+                        .foregroundStyle(.secondary)
+                    ForEach(vm.agentHistory) { run in
+                        AgentRunRow(run: run, vm: vm)
+                    }
+                }
             }
         } label: {
             Label("Quick Command", systemImage: "terminal")
+        }
+    }
+}
+
+// MARK: - Agent run history row
+
+private struct AgentRunRow: View {
+    let run: AgentRun
+    @ObservedObject var vm: DashboardViewModel
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                statusIcon
+                Text(run.request)
+                    .font(.caption)
+                    .lineLimit(2)
+                Spacer()
+                Text(run.timestamp, style: .time)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            if let msg = run.message, !msg.isEmpty {
+                Text(msg)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(expanded ? nil : 2)
+            }
+
+            // Plan ready → let the user run it.
+            if run.status == .awaitingRun, let plan = run.plan {
+                HStack {
+                    Text("Plan: \(plan.intent) · \(plan.actions.count) step(s)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        Task { await vm.agentRun(run.id) }
+                    } label: {
+                        Label("Run", systemImage: "play.fill")
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+
+            if run.status == .running {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Running plan…").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+
+            // Per-action results, collapsed by default.
+            if let results = run.results, !results.isEmpty {
+                DisclosureGroup(isExpanded: $expanded) {
+                    ForEach(results) { r in
+                        HStack(alignment: .top, spacing: 4) {
+                            Image(systemName: r.status == "ok" ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                .font(.caption2)
+                                .foregroundStyle(r.status == "ok" ? .green : .red)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(r.type).font(.caption2.bold())
+                                Text(Self.resultText(r))
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                } label: {
+                    let ok = results.filter { $0.status == "ok" }.count
+                    Text("\(ok)/\(results.count) actions ok")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder private var statusIcon: some View {
+        switch run.status {
+        case .planning, .running:
+            ProgressView().controlSize(.small)
+        case .awaitingRun:
+            Image(systemName: "play.circle").foregroundStyle(.blue)
+        case .needsInput:
+            Image(systemName: "questionmark.circle").foregroundStyle(.orange)
+        case .done:
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .failed:
+            Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+        }
+    }
+
+    /// Human-readable one-liner for an action result: its error, or its
+    /// output rendered from the AnyCodable payload.
+    static func resultText(_ r: ActionResult) -> String {
+        if let err = r.error, !err.isEmpty { return err }
+        guard let out = r.output?.value else { return "(no output)" }
+        switch out {
+        case let s as String:   return s.isEmpty ? "(ok)" : s
+        case is NSNull:         return "(ok)"
+        default:                return String(describing: out)
         }
     }
 }
