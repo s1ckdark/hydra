@@ -84,13 +84,39 @@ struct DashboardView: View {
             }
             .padding()
         }
+        // Initial-load spinner: only while loading AND we have nothing to
+        // show yet, so polling refreshes (data already present) don't cover
+        // the dashboard. I/O-bound first loads now read as "loading", not
+        // "empty".
+        .overlay {
+            if vm.isLoading && vm.devices.isEmpty && vm.orchs.isEmpty {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("Loading…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.background.opacity(0.7))
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: vm.isLoading)
         .toolbar {
             ToolbarItem {
-                Button(action: { Task { await vm.load(force: true) } }) {
-                    Image(systemName: "arrow.clockwise")
+                // Spinner while any load is in flight; the refresh button
+                // otherwise. Gives feedback during the slow force-refresh
+                // (re-probes every device over SSH).
+                if vm.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Button(action: { Task { await vm.load(force: true) } }) {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .help("Force refresh — re-probe and re-collect metrics from every device")
                 }
-                .disabled(vm.isLoading)
-                .help("Force refresh — re-probe and re-collect metrics from every device")
             }
         }
         .navigationTitle("Dashboard")
