@@ -408,6 +408,8 @@ struct RecentTasksSection: View {
 
 struct QuickCommandSection: View {
     @ObservedObject var vm: DashboardViewModel
+    @AppStorage("aiExecPolicy") private var policyRaw = ExecPolicy.ask.rawValue
+    private var policy: ExecPolicy { ExecPolicy(rawValue: policyRaw) ?? .ask }
 
     var body: some View {
         GroupBox {
@@ -424,6 +426,20 @@ struct QuickCommandSection: View {
                         }
                     }
                     .labelsHidden()
+
+                    Spacer()
+
+                    // Execution policy (Cursor/Windsurf style) — gates BOTH
+                    // ✨ AI plans and ▶ direct commands.
+                    Picker("", selection: $policyRaw) {
+                        ForEach(ExecPolicy.allCases) { p in
+                            Text(p.label).tag(p.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 170)
+                    .help("Allow = run automatically · Ask = approve each · Deny = block")
                 }
 
                 // Command input
@@ -432,59 +448,38 @@ struct QuickCommandSection: View {
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.caption, design: .monospaced))
 
-                    // ✨ Agent: send the text as a natural-language goal. The
-                    // agent returns a plan; the user clicks Run to execute it.
-                    // Result lands in the history list below.
+                    // ✨ Agent: NL goal → plan, gated by the policy.
                     Button {
-                        Task { await vm.agentSubmit() }
+                        Task { await vm.agentSubmit(policy: policy) }
                     } label: {
                         Image(systemName: vm.agentBusy ? "hourglass" : "sparkles")
                     }
                     .help("Ask the AI agent to plan & run this")
                     .disabled(vm.quickCommand.isEmpty || vm.agentBusy)
 
-                    // ▶ run the literal command directly on the target (no AI).
+                    // ▶ direct command on the target, gated by the policy.
                     Button {
-                        Task { await vm.executeQuickCommand() }
+                        Task { await vm.directSubmit(policy: policy) }
                     } label: {
-                        Image(systemName: vm.isExecutingQuickCommand ? "hourglass" : "play.fill")
+                        Image(systemName: "play.fill")
                     }
                     .help("Run this command directly on the selected device")
-                    .disabled(vm.quickCommand.isEmpty || vm.quickCommandDeviceId == nil || vm.isExecutingQuickCommand)
+                    .disabled(vm.quickCommand.isEmpty || vm.quickCommandDeviceId == nil)
                 }
 
-                // Result
-                if let result = vm.quickCommandResult {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(result.hasError ? "Error" : "Output")
-                                .font(.caption2)
-                                .fontWeight(.medium)
-                                .foregroundStyle(result.hasError ? .red : .primary)
-                            Spacer()
-                            Text(String(format: "%.0fms", result.durationMs))
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        Text(result.hasError ? (result.error ?? "") : result.output)
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(result.hasError ? .red : .primary)
-                            .padding(6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.quaternary)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .lineLimit(8)
-                    }
-                }
-
-                // AI agent history — each natural-language run, newest first.
-                if !vm.agentHistory.isEmpty {
+                // Activity log — direct ▶ commands and ✨ AI runs, newest first.
+                if vm.activity.isEmpty {
+                    Text("No activity yet — run a command (▶) or describe a goal for the agent (✨).")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
                     Divider()
-                    Text("AI Agent")
+                    Text("Activity")
                         .font(.caption.bold())
                         .foregroundStyle(.secondary)
-                    ForEach(vm.agentHistory) { run in
-                        AgentRunRow(run: run, vm: vm)
+                    ForEach(vm.activity) { entry in
+                        ActivityRow(entry: entry, vm: vm)
+                        if entry.id != vm.activity.last?.id { Divider() }
                     }
                 }
             }
@@ -494,10 +489,10 @@ struct QuickCommandSection: View {
     }
 }
 
-// MARK: - Agent run history row
+// MARK: - Activity row (unified: direct command + AI agent run)
 
-private struct AgentRunRow: View {
-    let run: AgentRun
+private struct ActivityRow: View {
+    let entry: ActivityEntry
     @ObservedObject var vm: DashboardViewModel
     @State private var expanded = false
 
@@ -505,49 +500,59 @@ private struct AgentRunRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 statusIcon
-                Text(run.request)
-                    .font(.caption)
+                Image(systemName: entry.source == .ai ? "sparkles" : "terminal")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(entry.title)
+                    .font(.system(.caption, design: entry.source == .user ? .monospaced : .default))
                     .lineLimit(2)
                 Spacer()
-                Text(run.timestamp, style: .time)
+                if let dev = entry.deviceName {
+                    Text(dev).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                }
+                Text(entry.timestamp, style: .time)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
 
-            if let msg = run.message, !msg.isEmpty {
+            if let msg = entry.message, !msg.isEmpty {
                 Text(msg)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(expanded ? nil : 2)
             }
 
-            // Plan ready → let the user run it.
-            if run.status == .awaitingRun, let plan = run.plan {
+            // Pending approval (Ask policy): Approve / Deny.
+            if entry.status == .pending {
                 HStack {
-                    Text("Plan: \(plan.intent) · \(plan.actions.count) step(s)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if entry.source == .ai, let plan = entry.plan {
+                        Text("Plan: \(plan.intent) · \(plan.actions.count) step(s)")
+                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    } else {
+                        Text("Awaiting approval").font(.caption2).foregroundStyle(.secondary)
+                    }
                     Spacer()
+                    Button("Deny") { vm.denyEntry(entry.id) }
+                        .controlSize(.small)
                     Button {
-                        Task { await vm.agentRun(run.id) }
+                        Task { await vm.approve(entry.id) }
                     } label: {
-                        Label("Run", systemImage: "play.fill")
+                        Label(entry.source == .ai ? "Run" : "Approve", systemImage: "play.fill")
                     }
                     .controlSize(.small)
                     .buttonStyle(.borderedProminent)
                 }
             }
 
-            if run.status == .running {
+            if entry.status == .running {
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
-                    Text("Running plan…").font(.caption2).foregroundStyle(.secondary)
+                    Text("Running…").font(.caption2).foregroundStyle(.secondary)
                 }
             }
 
-            // Per-action results, collapsed by default.
-            if let results = run.results, !results.isEmpty {
+            // AI per-action results, collapsed by default.
+            if let results = entry.results, !results.isEmpty {
                 DisclosureGroup(isExpanded: $expanded) {
                     ForEach(results) { r in
                         HStack(alignment: .top, spacing: 4) {
@@ -570,18 +575,33 @@ private struct AgentRunRow: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            // Direct command output.
+            if let out = entry.outputText, !out.isEmpty {
+                Text(out)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(entry.status == .failed ? .red : .primary)
+                    .padding(6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.quaternary)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .lineLimit(expanded ? nil : 6)
+                    .onTapGesture { expanded.toggle() }
+            }
         }
         .padding(.vertical, 4)
     }
 
     @ViewBuilder private var statusIcon: some View {
-        switch run.status {
+        switch entry.status {
         case .planning, .running:
             ProgressView().controlSize(.small)
-        case .awaitingRun:
-            Image(systemName: "play.circle").foregroundStyle(.blue)
+        case .pending:
+            Image(systemName: "pause.circle").foregroundStyle(.blue)
         case .needsInput:
             Image(systemName: "questionmark.circle").foregroundStyle(.orange)
+        case .denied:
+            Image(systemName: "nosign").foregroundStyle(.orange)
         case .done:
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .failed:

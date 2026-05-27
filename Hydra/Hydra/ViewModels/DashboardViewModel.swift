@@ -1,26 +1,46 @@
 import Foundation
 
-/// One Quick-Command agent run: a natural-language request taken through
-/// the agent (plan → user-confirmed run → results). Kept in-memory for the
-/// session and shown as a history list under the Quick Command card.
-struct AgentRun: Identifiable {
+/// How AI-generated and direct commands are gated before execution, à la
+/// Cursor/Windsurf: Allow (auto-run), Ask (approve each), Deny (block).
+enum ExecPolicy: String, CaseIterable, Identifiable {
+    case allow, ask, deny
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .allow: return "Allow"
+        case .ask:   return "Ask"
+        case .deny:  return "Deny"
+        }
+    }
+}
+
+/// One entry in the Quick Command activity log — a direct command (▶) or an
+/// AI agent run (✨), taken through the allow/ask/deny gate. In-memory for
+/// the session, newest first.
+struct ActivityEntry: Identifiable {
     let id = UUID()
-    let request: String
+    let source: Source
+    let title: String          // NL goal (ai) or the literal command (user)
     let deviceName: String?
+    let deviceId: String?      // for re-running a direct command on approve
+    let command: String?       // user direct: the literal command
     var status: Status
     var planIntent: String?
-    var plan: AgentPlan?
+    var plan: AgentPlan?       // ai: the plan to execute
     var message: String?
-    var results: [ActionResult]?
+    var results: [ActionResult]?  // ai: per-action results
+    var outputText: String?       // user direct: command output
     let timestamp: Date
 
+    enum Source { case user, ai }
     enum Status {
-        case planning      // waiting for the agent to return a plan/ask
-        case awaitingRun   // plan ready, waiting for the user to click Run
-        case needsInput    // agent asked a clarifying question
-        case running       // executing the plan
-        case done          // all actions ok
-        case failed        // chat/execute error or an action failed
+        case planning    // ai: waiting for a plan
+        case needsInput  // ai: agent asked a clarifying question
+        case pending     // waiting for approval (ask policy)
+        case denied      // blocked by deny policy
+        case running
+        case done
+        case failed
     }
 }
 
@@ -39,11 +59,9 @@ class DashboardViewModel: ObservableObject {
     // Quick command
     @Published var quickCommand = ""
     @Published var quickCommandDeviceId: String?
-    @Published var quickCommandResult: TaskResult?
-    @Published var isExecutingQuickCommand = false
-    // AI agent runs (plan → confirmed run → results), newest first.
-    @Published var agentHistory: [AgentRun] = []
     @Published var agentBusy = false
+    // Unified activity log: direct ▶ commands and ✨ AI runs, newest first.
+    @Published var activity: [ActivityEntry] = []
 
     // Per-device ping cache. Lives on the shared ViewModel (not in
     // DeviceDetailView's @State) so switching the selected device does not
@@ -166,94 +184,117 @@ class DashboardViewModel: ObservableObject {
         }
     }
 
-    func executeQuickCommand() async {
-        guard !quickCommand.isEmpty, let deviceId = quickCommandDeviceId else { return }
-        isExecutingQuickCommand = true
-        do {
-            quickCommandResult = try await api.executeOnDevice(id: deviceId, command: quickCommand)
-        } catch {
-            quickCommandResult = TaskResult(
-                deviceId: deviceId, deviceName: "", gpu: "",
-                output: "", error: error.localizedDescription, durationMs: 0
-            )
+    /// Runs the literal Quick Command on the selected device, gated by the
+    /// allow/ask/deny policy. Logs to the activity list regardless of outcome.
+    func directSubmit(policy: ExecPolicy) async {
+        let cmd = quickCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cmd.isEmpty, let deviceId = quickCommandDeviceId else { return }
+        let device = devices.first { $0.id == deviceId }
+        var entry = ActivityEntry(source: .user, title: cmd, deviceName: device?.shortName,
+                                  deviceId: deviceId, command: cmd, status: .pending,
+                                  planIntent: nil, plan: nil, message: nil,
+                                  results: nil, outputText: nil, timestamp: Date())
+        switch policy {
+        case .deny:  entry.status = .denied; entry.message = "Blocked by Deny policy."
+        case .ask:   entry.status = .pending
+        case .allow: entry.status = .running
         }
-        isExecutingQuickCommand = false
+        activity.insert(entry, at: 0)
+        quickCommand = ""
+        if policy == .allow { await runDirectCommand(entry.id) }
     }
 
-    /// Sends the Quick Command text to the agent as a natural-language goal.
-    /// The agent replies with a plan (→ awaitingRun, the user clicks Run) or a
-    /// clarifying question (→ needsInput). Each submit is independent (no
-    /// carried conversation) and appears as a row in agentHistory.
-    func agentSubmit() async {
+    /// Sends the Quick Command text to the AI agent as a natural-language
+    /// goal. The agent returns a plan (gated by policy) or a clarifying
+    /// question. Each submit is independent and appears in the activity list.
+    func agentSubmit(policy: ExecPolicy) async {
         let nl = quickCommand.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !nl.isEmpty else { return }
         let device = quickCommandDeviceId.flatMap { id in devices.first { $0.id == id } }
         // Ground the agent on the selected target so execute_command actions
         // hit the right device; the agent's system prompt already lists ids.
-        let message: String
-        if let d = device {
-            message = "[Target device: \(d.shortName) (id=\(d.id), os=\(d.os))]\n\(nl)"
-        } else {
-            message = nl
-        }
+        let message = device.map { "[Target device: \($0.shortName) (id=\($0.id), os=\($0.os))]\n\(nl)" } ?? nl
 
-        let run = AgentRun(request: nl, deviceName: device?.shortName,
-                           status: .planning, planIntent: nil, plan: nil,
-                           message: nil, results: nil, timestamp: Date())
-        let runID = run.id
-        agentHistory.insert(run, at: 0)
+        let entry = ActivityEntry(source: .ai, title: nl, deviceName: device?.shortName,
+                                  deviceId: device?.id, command: nil, status: .planning,
+                                  planIntent: nil, plan: nil, message: nil,
+                                  results: nil, outputText: nil, timestamp: Date())
+        let id = entry.id
+        activity.insert(entry, at: 0)
         agentBusy = true
         defer { agentBusy = false }
 
         do {
             let resp = try await api.chat(ChatRequest(history: [], message: message))
             if resp.type == "plan", let plan = resp.plan {
-                updateRun(runID) {
-                    $0.status = .awaitingRun
-                    $0.plan = plan
-                    $0.planIntent = plan.intent
-                    $0.message = resp.message
+                update(id) { e in e.plan = plan; e.planIntent = plan.intent; e.message = resp.message }
+                switch policy {
+                case .allow: await runPlan(id)
+                case .ask:   update(id) { e in e.status = .pending }
+                case .deny:  update(id) { e in e.status = .denied; e.message = appendLine(e.message, "Blocked by Deny policy.") }
                 }
             } else {
-                updateRun(runID) {
-                    $0.status = .needsInput
-                    $0.message = resp.message
-                }
+                update(id) { e in e.status = .needsInput; e.message = resp.message }
             }
-            quickCommand = ""   // ready for the next request
+            quickCommand = ""
         } catch {
-            updateRun(runID) {
-                $0.status = .failed
-                $0.message = error.localizedDescription
-            }
+            update(id) { e in e.status = .failed; e.message = error.localizedDescription }
         }
     }
 
-    /// Executes the plan attached to an awaitingRun history entry, then
-    /// records the per-action results on that entry.
-    func agentRun(_ runID: UUID) async {
-        guard let plan = agentHistory.first(where: { $0.id == runID })?.plan else { return }
-        updateRun(runID) { $0.status = .running }
+    /// Approve a pending entry (ask policy) → execute it now.
+    func approve(_ id: UUID) async {
+        guard let e = activity.first(where: { $0.id == id }), e.status == .pending else { return }
+        if e.source == .ai { await runPlan(id) } else { await runDirectCommand(id) }
+    }
+
+    /// Deny a pending entry — mark blocked, execute nothing.
+    func denyEntry(_ id: UUID) {
+        update(id) { e in if e.status == .pending { e.status = .denied } }
+    }
+
+    private func runPlan(_ id: UUID) async {
+        guard let plan = activity.first(where: { $0.id == id })?.plan else { return }
+        update(id) { e in e.status = .running }
         do {
             let resp = try await api.executePlan(plan)
-            updateRun(runID) {
-                $0.results = resp.results
-                $0.status = resp.results.contains { $0.status != "ok" } ? .failed : .done
+            update(id) { e in
+                e.results = resp.results
+                e.status = resp.results.contains { $0.status != "ok" } ? .failed : .done
             }
         } catch {
-            updateRun(runID) {
-                $0.status = .failed
-                $0.message = ($0.message.map { $0 + "\n" } ?? "") + "execute error: " + error.localizedDescription
+            update(id) { e in
+                e.status = .failed
+                e.message = appendLine(e.message, "execute error: " + error.localizedDescription)
             }
         }
     }
 
-    /// Mutates the history entry with the given id in place. Re-finds the
-    /// index each call so it stays correct across the await suspension points
-    /// in agentSubmit / agentRun.
-    private func updateRun(_ id: UUID, _ mutate: (inout AgentRun) -> Void) {
-        guard let i = agentHistory.firstIndex(where: { $0.id == id }) else { return }
-        mutate(&agentHistory[i])
+    private func runDirectCommand(_ id: UUID) async {
+        guard let entry = activity.first(where: { $0.id == id }),
+              let did = entry.deviceId, let cmd = entry.command else { return }
+        update(id) { e in e.status = .running }
+        do {
+            let r = try await api.executeOnDevice(id: did, command: cmd)
+            update(id) { e in
+                e.outputText = r.hasError ? (r.error ?? "") : r.output
+                e.status = r.hasError ? .failed : .done
+            }
+        } catch {
+            update(id) { e in e.outputText = error.localizedDescription; e.status = .failed }
+        }
+    }
+
+    /// Mutates the activity entry with the given id in place, re-finding the
+    /// index each call so it stays correct across await suspension points.
+    private func update(_ id: UUID, _ mutate: (inout ActivityEntry) -> Void) {
+        guard let i = activity.firstIndex(where: { $0.id == id }) else { return }
+        mutate(&activity[i])
+    }
+
+    private func appendLine(_ existing: String?, _ line: String) -> String {
+        guard let m = existing, !m.isEmpty else { return line }
+        return m + "\n" + line
     }
 
     // MARK: - Private
