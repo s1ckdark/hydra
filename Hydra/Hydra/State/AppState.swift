@@ -6,7 +6,6 @@ import Foundation
 @MainActor
 final class AppState: ObservableObject {
     enum Tab: Hashable {
-        case chat
         case dashboard
         case devices
         case orchs
@@ -28,7 +27,7 @@ final class AppState: ObservableObject {
     // can compose context without reaching into each view's internals.
     @Published var selectedDeviceId: String?
     @Published var selectedOrchId: String?
-    @Published var selectedTaskId: UUID?
+    @Published var selectedTaskId: String?
 }
 
 private extension Double {
