@@ -7,8 +7,17 @@ import AppKit
 
 struct DeviceListView: View {
     @EnvironmentObject var dashboardVM: DashboardViewModel
+    @EnvironmentObject var appState: AppState
     @ObservedObject private var prefs = DevicePreferences.shared
-    @State private var selectedDevice: Device?
+
+    private var selectedDevice: Binding<Device?> {
+        Binding(
+            get: { appState.selectedDeviceId.flatMap { id in
+                dashboardVM.devices.first { $0.id == id }
+            }},
+            set: { appState.selectedDeviceId = $0?.id }
+        )
+    }
     @State private var searchText = ""
     @State private var isEditing = false
     // Mobile devices are visible by default — iPhone / iPad serve as
@@ -32,7 +41,7 @@ struct DeviceListView: View {
                 if isEditing {
                     DeviceEditList(prefs: prefs, devices: dashboardVM.devices)
                 } else {
-                    List(filteredDevices, selection: $selectedDevice) { device in
+                    List(filteredDevices, selection: selectedDevice) { device in
                         DeviceRowView(device: device)
                             .tag(device)
                     }
@@ -73,7 +82,7 @@ struct DeviceListView: View {
                 prefs.merge(deviceIds: dashboardVM.devices.map(\.id))
             }
         } detail: {
-            if let device = selectedDevice {
+            if let device = selectedDevice.wrappedValue {
                 DeviceDetailView(device: device)
             } else {
                 Text("Select a device")

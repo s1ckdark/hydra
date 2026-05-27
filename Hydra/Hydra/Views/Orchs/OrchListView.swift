@@ -2,12 +2,22 @@ import SwiftUI
 
 struct OrchListView: View {
     @StateObject private var vm = OrchViewModel()
-    @State private var selectedOrch: Orch?
+    @EnvironmentObject var appState: AppState
+    @EnvironmentObject var dashboardVM: DashboardViewModel
     @State private var command = ""
+
+    private var selectedOrch: Binding<Orch?> {
+        Binding(
+            get: { appState.selectedOrchId.flatMap { id in
+                vm.orchs.first { $0.id == id } ?? dashboardVM.orchs.first { $0.id == id }
+            }},
+            set: { appState.selectedOrchId = $0?.id }
+        )
+    }
 
     var body: some View {
         NavigationSplitView {
-            List(vm.orchs, selection: $selectedOrch) { orch in
+            List(vm.orchs, selection: selectedOrch) { orch in
                 OrchRowView(orch: orch)
                     .tag(orch)
                     .contextMenu {
@@ -35,7 +45,7 @@ struct OrchListView: View {
             .task {
                 await vm.loadOrchs()
             }
-            .onChange(of: selectedOrch) { _, newValue in
+            .onChange(of: selectedOrch.wrappedValue) { _, newValue in
                 if let orch = newValue {
                     Task { await vm.selectOrch(orch) }
                 }
