@@ -14,6 +14,12 @@ import (
 	"github.com/s1ckdark/hydra/internal/usecase/agent"
 )
 
+// zaiDefaultEndpoint is the Z.AI GLM Coding Plan base URL (OpenAI-compatible).
+// The provider appends "/chat/completions". The older "/v1" base does not
+// serve the Coding Plan, so it is used as the default when no endpoint is
+// configured. Standard-plan users can override via config/UI.
+const zaiDefaultEndpoint = "https://api.z.ai/api/coding/paas/v4"
+
 // buildAIRegistry wires role-specific providers from the resolved AIConfig.
 // Unsupported (provider,role) combinations fall through to the Registry's
 // rule-based fallback.
@@ -73,7 +79,7 @@ func buildTaskScheduler(p config.ProviderConfig) ai.TaskScheduler {
 		}
 		endpoint := p.Endpoint
 		if endpoint == "" {
-			endpoint = "https://api.z.ai/v1"
+			endpoint = zaiDefaultEndpoint
 		}
 		return zai.NewProvider(p.APIKey, endpoint, p.Model)
 	case "openai_compatible":
@@ -137,7 +143,7 @@ func buildChatProvider(p config.ProviderConfig) ai.ChatProvider {
 		}
 		endpoint := p.Endpoint
 		if endpoint == "" {
-			endpoint = "https://api.z.ai/v1"
+			endpoint = zaiDefaultEndpoint
 		}
 		return zai.NewProvider(p.APIKey, endpoint, p.Model)
 	case "openai_compatible":
