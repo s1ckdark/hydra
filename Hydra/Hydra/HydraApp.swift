@@ -99,7 +99,9 @@ struct HydraApp: App {
                 .appAppearance()
         }
 
-        MenuBarExtra("GPU Orch", systemImage: "server.rack") {
+        // Menu-bar glyph: connected nodes evoke Hydra's "many heads" — a mesh
+        // of coordinated machines — rather than a literal server rack.
+        MenuBarExtra("GPU Orch", systemImage: "point.3.connected.trianglepath.dotted") {
             MenuBarView()
                 .environmentObject(dashboardVM)
                 .environmentObject(chatVM)
