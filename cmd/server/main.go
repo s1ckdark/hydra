@@ -224,7 +224,9 @@ func main() {
 	rebuildAgent := func(ai config.AIConfig) {
 		reg := buildAIRegistry(ai)
 		if chatLLM := buildChatLLM(reg); chatLLM != nil {
-			h.SetAgentUseCase(agent.NewAgentUseCase(chatLLM, agentRegistry, agentValidator))
+			uc := agent.NewAgentUseCase(chatLLM, agentRegistry, agentValidator)
+			uc.SetInstruction(ai.Instruction)
+			h.SetAgentUseCase(uc)
 			log.Printf("[agent] chat agent enabled (provider=%s)", ai.Resolve("chat").Provider)
 		} else {
 			h.SetAgentUseCase(nil)

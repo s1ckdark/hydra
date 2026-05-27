@@ -8,6 +8,7 @@ struct AISettingsTab: View {
     @AppStorage("aiDefaultProvider") private var provider: String = "claude"
     @AppStorage("aiDefaultEndpoint") private var endpoint: String = ""
     @AppStorage("aiDefaultModel") private var model: String = ""
+    @AppStorage("aiInstruction") private var instruction: String = ""
 
     @State private var apiKey: String = ""
     @State private var connectionVerified = false
@@ -121,6 +122,27 @@ struct AISettingsTab: View {
             }
 
             Section {
+                TextEditor(text: $instruction)
+                    .frame(minHeight: 90)
+                    .font(.callout)
+                    .overlay(alignment: .topLeading) {
+                        if instruction.isEmpty {
+                            Text("e.g. Prefer read-only commands. Answer concisely in Korean. Use nvidia-smi for GPU checks.")
+                                .font(.callout)
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 8)
+                                .padding(.leading, 5)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                Text("Appended to the AI agent's system prompt (tone, preferred tools, extra rules). Applied on Save & Push.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("② AI Instruction (optional)")
+            }
+
+            Section {
                 Button {
                     Task { await testConnection() }
                 } label: {
@@ -147,7 +169,7 @@ struct AISettingsTab: View {
                     }
                 }
             } header: {
-                Text("② Verify")
+                Text("③ Verify")
             }
 
             Section {
@@ -158,7 +180,7 @@ struct AISettingsTab: View {
                     RoleOverrideView(title: "Chat agent — natural-language input", role: "chat")
                 }
             } header: {
-                Text("③ Advanced (optional)")
+                Text("④ Advanced (optional)")
             }
 
             Section {
@@ -203,7 +225,7 @@ struct AISettingsTab: View {
                     }
                 }
             } header: {
-                Text("④ Save")
+                Text("⑤ Save")
             }
         }
         .formStyle(.grouped)
@@ -323,7 +345,10 @@ struct AISettingsTab: View {
         }
 
         let defaults = UserDefaults.standard
-        var body: [String: Any] = ["default": defaultPayload]
+        var body: [String: Any] = [
+            "default": defaultPayload,
+            "instruction": instruction,
+        ]
 
         let roleKeys = [
             ("head_selection",      "head"),

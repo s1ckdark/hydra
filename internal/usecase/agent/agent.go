@@ -16,14 +16,19 @@ const maxHistoryTurns = 20
 // Stateless across requests — history flows entirely through the
 // request body.
 type AgentUseCase struct {
-	llm     LLMClient
-	actions *ActionRegistry
-	val     *Validator
+	llm         LLMClient
+	actions     *ActionRegistry
+	val         *Validator
+	instruction string // user-defined system instruction, appended to prompts
 }
 
 func NewAgentUseCase(llm LLMClient, actions *ActionRegistry, val *Validator) *AgentUseCase {
 	return &AgentUseCase{llm: llm, actions: actions, val: val}
 }
+
+// SetInstruction sets a user-defined instruction appended to the agent's and
+// command assistant's system prompts. Empty clears it.
+func (a *AgentUseCase) SetInstruction(s string) { a.instruction = s }
 
 // Chat sends one user message + truncated history to the LLM and returns
 // its structured reply. If the LLM proposes a plan, we run the validator
@@ -155,6 +160,9 @@ func (a *AgentUseCase) buildSystemPrompt(ctx context.Context) string {
 				sb.WriteString("- " + d.ID + " — " + d.Name + " — " + string(d.Status) + "\n")
 			}
 		}
+	}
+	if a.instruction != "" {
+		sb.WriteString("\nAdditional user instructions (follow these unless they conflict with safety):\n" + a.instruction + "\n")
 	}
 	return sb.String()
 }

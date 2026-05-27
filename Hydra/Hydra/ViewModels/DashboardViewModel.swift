@@ -314,6 +314,16 @@ class DashboardViewModel: ObservableObject {
         }
     }
 
+    /// Removes a single activity entry (the row's ✕ button).
+    func removeEntry(_ id: UUID) {
+        activity.removeAll { $0.id == id }
+    }
+
+    /// Clears all activity for one device (nil = the no-target bucket).
+    func clearActivity(forDeviceId deviceId: String?) {
+        activity.removeAll { $0.deviceId == deviceId }
+    }
+
     /// Mutates the activity entry with the given id in place, re-finding the
     /// index each call so it stays correct across await suspension points.
     private func update(_ id: UUID, _ mutate: (inout ActivityEntry) -> Void) {

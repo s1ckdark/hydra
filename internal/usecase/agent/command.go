@@ -38,7 +38,11 @@ func (a *AgentUseCase) GenerateCommand(ctx context.Context, req CommandRequest) 
 	if osName == "" {
 		osName = "Linux"
 	}
-	out, err := a.llm.Complete(ctx, commandSystemPrompt(osName, req.DeviceName), req.Prompt)
+	system := commandSystemPrompt(osName, req.DeviceName)
+	if a.instruction != "" {
+		system += "\n\nAdditional user instructions: " + a.instruction
+	}
+	out, err := a.llm.Complete(ctx, system, req.Prompt)
 	if err != nil {
 		return CommandResponse{}, fmt.Errorf("llm: %w", err)
 	}

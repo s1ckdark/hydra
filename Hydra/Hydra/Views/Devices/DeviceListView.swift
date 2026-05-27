@@ -516,9 +516,16 @@ struct DeviceDetailView: View {
                             let entries = dashboardVM.activity.filter { $0.deviceId == device.id }
                             if !entries.isEmpty {
                                 Divider()
-                                Text("Activity")
-                                    .font(.caption.bold())
-                                    .foregroundStyle(.secondary)
+                                HStack {
+                                    Text("Activity")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button("Clear") { dashboardVM.clearActivity(forDeviceId: device.id) }
+                                        .font(.caption2)
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(.secondary)
+                                }
                                 ForEach(entries) { entry in
                                     ActivityRow(entry: entry, vm: dashboardVM)
                                     if entry.id != entries.last?.id { Divider() }

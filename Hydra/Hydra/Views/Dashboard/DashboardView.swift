@@ -499,19 +499,28 @@ struct QuickCommandSection: View {
                     .disabled(vm.quickCommand.isEmpty || vm.quickCommandDeviceId == nil)
                 }
 
-                // Activity log — direct ▶ commands and ✨ AI runs, newest first.
-                if vm.activity.isEmpty {
-                    Text("No activity yet — run a command (▶) or describe a goal for the agent (✨).")
+                // Activity log — kept per device; shows the selected target's
+                // history (direct ▶ and ✨ AI runs), newest first.
+                let entries = vm.activity.filter { $0.deviceId == vm.quickCommandDeviceId }
+                if entries.isEmpty {
+                    Text("No activity for this target yet — run a command (▶) or describe a goal for the agent (✨).")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 } else {
                     Divider()
-                    Text("Activity")
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                    ForEach(vm.activity) { entry in
+                    HStack {
+                        Text("Activity")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Clear") { vm.clearActivity(forDeviceId: vm.quickCommandDeviceId) }
+                            .font(.caption2)
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(entries) { entry in
                         ActivityRow(entry: entry, vm: vm)
-                        if entry.id != vm.activity.last?.id { Divider() }
+                        if entry.id != entries.last?.id { Divider() }
                     }
                 }
             }
@@ -546,6 +555,13 @@ struct ActivityRow: View {
                 Text(entry.timestamp, style: .time)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+                Button { vm.removeEntry(entry.id) } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Remove from history")
             }
 
             if let msg = entry.message, !msg.isEmpty {
