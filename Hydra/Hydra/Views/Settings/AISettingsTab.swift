@@ -34,7 +34,26 @@ struct AISettingsTab: View {
     static let cloudProviders: Set<String> = ["claude", "openai", "zai"]
     static let localProviders: Set<String> = ["ollama", "lmstudio", "openai_compatible"]
 
+    /// Z.AI GLM Coding Plan base URL (OpenAI-compatible). The older "/v1"
+    /// base does not serve the Coding Plan.
+    static let zaiCodingEndpoint = "https://api.z.ai/api/coding/paas/v4"
+
+    /// Known model ids offered as a dropdown per cloud provider. The text
+    /// field stays editable so custom / local model names still work.
+    static func knownModels(for provider: String) -> [String] {
+        switch provider {
+        case "claude": return ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"]
+        case "openai": return ["gpt-4o", "gpt-4o-mini", "o3-mini"]
+        case "zai":    return ["glm-4.6", "glm-4.5", "glm-4.5-air"]
+        default:       return []
+        }
+    }
+
     private var isCloudProvider: Bool { Self.cloudProviders.contains(provider) }
+    private var needsAPIKey: Bool { Self.cloudProviders.contains(provider) }
+    /// z.ai needs an API key AND a base URL (the Coding Plan endpoint), so it
+    /// shows both fields; local providers need only an endpoint.
+    private var needsEndpoint: Bool { Self.localProviders.contains(provider) || provider == "zai" }
 
     private func isCloudProviderID(_ id: String) -> Bool {
         return Self.cloudProviders.contains(id)
@@ -64,21 +83,39 @@ struct AISettingsTab: View {
                     Text(label(for: "lmstudio")).tag("lmstudio")
                     Text(label(for: "openai_compatible")).tag("openai_compatible")
                 }
-                .onChange(of: provider) { credentialsChanged() }
+                .onChange(of: provider) { providerChanged() }
 
-                if isCloudProvider {
+                if needsAPIKey {
                     SecureField("API Key", text: $apiKey)
                         .textFieldStyle(.roundedBorder)
                         .onChange(of: apiKey) { credentialsChanged() }
-                } else {
-                    TextField("Endpoint", text: $endpoint, prompt: Text("http://localhost:11434"))
+                }
+                if needsEndpoint {
+                    TextField("Endpoint", text: $endpoint, prompt: Text(endpointPlaceholder))
                         .textFieldStyle(.roundedBorder)
                         .onChange(of: endpoint) { credentialsChanged() }
                 }
 
-                TextField("Model (optional)", text: $model)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: model) { credentialsChanged() }
+                // Model: free-text (local models vary) plus a dropdown of
+                // known ids for the selected cloud provider.
+                HStack(spacing: 6) {
+                    TextField("Model (optional)", text: $model)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: model) { credentialsChanged() }
+                    let known = Self.knownModels(for: provider)
+                    if !known.isEmpty {
+                        Menu {
+                            ForEach(known, id: \.self) { m in
+                                Button(m) { model = m; credentialsChanged() }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.down.circle")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .help("Pick a known \(label(for: provider)) model")
+                    }
+                }
             } header: {
                 Text("① AI Provider (Default)")
             }
@@ -172,13 +209,31 @@ struct AISettingsTab: View {
         .formStyle(.grouped)
         .onAppear {
             apiKey = store.get(.aiDefaultAPIKey)
+            if provider == "zai" && endpoint.trimmingCharacters(in: .whitespaces).isEmpty {
+                endpoint = Self.zaiCodingEndpoint
+            }
         }
+    }
+
+    /// Placeholder hint for the endpoint field, per provider.
+    private var endpointPlaceholder: String {
+        provider == "zai" ? Self.zaiCodingEndpoint : "http://localhost:11434"
     }
 
     private func credentialsChanged() {
         connectionVerified = false
         testStatus = nil
         saveStatus = nil
+    }
+
+    /// On provider change: reset verification and, for z.ai, prefill the
+    /// Coding Plan base URL so it's visible and editable rather than relying
+    /// on a hidden server default.
+    private func providerChanged() {
+        credentialsChanged()
+        if provider == "zai" && endpoint.trimmingCharacters(in: .whitespaces).isEmpty {
+            endpoint = Self.zaiCodingEndpoint
+        }
     }
 
     private var hasCredentials: Bool {
@@ -200,7 +255,8 @@ struct AISettingsTab: View {
             urlString = "https://api.openai.com/v1/models"
             headers["Authorization"] = "Bearer \(apiKey)"
         case "zai":
-            urlString = "https://api.z.ai/v1/models"
+            let base = endpoint.trimmingCharacters(in: .whitespaces)
+            urlString = (base.isEmpty ? Self.zaiCodingEndpoint : base) + "/models"
             headers["Authorization"] = "Bearer \(apiKey)"
         case "ollama":
             urlString = endpoint.trimmingCharacters(in: .whitespaces) + "/api/tags"
@@ -259,9 +315,10 @@ struct AISettingsTab: View {
             "provider": provider,
             "model":    model,
         ]
-        if isCloudProvider {
+        if needsAPIKey {
             defaultPayload["api_key"] = apiKey
-        } else {
+        }
+        if needsEndpoint {
             defaultPayload["endpoint"] = endpoint
         }
 
