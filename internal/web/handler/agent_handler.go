@@ -43,6 +43,23 @@ func (h *Handler) APIAgentCommand(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+// APIAgentAssess classifies a shell command as safe or risky for the "Auto"
+// execution policy. It does not run anything.
+func (h *Handler) APIAgentAssess(c echo.Context) error {
+	if h.agentUC == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "command assistant not configured"})
+	}
+	var req agent.AssessRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	resp, err := h.agentUC.AssessCommand(c.Request().Context(), req)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
 // APIAgentExecute runs a plan returned by /api/agent/chat. The plan is
 // re-validated before any action runs.
 func (h *Handler) APIAgentExecute(c echo.Context) error {

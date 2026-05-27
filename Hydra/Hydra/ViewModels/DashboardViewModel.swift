@@ -3,13 +3,13 @@ import Foundation
 /// How AI-generated and direct commands are gated before execution, à la
 /// Cursor/Windsurf: Allow (auto-run), Ask (approve each), Deny (block).
 enum ExecPolicy: String, CaseIterable, Identifiable {
-    case allow, ask, deny
+    case allow, ask, auto
     var id: String { rawValue }
     var label: String {
         switch self {
         case .allow: return "Allow"
         case .ask:   return "Ask"
-        case .deny:  return "Deny"
+        case .auto:  return "Auto"
         }
     }
 }
@@ -191,17 +191,44 @@ class DashboardViewModel: ObservableObject {
         let cmd = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cmd.isEmpty, let did = deviceId else { return }
         let device = devices.first { $0.id == did }
-        var entry = ActivityEntry(source: .user, title: cmd, deviceName: device?.shortName,
+        let entry = ActivityEntry(source: .user, title: cmd, deviceName: device?.shortName,
                                   deviceId: did, command: cmd, status: .pending,
                                   planIntent: nil, plan: nil, message: nil,
                                   results: nil, outputText: nil, timestamp: Date())
-        switch policy {
-        case .deny:  entry.status = .denied; entry.message = "Blocked by Deny policy."
-        case .ask:   entry.status = .pending
-        case .allow: entry.status = .running
-        }
         activity.insert(entry, at: 0)
-        if policy == .allow { await runDirectCommand(entry.id) }
+        switch policy {
+        case .allow:
+            await runDirectCommand(entry.id)
+        case .ask:
+            break // stays .pending for Approve/Deny
+        case .auto:
+            await autoGateDirect(entry.id, command: cmd,
+                                 os: device?.os ?? "", deviceName: device?.shortName ?? "")
+        }
+    }
+
+    /// "Auto" gate for a direct command: the AI classifies safety. Safe
+    /// commands run automatically; risky ones escalate to user approval with
+    /// the AI's reason. A failed/unclear assessment also escalates.
+    private func autoGateDirect(_ id: UUID, command: String, os: String, deviceName: String) async {
+        update(id) { e in e.status = .running; e.message = "AI assessing safety…" }
+        do {
+            let verdict = try await api.assessCommand(command: command, os: os, deviceName: deviceName)
+            if verdict.safe {
+                update(id) { e in e.message = nil }
+                await runDirectCommand(id)
+            } else {
+                update(id) { e in
+                    e.status = .pending
+                    e.message = "AI flagged as risky: \(verdict.reason ?? "review needed")"
+                }
+            }
+        } catch {
+            update(id) { e in
+                e.status = .pending
+                e.message = "AI safety check failed — approve manually. (\(error.localizedDescription))"
+            }
+        }
     }
 
     /// Sends the Quick Command text to the AI agent as a natural-language
@@ -228,10 +255,12 @@ class DashboardViewModel: ObservableObject {
             let resp = try await api.chat(ChatRequest(history: [], message: message))
             if resp.type == "plan", let plan = resp.plan {
                 update(id) { e in e.plan = plan; e.planIntent = plan.intent; e.message = resp.message }
+                // For AI plans the planner already judges safety (it won't
+                // propose destructive actions), so Allow and Auto both run;
+                // Ask holds for approval.
                 switch policy {
-                case .allow: await runPlan(id)
-                case .ask:   update(id) { e in e.status = .pending }
-                case .deny:  update(id) { e in e.status = .denied; e.message = appendLine(e.message, "Blocked by Deny policy.") }
+                case .allow, .auto: await runPlan(id)
+                case .ask:          update(id) { e in e.status = .pending }
                 }
             } else {
                 update(id) { e in e.status = .needsInput; e.message = resp.message }

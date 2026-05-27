@@ -45,6 +45,70 @@ func (a *AgentUseCase) GenerateCommand(ctx context.Context, req CommandRequest) 
 	return sanitizeCommand(out), nil
 }
 
+// AssessRequest asks the assistant to judge whether a shell command is safe
+// to run automatically (used by the "Auto" execution policy).
+type AssessRequest struct {
+	Command    string `json:"command"`
+	OS         string `json:"os"`
+	DeviceName string `json:"deviceName"`
+}
+
+// AssessResponse is the safety verdict. Safe=false escalates the command to
+// user approval instead of running it automatically.
+type AssessResponse struct {
+	Safe   bool   `json:"safe"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// AssessCommand classifies a shell command as safe (read-only / low-impact)
+// or risky (destructive / irreversible / system-altering) via one LLM call.
+// On any ambiguity or error the command is treated as risky so "Auto" errs
+// toward asking the user rather than running something dangerous.
+func (a *AgentUseCase) AssessCommand(ctx context.Context, req AssessRequest) (AssessResponse, error) {
+	if a.llm == nil {
+		return AssessResponse{}, fmt.Errorf("assess: no LLM configured")
+	}
+	if strings.TrimSpace(req.Command) == "" {
+		return AssessResponse{}, fmt.Errorf("empty command")
+	}
+	osName := strings.TrimSpace(req.OS)
+	if osName == "" {
+		osName = "Linux"
+	}
+	system := "You are a shell-command safety classifier for a " + osName + " host. " +
+		"Decide if running the command is SAFE (read-only or low-impact) or RISKY " +
+		"(destructive, irreversible, or system-altering — e.g. rm -rf, mkfs, dd onto a " +
+		"device, shutdown/reboot, killing critical processes, overwriting system files, " +
+		"recursive chmod/chown on system paths). Reply with exactly one line: " +
+		"\"SAFE\" or \"RISKY: <short reason>\"."
+	out, err := a.llm.Complete(ctx, system, req.Command)
+	if err != nil {
+		return AssessResponse{}, fmt.Errorf("llm: %w", err)
+	}
+	// First non-empty line, verdict by prefix; anything not clearly SAFE is
+	// treated as risky.
+	var line string
+	for _, l := range strings.Split(out, "\n") {
+		if t := strings.TrimSpace(l); t != "" {
+			line = t
+			break
+		}
+	}
+	upper := strings.ToUpper(line)
+	switch {
+	case strings.HasPrefix(upper, "SAFE"):
+		return AssessResponse{Safe: true}, nil
+	case strings.HasPrefix(upper, "RISKY"):
+		reason := strings.TrimSpace(strings.TrimPrefix(line[len("RISKY"):], ":"))
+		if reason == "" {
+			reason = "flagged as risky"
+		}
+		return AssessResponse{Safe: false, Reason: reason}, nil
+	default:
+		return AssessResponse{Safe: false, Reason: "could not classify; review manually"}, nil
+	}
+}
+
 func commandSystemPrompt(osName, deviceName string) string {
 	host := "a host"
 	if strings.TrimSpace(deviceName) != "" {

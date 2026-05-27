@@ -148,6 +148,24 @@ actor APIClient {
                               body: GenerateCommandRequest(prompt: prompt, os: os, deviceName: deviceName))
     }
 
+    struct AssessRequest: Encodable {
+        let command: String
+        let os: String
+        let deviceName: String
+    }
+
+    struct AssessResponse: Decodable {
+        let safe: Bool
+        let reason: String?
+    }
+
+    /// Classifies a shell command as safe/risky for the "Auto" policy. Does
+    /// not run anything.
+    func assessCommand(command: String, os: String, deviceName: String) async throws -> AssessResponse {
+        return try await post("/api/agent/assess",
+                              body: AssessRequest(command: command, os: os, deviceName: deviceName))
+    }
+
     /// Reports the device's enabled capabilities to the server. Used by
     /// CapabilityReporter on app launch and reconnect so the AI scheduler
     /// can route capability-tagged tasks here.

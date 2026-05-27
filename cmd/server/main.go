@@ -370,6 +370,7 @@ func main() {
 	apiWrite.POST("/agent/chat", h.APIAgentChat)
 	apiWrite.POST("/agent/execute", h.APIAgentExecute)
 	apiWrite.POST("/agent/command", h.APIAgentCommand)
+	apiWrite.POST("/agent/assess", h.APIAgentAssess)
 
 	// Config routes (Tailscale network auth required)
 	apiWrite.GET("/config/tailscale", h.APIGetTailscaleConfig)

@@ -465,7 +465,7 @@ struct QuickCommandSection: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(width: 170)
-                    .help("Allow = run automatically · Ask = approve each · Deny = block")
+                    .help("Allow = run all · Ask = approve each · Auto = AI runs safe ones, asks on risky")
                 }
 
                 // Command input
