@@ -428,9 +428,20 @@ struct QuickCommandSection: View {
 
                 // Command input
                 HStack {
-                    TextField("Command...", text: $vm.quickCommand)
+                    TextField("Command, or describe it for AI…", text: $vm.quickCommand)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.caption, design: .monospaced))
+
+                    // AI assistant: natural language → shell command. Fills
+                    // the field with the generated command for review; the
+                    // user still runs it explicitly with ▶.
+                    Button {
+                        Task { await vm.generateQuickCommand() }
+                    } label: {
+                        Image(systemName: vm.isGeneratingCommand ? "hourglass" : "sparkles")
+                    }
+                    .help("Ask AI to turn this into a shell command")
+                    .disabled(vm.quickCommand.isEmpty || vm.isGeneratingCommand || vm.isExecutingQuickCommand)
 
                     Button {
                         Task { await vm.executeQuickCommand() }
@@ -438,6 +449,12 @@ struct QuickCommandSection: View {
                         Image(systemName: vm.isExecutingQuickCommand ? "hourglass" : "play.fill")
                     }
                     .disabled(vm.quickCommand.isEmpty || vm.quickCommandDeviceId == nil || vm.isExecutingQuickCommand)
+                }
+
+                if let genErr = vm.commandGenError {
+                    Label(genErr, systemImage: "sparkles")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
                 }
 
                 // Result

@@ -128,6 +128,26 @@ actor APIClient {
         return try await post("/api/agent/execute", body: AgentExecuteRequest(plan: plan))
     }
 
+    struct GenerateCommandRequest: Encodable {
+        let prompt: String
+        let os: String
+        let deviceName: String
+    }
+
+    struct GenerateCommandResponse: Decodable {
+        let command: String
+        let refused: Bool
+        let reason: String?
+    }
+
+    /// Turns a natural-language request into a single shell command for the
+    /// target host. The server only generates — it does not execute — so the
+    /// caller fills the command field for the user to review and run.
+    func generateCommand(prompt: String, os: String, deviceName: String) async throws -> GenerateCommandResponse {
+        return try await post("/api/agent/command",
+                              body: GenerateCommandRequest(prompt: prompt, os: os, deviceName: deviceName))
+    }
+
     /// Reports the device's enabled capabilities to the server. Used by
     /// CapabilityReporter on app launch and reconnect so the AI scheduler
     /// can route capability-tagged tasks here.

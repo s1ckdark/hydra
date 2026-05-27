@@ -17,6 +17,9 @@ class DashboardViewModel: ObservableObject {
     @Published var quickCommandDeviceId: String?
     @Published var quickCommandResult: TaskResult?
     @Published var isExecutingQuickCommand = false
+    // AI command assistant (natural-language → shell command)
+    @Published var isGeneratingCommand = false
+    @Published var commandGenError: String?
 
     // Per-device ping cache. Lives on the shared ViewModel (not in
     // DeviceDetailView's @State) so switching the selected device does not
@@ -151,6 +154,35 @@ class DashboardViewModel: ObservableObject {
             )
         }
         isExecutingQuickCommand = false
+    }
+
+    /// Asks the AI to turn the natural-language text currently in
+    /// `quickCommand` into a shell command, scoped to the selected device's
+    /// OS, and replaces the field with the result for the user to review
+    /// before running. Refusals/errors surface via `commandGenError`.
+    func generateQuickCommand() async {
+        let prompt = quickCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        isGeneratingCommand = true
+        commandGenError = nil
+        defer { isGeneratingCommand = false }
+        let device = quickCommandDeviceId.flatMap { id in devices.first { $0.id == id } }
+        do {
+            let resp = try await api.generateCommand(
+                prompt: prompt,
+                os: device?.os ?? "",
+                deviceName: device?.shortName ?? ""
+            )
+            if resp.refused {
+                commandGenError = "AI declined: \(resp.reason ?? "unsafe request")"
+            } else if resp.command.isEmpty {
+                commandGenError = "AI returned an empty command."
+            } else {
+                quickCommand = resp.command
+            }
+        } catch {
+            commandGenError = error.localizedDescription
+        }
     }
 
     // MARK: - Private
