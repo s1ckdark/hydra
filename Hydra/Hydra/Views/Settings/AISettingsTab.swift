@@ -15,6 +15,7 @@ struct AISettingsTab: View {
     @State private var testStatus: TestStatus?
     @State private var saveStatus: SaveStatus?
     @State private var showAdvanced = false
+    @State private var instructionSaved = false
 
     private let store = CredentialStore.shared
 
@@ -135,9 +136,19 @@ struct AISettingsTab: View {
                                 .allowsHitTesting(false)
                         }
                     }
-                Text("Appended to the AI agent's system prompt (tone, preferred tools, extra rules). Applied on Save & Push.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Sent with every Ask AI request — applies immediately, no server push needed.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if instructionSaved {
+                        Label("Saved", systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                    Button("Save") { saveInstruction() }
+                        .controlSize(.small)
+                }
             } header: {
                 Text("② AI Instruction (optional)")
             }
@@ -312,6 +323,18 @@ struct AISettingsTab: View {
             }
         } catch {
             withAnimation { testStatus = .error("Connection failed: \(error.localizedDescription)") }
+        }
+    }
+
+    /// Persists the instruction locally (it already auto-saves via
+    /// @AppStorage; this makes it explicit and shows confirmation). It's read
+    /// from UserDefaults and sent with every Ask AI request, so no server push
+    /// is required — Save & Push additionally stores it as the server default.
+    private func saveInstruction() {
+        UserDefaults.standard.set(instruction, forKey: "aiInstruction")
+        withAnimation { instructionSaved = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation { instructionSaved = false }
         }
     }
 
