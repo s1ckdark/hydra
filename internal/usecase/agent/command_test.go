@@ -76,3 +76,27 @@ func TestGenerateCommand_NoLLMErrors(t *testing.T) {
 		t.Fatal("expected error when no LLM is configured")
 	}
 }
+
+// A weak model may emit an action with an empty/invalid type that parses as
+// JSON but fails validation. Chat should feed the error back once and return
+// the corrected plan rather than surfacing the broken one.
+func TestChat_RepairsInvalidActionType(t *testing.T) {
+	llm := &stubLLM{responses: []string{
+		`{"type":"plan","message":"first","plan":{"intent":"list","actions":[{"type":"","args":{}}]}}`,
+		`{"type":"plan","message":"fixed","plan":{"intent":"list","actions":[{"type":"list_devices","args":{}}]}}`,
+	}}
+	uc := NewAgentUseCase(llm, nil, NewValidator(nil, nil))
+	resp, err := uc.Chat(context.Background(), ChatRequest{Message: "list devices"})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if resp.Type != ChatTypePlan || resp.Plan == nil {
+		t.Fatalf("want plan, got %+v", resp)
+	}
+	if len(resp.Plan.Actions) != 1 || resp.Plan.Actions[0].Type != "list_devices" {
+		t.Fatalf("repair failed, actions=%+v", resp.Plan.Actions)
+	}
+	if llm.calls != 2 {
+		t.Errorf("expected 2 LLM calls (initial + repair), got %d", llm.calls)
+	}
+}
