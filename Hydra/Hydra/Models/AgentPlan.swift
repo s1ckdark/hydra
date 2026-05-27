@@ -38,6 +38,19 @@ struct ActionResult: Codable, Identifiable {
 
 struct AgentExecuteResponse: Codable {
     let results: [ActionResult]
+    /// Natural-language summary of the results, generated server-side.
+    let summary: String?
+}
+
+extension AgentPlan {
+    /// One-line action label for the menubar's compact PlanCard:
+    /// the first action's `type`, with `(+N more)` appended when the
+    /// plan has more than one action.
+    var compactActionLabel: String {
+        guard let first = actions.first else { return "" }
+        if actions.count == 1 { return first.type }
+        return "\(first.type) (+\(actions.count - 1) more)"
+    }
 }
 
 /// AnyCodable wraps the JSON-typed values we round-trip through the

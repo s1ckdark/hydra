@@ -10,6 +10,8 @@ struct HydraApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     #endif
     @StateObject private var dashboardVM = DashboardViewModel()
+    @StateObject private var chatVM = ChatViewModel()
+    @StateObject private var appState = AppState()
 
     var body: some Scene {
         #if os(iOS)
@@ -22,6 +24,8 @@ struct HydraApp: App {
         WindowGroup(id: "dashboard") {
             ContentView()
                 .environmentObject(dashboardVM)
+                .environmentObject(chatVM)
+                .environmentObject(appState)
                 .onAppear {
                     NSApp.setActivationPolicy(.regular)
                     NSApp.activate(ignoringOtherApps: true)
@@ -70,7 +74,23 @@ struct HydraApp: App {
                 }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
             }
+
+            CommandMenu("Chat") {
+                Button("Toggle Chat Drawer") {
+                    appState.isChatDrawerOpen.toggle()
+                }
+                .keyboardShortcut("/", modifiers: .command)
+            }
         }
+
+        WindowGroup(id: "chat-expanded") {
+            ChatTabView()
+                .environmentObject(dashboardVM)
+                .environmentObject(chatVM)
+                .environmentObject(appState)
+                .frame(minWidth: 600, minHeight: 500)
+        }
+        .defaultSize(width: 720, height: 600)
 
         Settings {
             SettingsView()
@@ -79,6 +99,8 @@ struct HydraApp: App {
         MenuBarExtra("GPU Orch", systemImage: "server.rack") {
             MenuBarView()
                 .environmentObject(dashboardVM)
+                .environmentObject(chatVM)
+                .environmentObject(appState)
         }
         .menuBarExtraStyle(.window)
         #endif

@@ -7,8 +7,17 @@ import AppKit
 
 struct DeviceListView: View {
     @EnvironmentObject var dashboardVM: DashboardViewModel
+    @EnvironmentObject var appState: AppState
     @ObservedObject private var prefs = DevicePreferences.shared
-    @State private var selectedDevice: Device?
+
+    private var selectedDevice: Binding<Device?> {
+        Binding(
+            get: { appState.selectedDeviceId.flatMap { id in
+                dashboardVM.devices.first { $0.id == id }
+            }},
+            set: { appState.selectedDeviceId = $0?.id }
+        )
+    }
     @State private var searchText = ""
     @State private var isEditing = false
     // Mobile devices are visible by default — iPhone / iPad serve as
@@ -32,7 +41,7 @@ struct DeviceListView: View {
                 if isEditing {
                     DeviceEditList(prefs: prefs, devices: dashboardVM.devices)
                 } else {
-                    List(filteredDevices, selection: $selectedDevice) { device in
+                    List(filteredDevices, selection: selectedDevice) { device in
                         DeviceRowView(device: device)
                             .tag(device)
                     }
@@ -73,7 +82,7 @@ struct DeviceListView: View {
                 prefs.merge(deviceIds: dashboardVM.devices.map(\.id))
             }
         } detail: {
-            if let device = selectedDevice {
+            if let device = selectedDevice.wrappedValue {
                 DeviceDetailView(device: device)
             } else {
                 Text("Select a device")
@@ -195,15 +204,19 @@ struct DeviceRowView: View {
 
 struct DeviceDetailView: View {
     let device: Device
+    @EnvironmentObject var dashboardVM: DashboardViewModel
     @State private var command = ""
-    @State private var result: TaskResult?
-    @State private var isExecuting = false
+    @AppStorage("aiExecPolicy") private var policyRaw = ExecPolicy.ask.rawValue
+    private var policy: ExecPolicy { ExecPolicy(rawValue: policyRaw) ?? .ask }
     @State private var gpuStatus: GPUNodeStatus?
     @State private var metrics: DeviceMetrics?
     @State private var pollTask: Task<Void, Never>?
-    @State private var pingResult: PingResult?
-    @State private var pingError: String?
-    @State private var pingInProgress = false
+
+    // Ping state lives on the shared ViewModel so it survives device
+    // switches and stays scoped to the current device.id.
+    private var pingResult: PingResult? { dashboardVM.pingResults[device.id] }
+    private var pingError: String? { dashboardVM.pingErrors[device.id] }
+    private var pingInProgress: Bool { dashboardVM.pingingDeviceIds.contains(device.id) }
 
     // SSH recovery state. The banner is gated on showSSHBanner, which is only
     // raised when the metrics endpoint reports a backend SSH error (m.hasError),
@@ -339,7 +352,7 @@ struct DeviceDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Button {
-                                Task { await runPing() }
+                                Task { await dashboardVM.runPing(deviceId: device.id) }
                             } label: {
                                 Label("Ping device", systemImage: "speedometer")
                             }
@@ -450,38 +463,72 @@ struct DeviceDetailView: View {
                     }
                 }
 
-                // Execute command
+                // Execute command — same agent + allow/ask/deny policy as the
+                // dashboard Quick Command, scoped to THIS device. Runs land in
+                // the shared activity log, filtered here to this device.
                 if device.isOnline && device.sshEnabled {
                     GroupBox("Execute Command") {
                         VStack(alignment: .leading, spacing: 8) {
-                            TextField("Command...", text: $command)
+                            HStack {
+                                Text("Policy:")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Picker("", selection: $policyRaw) {
+                                    ForEach(ExecPolicy.allCases) { p in
+                                        Text(p.label).tag(p.rawValue)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                .labelsHidden()
+                                .frame(width: 220)
+                                .help("Allow = run all · Ask = approve each · Auto = AI runs safe ones, asks on risky")
+                                Spacer()
+                            }
+
+                            TextField("Command, or describe a goal for the AI agent…", text: $command)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(.body, design: .monospaced))
 
-                            Button(action: {
-                                Task { await executeCommand() }
-                            }) {
-                                Label(isExecuting ? "Running..." : "Execute", systemImage: "play.fill")
-                            }
-                            .disabled(command.isEmpty || isExecuting)
+                            HStack {
+                                // ✨ Agent: NL goal → plan, gated by policy.
+                                Button {
+                                    let t = command
+                                    command = ""
+                                    Task { await dashboardVM.agentSubmit(text: t, deviceId: device.id, policy: policy) }
+                                } label: {
+                                    Label(dashboardVM.agentBusy ? "Thinking…" : "Ask AI",
+                                          systemImage: dashboardVM.agentBusy ? "hourglass" : "sparkles")
+                                }
+                                .disabled(command.isEmpty || dashboardVM.agentBusy)
 
-                            if let result = result {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text(result.hasError ? "Error" : "Output")
-                                            .font(.caption.bold())
-                                        Spacer()
-                                        Text(String(format: "%.0fms", result.durationMs))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Text(result.hasError ? (result.error ?? "") : result.output)
-                                        .font(.system(.caption, design: .monospaced))
-                                        .foregroundStyle(result.hasError ? .red : .primary)
-                                        .padding(8)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .background(.quaternary)
-                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                // ▶ direct command, gated by policy.
+                                Button {
+                                    let t = command
+                                    command = ""
+                                    Task { await dashboardVM.directSubmit(text: t, deviceId: device.id, policy: policy) }
+                                } label: {
+                                    Label("Execute", systemImage: "play.fill")
+                                }
+                                .disabled(command.isEmpty)
+                            }
+
+                            // Activity for THIS device, newest first.
+                            let entries = dashboardVM.activity.filter { $0.deviceId == device.id }
+                            if !entries.isEmpty {
+                                Divider()
+                                HStack {
+                                    Text("Activity")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button("Clear") { dashboardVM.clearActivity(forDeviceId: device.id) }
+                                        .font(.caption2)
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(.secondary)
+                                }
+                                ForEach(entries) { entry in
+                                    ActivityRow(entry: entry, vm: dashboardVM)
+                                    if entry.id != entries.last?.id { Divider() }
                                 }
                             }
                         }
@@ -606,18 +653,6 @@ struct DeviceDetailView: View {
             // Transport / API errors are not necessarily SSH failures; leave
             // the banner state untouched so a flapping connection does not
             // open a recovery flow that the user can not act on.
-        }
-    }
-
-    private func runPing() async {
-        pingInProgress = true
-        pingError = nil
-        defer { pingInProgress = false }
-        do {
-            pingResult = try await APIClient.shared.pingDevice(id: device.id, count: 5)
-        } catch {
-            pingResult = nil
-            pingError = error.localizedDescription
         }
     }
 
@@ -915,15 +950,6 @@ struct DeviceDetailView: View {
         }
     }
 
-    private func executeCommand() async {
-        isExecuting = true
-        do {
-            result = try await APIClient.shared.executeOnDevice(id: device.id, command: command)
-        } catch {
-            result = TaskResult(deviceId: device.id, deviceName: device.displayName, gpu: "", output: "", error: error.localizedDescription, durationMs: 0)
-        }
-        isExecuting = false
-    }
 }
 
 struct InfoField: View {

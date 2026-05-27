@@ -15,7 +15,7 @@ final class ChatViewModel: ObservableObject {
 
     private let api = APIClient.shared
 
-    func send(_ message: String) async {
+    func send(_ message: String, contextPreamble: String? = nil) async {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         turns.append(ChatTurn(role: "user", content: trimmed, plan: nil, results: nil))
@@ -23,7 +23,18 @@ final class ChatViewModel: ObservableObject {
         error = nil
         defer { isThinking = false }
         let history = Array(turns.suffix(serverHistoryCap))
-        let req = ChatRequest(history: history, message: trimmed)
+        // Preamble is composed by the caller from active tab + selection;
+        // we attach it only to the outbound message, never to the on-screen
+        // turn text — the user shouldn't see their own boilerplate echoed.
+        let outbound: String
+        if let preamble = contextPreamble, !preamble.isEmpty {
+            outbound = "\(preamble)\n\n\(trimmed)"
+        } else {
+            outbound = trimmed
+        }
+        let instr = UserDefaults.standard.string(forKey: "aiInstruction")
+        let req = ChatRequest(history: history, message: outbound,
+                              instruction: (instr?.isEmpty == false) ? instr : nil)
         do {
             let resp = try await api.chat(req)
             let role = resp.type == "plan" ? "assistant_plan" : "assistant_ask"

@@ -18,6 +18,9 @@ struct ChatTurn: Codable, Identifiable {
 struct ChatRequest: Codable {
     var history: [ChatTurn]
     var message: String
+    /// Optional per-request system instruction (the Settings field). Sent so
+    /// it applies immediately without a separate Save & Push.
+    var instruction: String? = nil
 }
 
 struct AgentExecuteRequest: Codable {

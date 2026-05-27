@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuBarView: View {
     @EnvironmentObject var vm: DashboardViewModel
+    @EnvironmentObject var appState: AppState
     @StateObject private var gpuVM = GPUMonitorViewModel()
     @Environment(\.openWindow) private var openWindow
 
@@ -92,7 +93,7 @@ struct MenuBarView: View {
 
             Divider()
 
-            ChatSection()
+            ChatSection(onOpenChat: openChat)
 
             Divider()
 
@@ -220,6 +221,14 @@ struct MenuBarView: View {
                 window.makeKeyAndOrderFront(nil)
             }
         }
+    }
+
+    /// Routes the menubar's "Open Chat" tap to the dashboard's Chat
+    /// tab. Sets the shared activeTab first so the TabView's selection
+    /// binding picks it up the moment SwiftUI materialises the window.
+    private func openChat() {
+        appState.isChatDrawerOpen = true
+        openDashboardWindow()
     }
 
     func utilizationColor(_ percent: Double) -> Color {

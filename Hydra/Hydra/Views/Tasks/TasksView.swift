@@ -4,13 +4,22 @@ import SwiftUI
 struct TasksView: View {
     @ObservedObject private var store = SavedTaskStore.shared
     @EnvironmentObject var dashboardVM: DashboardViewModel
+    @EnvironmentObject var appState: AppState
     @State private var showingEditor = false
     @State private var editingTask: SavedTask?
-    @State private var selectedTask: SavedTask?
+
+    private var selectedTask: Binding<SavedTask?> {
+        Binding(
+            get: { appState.selectedTaskId.flatMap { id in
+                store.tasks.first { $0.id == id }
+            }},
+            set: { appState.selectedTaskId = $0?.id }
+        )
+    }
 
     var body: some View {
         NavigationSplitView {
-            List(store.tasks, selection: $selectedTask) { task in
+            List(store.tasks, selection: selectedTask) { task in
                 TaskRow(task: task, isRunning: store.runningTaskIds.contains(task.id))
                     .tag(task)
                     .contextMenu {
@@ -30,7 +39,7 @@ struct TasksView: View {
                 }
             }
         } detail: {
-            if let task = selectedTask {
+            if let task = selectedTask.wrappedValue {
                 TaskDetailView(task: task, store: store, devices: dashboardVM.onlineDevices)
             } else {
                 VStack(spacing: 8) {

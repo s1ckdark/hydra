@@ -192,6 +192,99 @@ func TestDeviceUseCase_ListDevices_Cache(t *testing.T) {
 	}
 }
 
+// Regression: a poisoned cache holding the same physical hosts under two
+// different IDs (the REST→CLI id-scheme migration left orphan numeric-id
+// rows alongside fresh CLI StableNodeIDs) must NOT make the shrink-defense
+// reject a clean, correctly-sized fresh fetch. Before the fix the raw-len
+// comparison saw 12 < 75% of 24 and served the stale 24-entry dup set
+// forever; the identity-aware comparison sees 12 unique vs 12 unique.
+func TestDeviceUseCase_ListDevices_DuplicateInflatedCacheDoesNotBlockFresh(t *testing.T) {
+	repos := setupTestRepos(t)
+
+	// Fresh source: 12 clean unique devices (what `tailscale status` returns).
+	fresh := make([]*domain.Device, 0, 12)
+	for i := 0; i < 12; i++ {
+		fresh = append(fresh, &domain.Device{
+			ID:     fmt.Sprintf("nNODE%02dCNTRL", i),
+			Name:   fmt.Sprintf("host-%02d.tailnet.ts.net", i),
+			Status: domain.DeviceStatusOnline,
+			OS:     "linux",
+		})
+	}
+	ts := &mockTailscale{devices: fresh}
+	uc := NewDeviceUseCase(repos, ts, &mockCollector{})
+	ctx := context.Background()
+
+	// Poison the cache: same 12 hosts, each present twice — once under the
+	// new CLI id and once under an orphan numeric id. 24 rows, 12 names.
+	poisoned := make([]*domain.Device, 0, 24)
+	for _, d := range fresh {
+		cliCopy := *d
+		poisoned = append(poisoned, &cliCopy)
+		poisoned = append(poisoned, &domain.Device{
+			ID:     fmt.Sprintf("%016d", 1000000000000000+len(poisoned)), // orphan numeric id
+			Name:   d.Name,
+			Status: domain.DeviceStatusOnline,
+			OS:     "linux",
+		})
+	}
+	uc.cacheMu.Lock()
+	uc.cachedDevices = poisoned
+	uc.cacheTime = time.Now()
+	uc.cacheMu.Unlock()
+
+	// Force a refresh so the fresh fetch must clear the shrink-defense gate.
+	devices, err := uc.ListDevices(ctx, true)
+	if err != nil {
+		t.Fatalf("ListDevices error: %v", err)
+	}
+	if len(devices) != 12 {
+		t.Fatalf("ListDevices returned %d devices, want 12 — shrink-defense rejected a clean fetch because the duplicated cache inflated the baseline", len(devices))
+	}
+	seen := make(map[string]bool, len(devices))
+	for _, d := range devices {
+		if seen[d.Name] {
+			t.Errorf("duplicate device name in result: %q", d.Name)
+		}
+		seen[d.Name] = true
+	}
+}
+
+// A genuine partial response from Tailscale (real shrink, distinct hosts
+// actually missing) must STILL be rejected so a degraded upstream can't
+// wipe the dashboard. Guards against the dedupe fix over-correcting.
+func TestDeviceUseCase_ListDevices_GenuineShrinkStillRejected(t *testing.T) {
+	repos := setupTestRepos(t)
+
+	full := make([]*domain.Device, 0, 12)
+	for i := 0; i < 12; i++ {
+		full = append(full, &domain.Device{
+			ID:     fmt.Sprintf("nNODE%02dCNTRL", i),
+			Name:   fmt.Sprintf("host-%02d.tailnet.ts.net", i),
+			Status: domain.DeviceStatusOnline,
+			OS:     "linux",
+		})
+	}
+	ts := &mockTailscale{devices: full}
+	uc := NewDeviceUseCase(repos, ts, &mockCollector{})
+	ctx := context.Background()
+
+	uc.cacheMu.Lock()
+	uc.cachedDevices = full
+	uc.cacheTime = time.Now()
+	uc.cacheMu.Unlock()
+
+	// Upstream now returns only 4 of the 12 distinct hosts.
+	ts.devices = full[:4]
+	devices, err := uc.ListDevices(ctx, true)
+	if err != nil {
+		t.Fatalf("ListDevices error: %v", err)
+	}
+	if len(devices) != 12 {
+		t.Fatalf("ListDevices returned %d, want 12 — genuine partial response should have been rejected in favor of the known-good set", len(devices))
+	}
+}
+
 func TestDeviceUseCase_GetDevice(t *testing.T) {
 	repos := setupTestRepos(t)
 	ts := &mockTailscale{devices: testDevices()}

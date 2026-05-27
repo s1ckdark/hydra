@@ -75,6 +75,7 @@ type Handler struct {
 	taskGroupTasks     domain.TaskRepository
 	taskGroupSaver     taskGroupSaver
 	aiArbiterRebuilder func(ai config.AIConfig)
+	agentRebuilder     func(ai config.AIConfig)
 	deviceLister       deviceLister
 }
 
@@ -130,6 +131,14 @@ func (h *Handler) SetAIArbiterRebuilder(rebuild func(ai config.AIConfig)) {
 // SetAgentUseCase wires the chat agent. Optional — if not set, the
 // agent endpoints return 503 with a clear error.
 func (h *Handler) SetAgentUseCase(a *agent.AgentUseCase) { h.agentUC = a }
+
+// SetAgentRebuilder wires a callback invoked after PUT /api/config/ai so the
+// chat agent's LLM (used by Ask AI and the agent chat) is rebuilt live when
+// the AI provider changes — the agent mirror of SetAIArbiterRebuilder. Without
+// it, the chat agent would keep the boot-time provider until a restart.
+func (h *Handler) SetAgentRebuilder(rebuild func(ai config.AIConfig)) {
+	h.agentRebuilder = rebuild
+}
 
 // SetTaskGroupRepos wires the read and write dependencies for /api/groups
 // and /api/tasks/batch. The concrete type passed as g must implement both

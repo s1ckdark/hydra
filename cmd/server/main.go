@@ -212,18 +212,29 @@ func main() {
 	// has no bulk GPU-snapshot method. The get_gpu action degrades to
 	// "gpu service unavailable" until a snapshot surface is added to
 	// MonitorUseCase.
-	if chatLLM := buildChatLLM(aiRegistry); chatLLM != nil {
-		orchMgr := newOrchManagerAdapter(orchUC, deviceUC)
-		cmdRunner := newCommandRunnerAdapter(deviceUC, sshExecutor)
-		var gpuLister agent.GPULister // nil — no bulk GPU snapshot path exists yet
-		agentRegistry := agent.NewActionRegistry(deviceUC, orchUC, monitorUC, gpuLister, cmdRunner, orchMgr)
-		agentValidator := agent.NewValidator(deviceUC, orchUC)
-		agentUC := agent.NewAgentUseCase(chatLLM, agentRegistry, agentValidator)
-		h.SetAgentUseCase(agentUC)
-		log.Printf("[agent] chat agent enabled")
-	} else {
-		log.Printf("[agent] chat agent disabled (no chat-role provider configured)")
+	// The action registry/validator are provider-independent, so build them
+	// once; only the LLM changes when the AI config is updated. rebuildAgent
+	// swaps the chat agent's LLM live so PUT /api/config/ai (and thus the
+	// Settings UI) takes effect without a process restart.
+	orchMgr := newOrchManagerAdapter(orchUC, deviceUC)
+	cmdRunner := newCommandRunnerAdapter(deviceUC, sshExecutor)
+	var gpuLister agent.GPULister // nil — no bulk GPU snapshot path exists yet
+	agentRegistry := agent.NewActionRegistry(deviceUC, orchUC, monitorUC, gpuLister, cmdRunner, orchMgr)
+	agentValidator := agent.NewValidator(deviceUC, orchUC)
+	rebuildAgent := func(ai config.AIConfig) {
+		reg := buildAIRegistry(ai)
+		if chatLLM := buildChatLLM(reg); chatLLM != nil {
+			uc := agent.NewAgentUseCase(chatLLM, agentRegistry, agentValidator)
+			uc.SetInstruction(ai.Instruction)
+			h.SetAgentUseCase(uc)
+			log.Printf("[agent] chat agent enabled (provider=%s)", ai.Resolve("chat").Provider)
+		} else {
+			h.SetAgentUseCase(nil)
+			log.Printf("[agent] chat agent disabled (no chat-role provider configured)")
+		}
 	}
+	rebuildAgent(cfg.Agent.AI)
+	h.SetAgentRebuilder(rebuildAgent)
 
 	// Routes
 	e.GET("/", h.Dashboard)
@@ -360,6 +371,8 @@ func main() {
 	// for symmetry.
 	apiWrite.POST("/agent/chat", h.APIAgentChat)
 	apiWrite.POST("/agent/execute", h.APIAgentExecute)
+	apiWrite.POST("/agent/command", h.APIAgentCommand)
+	apiWrite.POST("/agent/assess", h.APIAgentAssess)
 
 	// Config routes (Tailscale network auth required)
 	apiWrite.GET("/config/tailscale", h.APIGetTailscaleConfig)

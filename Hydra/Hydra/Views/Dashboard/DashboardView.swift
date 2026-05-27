@@ -84,13 +84,39 @@ struct DashboardView: View {
             }
             .padding()
         }
+        // Initial-load spinner: only while loading AND we have nothing to
+        // show yet, so polling refreshes (data already present) don't cover
+        // the dashboard. I/O-bound first loads now read as "loading", not
+        // "empty".
+        .overlay {
+            if vm.isLoading && vm.devices.isEmpty && vm.orchs.isEmpty {
+                VStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.large)
+                    Text("Loading…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.background.opacity(0.7))
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: vm.isLoading)
         .toolbar {
             ToolbarItem {
-                Button(action: { Task { await vm.load(force: true) } }) {
-                    Image(systemName: "arrow.clockwise")
+                // Spinner while any load is in flight; the refresh button
+                // otherwise. Gives feedback during the slow force-refresh
+                // (re-probes every device over SSH).
+                if vm.isLoading {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Button(action: { Task { await vm.load(force: true) } }) {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .help("Force refresh — re-probe and re-collect metrics from every device")
                 }
-                .disabled(vm.isLoading)
-                .help("Force refresh — re-probe and re-collect metrics from every device")
             }
         }
         .navigationTitle("Dashboard")
@@ -408,6 +434,8 @@ struct RecentTasksSection: View {
 
 struct QuickCommandSection: View {
     @ObservedObject var vm: DashboardViewModel
+    @AppStorage("aiExecPolicy") private var policyRaw = ExecPolicy.ask.rawValue
+    private var policy: ExecPolicy { ExecPolicy(rawValue: policyRaw) ?? .ask }
 
     var body: some View {
         GroupBox {
@@ -424,49 +452,251 @@ struct QuickCommandSection: View {
                         }
                     }
                     .labelsHidden()
+
+                    Spacer()
+
+                    // Execution policy (Cursor/Windsurf style) — gates BOTH
+                    // ✨ AI plans and ▶ direct commands.
+                    Picker("", selection: $policyRaw) {
+                        ForEach(ExecPolicy.allCases) { p in
+                            Text(p.label).tag(p.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(width: 170)
+                    .help("Allow = run all · Ask = approve each · Auto = AI runs safe ones, asks on risky")
                 }
 
                 // Command input
                 HStack {
-                    TextField("Command...", text: $vm.quickCommand)
+                    TextField("Command, or describe a goal for the AI agent…", text: $vm.quickCommand)
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.caption, design: .monospaced))
 
+                    // ✨ Agent: NL goal → plan, gated by the policy.
                     Button {
-                        Task { await vm.executeQuickCommand() }
+                        let t = vm.quickCommand
+                        let did = vm.quickCommandDeviceId
+                        vm.quickCommand = ""
+                        Task { await vm.agentSubmit(text: t, deviceId: did, policy: policy) }
                     } label: {
-                        Image(systemName: vm.isExecutingQuickCommand ? "hourglass" : "play.fill")
+                        Image(systemName: vm.agentBusy ? "hourglass" : "sparkles")
                     }
-                    .disabled(vm.quickCommand.isEmpty || vm.quickCommandDeviceId == nil || vm.isExecutingQuickCommand)
+                    .help("Ask the AI agent to plan & run this")
+                    .disabled(vm.quickCommand.isEmpty || vm.agentBusy)
+
+                    // ▶ direct command on the target, gated by the policy.
+                    Button {
+                        let t = vm.quickCommand
+                        let did = vm.quickCommandDeviceId
+                        vm.quickCommand = ""
+                        Task { await vm.directSubmit(text: t, deviceId: did, policy: policy) }
+                    } label: {
+                        Image(systemName: "play.fill")
+                    }
+                    .help("Run this command directly on the selected device")
+                    .disabled(vm.quickCommand.isEmpty || vm.quickCommandDeviceId == nil)
                 }
 
-                // Result
-                if let result = vm.quickCommandResult {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(result.hasError ? "Error" : "Output")
-                                .font(.caption2)
-                                .fontWeight(.medium)
-                                .foregroundStyle(result.hasError ? .red : .primary)
-                            Spacer()
-                            Text(String(format: "%.0fms", result.durationMs))
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                        Text(result.hasError ? (result.error ?? "") : result.output)
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(result.hasError ? .red : .primary)
-                            .padding(6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.quaternary)
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                            .lineLimit(8)
+                // Activity log — kept per device; shows the selected target's
+                // history (direct ▶ and ✨ AI runs), newest first.
+                let entries = vm.activity.filter { $0.deviceId == vm.quickCommandDeviceId }
+                if entries.isEmpty {
+                    Text("No activity for this target yet — run a command (▶) or describe a goal for the agent (✨).")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Divider()
+                    HStack {
+                        Text("Activity")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Clear") { vm.clearActivity(forDeviceId: vm.quickCommandDeviceId) }
+                            .font(.caption2)
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(entries) { entry in
+                        ActivityRow(entry: entry, vm: vm)
+                        if entry.id != entries.last?.id { Divider() }
                     }
                 }
             }
         } label: {
             Label("Quick Command", systemImage: "terminal")
         }
+    }
+}
+
+// MARK: - Activity row (unified: direct command + AI agent run)
+
+/// Shared by the dashboard Quick Command and the device detail view.
+struct ActivityRow: View {
+    let entry: ActivityEntry
+    @ObservedObject var vm: DashboardViewModel
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                statusIcon
+                Image(systemName: entry.source == .ai ? "sparkles" : "terminal")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(entry.title)
+                    .font(.system(.caption, design: entry.source == .user ? .monospaced : .default))
+                    .lineLimit(2)
+                Spacer()
+                if let dev = entry.deviceName {
+                    Text(dev).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                }
+                Text(entry.timestamp, style: .time)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Button { vm.removeEntry(entry.id) } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("Remove from history")
+            }
+
+            if let msg = entry.message, !msg.isEmpty {
+                Text(msg)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(expanded ? nil : 2)
+            }
+
+            // Pending approval (Ask policy): Approve / Deny.
+            if entry.status == .pending {
+                HStack {
+                    if entry.source == .ai, let plan = entry.plan {
+                        Text("Plan: \(plan.intent) · \(plan.actions.count) step(s)")
+                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    } else {
+                        Text("Awaiting approval").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Deny") { vm.denyEntry(entry.id) }
+                        .controlSize(.small)
+                    Button {
+                        Task { await vm.approve(entry.id) }
+                    } label: {
+                        Label(entry.source == .ai ? "Run" : "Approve", systemImage: "play.fill")
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+
+            if entry.status == .running {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Running…").font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+
+            // AI: natural-language summary — the agent explains what it did
+            // and found, above the raw terminal output.
+            if let summary = entry.summary, !summary.isEmpty {
+                Text(summary)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // AI per-action results rendered as terminal output, collapsed.
+            if let results = entry.results, !results.isEmpty {
+                DisclosureGroup(isExpanded: $expanded) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(results) { r in
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: r.status == "ok" ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(r.status == "ok" ? .green : .red)
+                                    Text("$ \(r.type)")
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+                                TerminalBlock(text: Self.resultText(r), isError: r.status != "ok")
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
+                } label: {
+                    let ok = results.filter { $0.status == "ok" }.count
+                    Text("Terminal output · \(ok)/\(results.count) actions ok")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Direct command output as terminal text.
+            if let out = entry.outputText, !out.isEmpty {
+                TerminalBlock(text: out, isError: entry.status == .failed,
+                              lineLimit: expanded ? nil : 8)
+                    .onTapGesture { expanded.toggle() }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder private var statusIcon: some View {
+        switch entry.status {
+        case .planning, .running:
+            ProgressView().controlSize(.small)
+        case .pending:
+            Image(systemName: "pause.circle").foregroundStyle(.blue)
+        case .needsInput:
+            Image(systemName: "questionmark.circle").foregroundStyle(.orange)
+        case .denied:
+            Image(systemName: "nosign").foregroundStyle(.orange)
+        case .done:
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+        case .failed:
+            Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+        }
+    }
+
+    /// Human-readable one-liner for an action result: its error, or its
+    /// output rendered from the AnyCodable payload.
+    static func resultText(_ r: ActionResult) -> String {
+        if let err = r.error, !err.isEmpty { return err }
+        guard let out = r.output?.value else { return "(no output)" }
+        switch out {
+        case let s as String:   return s.isEmpty ? "(ok)" : s
+        case is NSNull:         return "(ok)"
+        default:                return String(describing: out)
+        }
+    }
+}
+
+// MARK: - Terminal-style output block
+
+/// Monospace command/action output on a dark background — light green for
+/// normal output, red for errors — so AI/agent results read like a terminal.
+struct TerminalBlock: View {
+    let text: String
+    var isError: Bool = false
+    var lineLimit: Int? = nil
+
+    var body: some View {
+        Text(text.isEmpty ? "(no output)" : text)
+            .font(.system(.caption2, design: .monospaced))
+            .foregroundStyle(isError ? Color(red: 1.0, green: 0.45, blue: 0.45)
+                                     : Color(red: 0.55, green: 0.95, blue: 0.6))
+            .textSelection(.enabled)
+            .lineLimit(lineLimit)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
+            .background(Color.black.opacity(0.88))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 

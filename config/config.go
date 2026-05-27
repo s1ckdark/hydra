@@ -119,6 +119,10 @@ type AIConfig struct {
 	CapacityEstimation *ProviderConfig `mapstructure:"capacity_estimation"`
 	Chat               *ProviderConfig `mapstructure:"chat"`
 	AlwaysConsult      bool            `mapstructure:"always_consult"`
+	// Instruction is a user-defined system instruction appended to the chat
+	// agent's and command assistant's prompts (tone, preferred tools, etc.).
+	// Empty = no extra instruction.
+	Instruction string `mapstructure:"instruction"`
 }
 
 // Resolve returns the ProviderConfig for a given role, falling back to Default

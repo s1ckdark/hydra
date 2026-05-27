@@ -1,10 +1,16 @@
 import SwiftUI
 
-/// Chat panel that lives inside the menubar popover. Scrolls history,
-/// inline-renders the pending plan card, and owns the input field.
+/// Menubar chat surface. Read-only: status, last result, and a compact
+/// PlanCard for pending-plan approval. The actual conversation lives in
+/// the dashboard's chat drawer; the "Open Chat →" button opens it.
 struct ChatSection: View {
-    @StateObject private var vm = ChatViewModel()
-    @State private var draft = ""
+    @EnvironmentObject var vm: ChatViewModel
+    @EnvironmentObject var appState: AppState
+
+    /// Called when the user wants to open the dashboard window with the
+    /// chat drawer open. Hosted by `MenuBarView`, which owns the AppKit
+    /// activation dance.
+    var onOpenChat: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -12,76 +18,92 @@ struct ChatSection: View {
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(vm.turns) { turn in
-                        ChatTurnRow(turn: turn)
-                    }
-                    if let plan = vm.pendingPlan {
-                        PlanCardView(
-                            plan: plan,
-                            message: vm.pendingPlanMessage,
-                            isThinking: vm.isThinking,
-                            onRun:    { Task { await vm.runPendingPlan() } },
-                            onCancel: { vm.cancelPendingPlan() }
-                        )
-                    }
-                    if let err = vm.error {
-                        Label(err, systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.red)
-                    }
-                }
-            }
-            .frame(maxHeight: 220)
+            statusLine
 
-            HStack {
-                TextField("Ask Hydra…", text: $draft)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { submit() }
-                Button(action: submit) {
-                    Image(systemName: "paperplane.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty || vm.isThinking)
+            if let last = lastRelevantTurn {
+                resultLine(turn: last)
             }
-            if vm.isThinking {
+
+            if let plan = vm.pendingPlan {
+                PlanCardView(
+                    plan: plan,
+                    message: vm.pendingPlanMessage,
+                    isThinking: vm.isThinking,
+                    compact: true,
+                    onRun:    { Task { await vm.runPendingPlan() } },
+                    onCancel: { vm.cancelPendingPlan() }
+                )
+            }
+
+            if let err = vm.error {
+                Label(err, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
+
+            Button(action: onOpenChat) {
                 HStack(spacing: 4) {
-                    ProgressView().controlSize(.small)
-                    Text("thinking…").font(.caption2).foregroundStyle(.secondary)
+                    Text("Open Chat")
+                    Image(systemName: "arrow.right")
                 }
-            }
-        }
-    }
-
-    private func submit() {
-        let msg = draft
-        draft = ""
-        Task { await vm.send(msg) }
-    }
-}
-
-private struct ChatTurnRow: View {
-    let turn: ChatTurn
-    var body: some View {
-        HStack(alignment: .top, spacing: 6) {
-            Text(roleSymbol)
-                .font(.caption2)
-                .frame(width: 14)
-                .foregroundStyle(.secondary)
-            Text(turn.content)
                 .font(.caption)
-                .textSelection(.enabled)
+            }
+            .buttonStyle(.borderless)
         }
     }
-    private var roleSymbol: String {
-        switch turn.role {
-        case "user":            return "›"
-        case "assistant_ask":   return "?"
-        case "assistant_plan":  return "▶"
-        case "system_result":   return "✓"
-        default:                return "•"
+
+    private var statusLine: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 6, height: 6)
+            Text(statusText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var statusText: String {
+        if let plan = vm.pendingPlan {
+            return "Plan pending (\(plan.actions.count) action\(plan.actions.count == 1 ? "" : "s"))"
+        }
+        if vm.isThinking { return "Thinking…" }
+        if vm.error != nil { return "Error" }
+        return "Idle"
+    }
+
+    private var statusColor: Color {
+        if vm.pendingPlan != nil { return .orange }
+        if vm.isThinking { return .accentColor }
+        if vm.error != nil { return .red }
+        return .secondary
+    }
+
+    private var lastRelevantTurn: ChatTurn? {
+        vm.turns.last { ["assistant_ask", "assistant_plan", "system_result"].contains($0.role) }
+    }
+
+    private func resultLine(turn: ChatTurn) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(roleGlyph(for: turn.role))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(width: 10)
+            Text(turn.content)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+    }
+
+    private func roleGlyph(for role: String) -> String {
+        switch role {
+        case "assistant_ask":  return "?"
+        case "assistant_plan": return "▶"
+        case "system_result":  return "✓"
+        default:               return "•"
         }
     }
 }

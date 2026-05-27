@@ -8,12 +8,14 @@ struct AISettingsTab: View {
     @AppStorage("aiDefaultProvider") private var provider: String = "claude"
     @AppStorage("aiDefaultEndpoint") private var endpoint: String = ""
     @AppStorage("aiDefaultModel") private var model: String = ""
+    @AppStorage("aiInstruction") private var instruction: String = ""
 
     @State private var apiKey: String = ""
     @State private var connectionVerified = false
     @State private var testStatus: TestStatus?
     @State private var saveStatus: SaveStatus?
     @State private var showAdvanced = false
+    @State private var instructionSaved = false
 
     private let store = CredentialStore.shared
 
@@ -34,7 +36,26 @@ struct AISettingsTab: View {
     static let cloudProviders: Set<String> = ["claude", "openai", "zai"]
     static let localProviders: Set<String> = ["ollama", "lmstudio", "openai_compatible"]
 
+    /// Z.AI GLM Coding Plan base URL (OpenAI-compatible). The older "/v1"
+    /// base does not serve the Coding Plan.
+    static let zaiCodingEndpoint = "https://api.z.ai/api/coding/paas/v4"
+
+    /// Known model ids offered as a dropdown per cloud provider. The text
+    /// field stays editable so custom / local model names still work.
+    static func knownModels(for provider: String) -> [String] {
+        switch provider {
+        case "claude": return ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"]
+        case "openai": return ["gpt-4o", "gpt-4o-mini", "o3-mini"]
+        case "zai":    return ["glm-4.6", "glm-4.5", "glm-4.5-air"]
+        default:       return []
+        }
+    }
+
     private var isCloudProvider: Bool { Self.cloudProviders.contains(provider) }
+    private var needsAPIKey: Bool { Self.cloudProviders.contains(provider) }
+    /// z.ai needs an API key AND a base URL (the Coding Plan endpoint), so it
+    /// shows both fields; local providers need only an endpoint.
+    private var needsEndpoint: Bool { Self.localProviders.contains(provider) || provider == "zai" }
 
     private func isCloudProviderID(_ id: String) -> Bool {
         return Self.cloudProviders.contains(id)
@@ -64,23 +85,72 @@ struct AISettingsTab: View {
                     Text(label(for: "lmstudio")).tag("lmstudio")
                     Text(label(for: "openai_compatible")).tag("openai_compatible")
                 }
-                .onChange(of: provider) { credentialsChanged() }
+                .onChange(of: provider) { providerChanged() }
 
-                if isCloudProvider {
+                if needsAPIKey {
                     SecureField("API Key", text: $apiKey)
                         .textFieldStyle(.roundedBorder)
                         .onChange(of: apiKey) { credentialsChanged() }
-                } else {
-                    TextField("Endpoint", text: $endpoint, prompt: Text("http://localhost:11434"))
+                }
+                if needsEndpoint {
+                    TextField("Endpoint", text: $endpoint, prompt: Text(endpointPlaceholder))
                         .textFieldStyle(.roundedBorder)
                         .onChange(of: endpoint) { credentialsChanged() }
                 }
 
-                TextField("Model (optional)", text: $model)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: model) { credentialsChanged() }
+                // Model: free-text (local models vary) plus a dropdown of
+                // known ids for the selected cloud provider.
+                HStack(spacing: 6) {
+                    TextField("Model (optional)", text: $model)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: model) { credentialsChanged() }
+                    let known = Self.knownModels(for: provider)
+                    if !known.isEmpty {
+                        Menu {
+                            ForEach(known, id: \.self) { m in
+                                Button(m) { model = m; credentialsChanged() }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.down.circle")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .help("Pick a known \(label(for: provider)) model")
+                    }
+                }
             } header: {
                 Text("① AI Provider (Default)")
+            }
+
+            Section {
+                TextEditor(text: $instruction)
+                    .frame(minHeight: 90)
+                    .font(.callout)
+                    .overlay(alignment: .topLeading) {
+                        if instruction.isEmpty {
+                            Text("e.g. Prefer read-only commands. Answer concisely in Korean. Use nvidia-smi for GPU checks.")
+                                .font(.callout)
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 8)
+                                .padding(.leading, 5)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Sent with every Ask AI request — applies immediately, no server push needed.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if instructionSaved {
+                        Label("Saved", systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                    Button("Save") { saveInstruction() }
+                        .controlSize(.small)
+                }
+            } header: {
+                Text("② AI Instruction (optional)")
             }
 
             Section {
@@ -110,7 +180,7 @@ struct AISettingsTab: View {
                     }
                 }
             } header: {
-                Text("② Verify")
+                Text("③ Verify")
             }
 
             Section {
@@ -121,7 +191,7 @@ struct AISettingsTab: View {
                     RoleOverrideView(title: "Chat agent — natural-language input", role: "chat")
                 }
             } header: {
-                Text("③ Advanced (optional)")
+                Text("④ Advanced (optional)")
             }
 
             Section {
@@ -166,19 +236,37 @@ struct AISettingsTab: View {
                     }
                 }
             } header: {
-                Text("④ Save")
+                Text("⑤ Save")
             }
         }
         .formStyle(.grouped)
         .onAppear {
             apiKey = store.get(.aiDefaultAPIKey)
+            if provider == "zai" && endpoint.trimmingCharacters(in: .whitespaces).isEmpty {
+                endpoint = Self.zaiCodingEndpoint
+            }
         }
+    }
+
+    /// Placeholder hint for the endpoint field, per provider.
+    private var endpointPlaceholder: String {
+        provider == "zai" ? Self.zaiCodingEndpoint : "http://localhost:11434"
     }
 
     private func credentialsChanged() {
         connectionVerified = false
         testStatus = nil
         saveStatus = nil
+    }
+
+    /// On provider change: reset verification and, for z.ai, prefill the
+    /// Coding Plan base URL so it's visible and editable rather than relying
+    /// on a hidden server default.
+    private func providerChanged() {
+        credentialsChanged()
+        if provider == "zai" && endpoint.trimmingCharacters(in: .whitespaces).isEmpty {
+            endpoint = Self.zaiCodingEndpoint
+        }
     }
 
     private var hasCredentials: Bool {
@@ -200,7 +288,8 @@ struct AISettingsTab: View {
             urlString = "https://api.openai.com/v1/models"
             headers["Authorization"] = "Bearer \(apiKey)"
         case "zai":
-            urlString = "https://api.z.ai/v1/models"
+            let base = endpoint.trimmingCharacters(in: .whitespaces)
+            urlString = (base.isEmpty ? Self.zaiCodingEndpoint : base) + "/models"
             headers["Authorization"] = "Bearer \(apiKey)"
         case "ollama":
             urlString = endpoint.trimmingCharacters(in: .whitespaces) + "/api/tags"
@@ -237,6 +326,18 @@ struct AISettingsTab: View {
         }
     }
 
+    /// Persists the instruction locally (it already auto-saves via
+    /// @AppStorage; this makes it explicit and shows confirmation). It's read
+    /// from UserDefaults and sent with every Ask AI request, so no server push
+    /// is required — Save & Push additionally stores it as the server default.
+    private func saveInstruction() {
+        UserDefaults.standard.set(instruction, forKey: "aiInstruction")
+        withAnimation { instructionSaved = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation { instructionSaved = false }
+        }
+    }
+
     private func saveLocally() {
         // Only persist a key when the chosen provider needs one.
         store.set(.aiDefaultAPIKey, value: isCloudProvider ? apiKey : "")
@@ -259,14 +360,18 @@ struct AISettingsTab: View {
             "provider": provider,
             "model":    model,
         ]
-        if isCloudProvider {
+        if needsAPIKey {
             defaultPayload["api_key"] = apiKey
-        } else {
+        }
+        if needsEndpoint {
             defaultPayload["endpoint"] = endpoint
         }
 
         let defaults = UserDefaults.standard
-        var body: [String: Any] = ["default": defaultPayload]
+        var body: [String: Any] = [
+            "default": defaultPayload,
+            "instruction": instruction,
+        ]
 
         let roleKeys = [
             ("head_selection",      "head"),

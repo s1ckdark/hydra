@@ -41,6 +41,9 @@ type AIConfigRequest struct {
 	CapacityEstimation *providerConfigJSON `json:"capacity_estimation,omitempty"`
 	ChatInput          *providerConfigJSON `json:"chat_input,omitempty"`
 	AlwaysConsult      *bool               `json:"always_consult,omitempty"`
+	// Instruction is a user-defined system instruction for the agent. Pointer
+	// so omitting it preserves the current value rather than clearing it.
+	Instruction *string `json:"instruction,omitempty"`
 }
 
 // APIGetAIConfig returns the current AI configuration with API keys masked.
@@ -53,6 +56,7 @@ func (h *Handler) APIGetAIConfig(c echo.Context) error {
 		"capacity_estimation": maskedProviderPtr(ai.CapacityEstimation),
 		"chat_input":          maskedProviderPtr(ai.Chat),
 		"always_consult":      ai.AlwaysConsult,
+		"instruction":         ai.Instruction,
 	})
 }
 
@@ -96,6 +100,10 @@ func (h *Handler) APIPutAIConfig(c echo.Context) error {
 		TaskScheduling:     h.cfg.Agent.AI.TaskScheduling,
 		CapacityEstimation: h.cfg.Agent.AI.CapacityEstimation,
 		Chat:               h.cfg.Agent.AI.Chat,
+		Instruction:        h.cfg.Agent.AI.Instruction,
+	}
+	if req.Instruction != nil {
+		newAI.Instruction = *req.Instruction
 	}
 	if req.AlwaysConsult != nil {
 		newAI.AlwaysConsult = *req.AlwaysConsult
@@ -134,6 +142,11 @@ func (h *Handler) APIPutAIConfig(c echo.Context) error {
 
 	if h.aiArbiterRebuilder != nil {
 		h.aiArbiterRebuilder(newAI)
+	}
+	// Rebuild the chat agent too, so Ask AI / agent chat pick up the new
+	// provider live instead of staying on the boot-time LLM.
+	if h.agentRebuilder != nil {
+		h.agentRebuilder(newAI)
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"status": "updated"})
