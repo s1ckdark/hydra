@@ -38,6 +38,8 @@ struct ActionResult: Codable, Identifiable {
 
 struct AgentExecuteResponse: Codable {
     let results: [ActionResult]
+    /// Natural-language summary of the results, generated server-side.
+    let summary: String?
 }
 
 extension AgentPlan {

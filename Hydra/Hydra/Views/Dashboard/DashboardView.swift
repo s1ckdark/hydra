@@ -584,41 +584,47 @@ struct ActivityRow: View {
                 }
             }
 
-            // AI per-action results, collapsed by default.
+            // AI: natural-language summary — the agent explains what it did
+            // and found, above the raw terminal output.
+            if let summary = entry.summary, !summary.isEmpty {
+                Text(summary)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // AI per-action results rendered as terminal output, collapsed.
             if let results = entry.results, !results.isEmpty {
                 DisclosureGroup(isExpanded: $expanded) {
-                    ForEach(results) { r in
-                        HStack(alignment: .top, spacing: 4) {
-                            Image(systemName: r.status == "ok" ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                .font(.caption2)
-                                .foregroundStyle(r.status == "ok" ? .green : .red)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(r.type).font(.caption2.bold())
-                                Text(Self.resultText(r))
-                                    .font(.system(.caption2, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(results) { r in
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: r.status == "ok" ? "checkmark.circle.fill" : "xmark.circle.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(r.status == "ok" ? .green : .red)
+                                    Text("$ \(r.type)")
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+                                TerminalBlock(text: Self.resultText(r), isError: r.status != "ok")
                             }
                         }
                     }
+                    .padding(.top, 4)
                 } label: {
                     let ok = results.filter { $0.status == "ok" }.count
-                    Text("\(ok)/\(results.count) actions ok")
+                    Text("Terminal output · \(ok)/\(results.count) actions ok")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            // Direct command output.
+            // Direct command output as terminal text.
             if let out = entry.outputText, !out.isEmpty {
-                Text(out)
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(entry.status == .failed ? .red : .primary)
-                    .padding(6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.quaternary)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .lineLimit(expanded ? nil : 6)
+                TerminalBlock(text: out, isError: entry.status == .failed,
+                              lineLimit: expanded ? nil : 8)
                     .onTapGesture { expanded.toggle() }
             }
         }
@@ -652,6 +658,29 @@ struct ActivityRow: View {
         case is NSNull:         return "(ok)"
         default:                return String(describing: out)
         }
+    }
+}
+
+// MARK: - Terminal-style output block
+
+/// Monospace command/action output on a dark background — light green for
+/// normal output, red for errors — so AI/agent results read like a terminal.
+struct TerminalBlock: View {
+    let text: String
+    var isError: Bool = false
+    var lineLimit: Int? = nil
+
+    var body: some View {
+        Text(text.isEmpty ? "(no output)" : text)
+            .font(.system(.caption2, design: .monospaced))
+            .foregroundStyle(isError ? Color(red: 1.0, green: 0.45, blue: 0.45)
+                                     : Color(red: 0.55, green: 0.95, blue: 0.6))
+            .textSelection(.enabled)
+            .lineLimit(lineLimit)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
+            .background(Color.black.opacity(0.88))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }
 

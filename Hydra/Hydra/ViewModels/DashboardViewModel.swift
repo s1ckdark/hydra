@@ -29,6 +29,7 @@ struct ActivityEntry: Identifiable {
     var plan: AgentPlan?       // ai: the plan to execute
     var message: String?
     var results: [ActionResult]?  // ai: per-action results
+    var summary: String? = nil    // ai: natural-language result summary
     var outputText: String?       // user direct: command output
     let timestamp: Date
 
@@ -258,6 +259,7 @@ class DashboardViewModel: ObservableObject {
             let resp = try await api.executePlan(plan)
             update(id) { e in
                 e.results = resp.results
+                e.summary = resp.summary
                 e.status = resp.results.contains { $0.status != "ok" } ? .failed : .done
             }
         } catch {

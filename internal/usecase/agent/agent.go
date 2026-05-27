@@ -89,7 +89,42 @@ func (a *AgentUseCase) Execute(ctx context.Context, plan Plan) (ExecuteResponse,
 		}
 		results = append(results, a.actions.Run(ctx, action))
 	}
-	return ExecuteResponse{Results: results}, nil
+	return ExecuteResponse{Results: results, Summary: a.summarizeResults(ctx, plan, results)}, nil
+}
+
+// summarizeResults asks the LLM for a short natural-language explanation of
+// what the executed actions did and found, so the UI can show a human
+// summary above the raw terminal output. Empty when no LLM is configured or
+// the call fails — the raw results still stand on their own.
+func (a *AgentUseCase) summarizeResults(ctx context.Context, plan Plan, results []ActionResult) string {
+	if a.llm == nil || len(results) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("Intent: " + plan.Intent + "\n\nAction results:\n")
+	for i, r := range results {
+		fmt.Fprintf(&sb, "- action %d: %s [%s]\n", i+1, r.Type, r.Status)
+		if r.Error != "" {
+			sb.WriteString("  error: " + truncate(r.Error, 500) + "\n")
+		} else if len(r.Output) > 0 {
+			sb.WriteString("  output: " + truncate(string(r.Output), 1500) + "\n")
+		}
+	}
+	system := "You explain the results of executed actions to a user in 1-3 plain, " +
+		"natural-language sentences. State what was done and the key finding from the " +
+		"output. Be concise and factual. No markdown, no code fences."
+	out, err := a.llm.Complete(ctx, system, sb.String())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "…(truncated)"
 }
 
 // buildSystemPrompt assembles the catalog + current device snapshot the
