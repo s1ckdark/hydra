@@ -30,6 +30,11 @@ type ChatTurn struct {
 type ChatRequest struct {
 	History []ChatTurn `json:"history"`
 	Message string     `json:"message"`
+	// Instruction is an optional per-request system instruction sent by the
+	// client (the Settings field). When non-empty it overrides the
+	// config-stored default, so the instruction takes effect immediately
+	// without a separate Save & Push.
+	Instruction string `json:"instruction,omitempty"`
 }
 
 // ChatResponse is what /api/agent/chat returns. Exactly one of Plan is

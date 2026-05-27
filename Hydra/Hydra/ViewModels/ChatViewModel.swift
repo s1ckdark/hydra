@@ -32,7 +32,9 @@ final class ChatViewModel: ObservableObject {
         } else {
             outbound = trimmed
         }
-        let req = ChatRequest(history: history, message: outbound)
+        let instr = UserDefaults.standard.string(forKey: "aiInstruction")
+        let req = ChatRequest(history: history, message: outbound,
+                              instruction: (instr?.isEmpty == false) ? instr : nil)
         do {
             let resp = try await api.chat(req)
             let role = resp.type == "plan" ? "assistant_plan" : "assistant_ask"

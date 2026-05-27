@@ -39,7 +39,11 @@ func (a *AgentUseCase) Chat(ctx context.Context, req ChatRequest) (ChatResponse,
 	if a.llm == nil {
 		return ChatResponse{}, fmt.Errorf("chat agent: no LLM configured")
 	}
-	system := a.buildSystemPrompt(ctx)
+	instruction := req.Instruction
+	if instruction == "" {
+		instruction = a.instruction
+	}
+	system := a.buildSystemPrompt(ctx, instruction)
 	prompt := a.buildUserPrompt(req)
 	resp, err := AskOnce(ctx, a.llm, system, prompt)
 	if err != nil {
@@ -135,7 +139,7 @@ func truncate(s string, max int) string {
 // buildSystemPrompt assembles the catalog + current device snapshot the
 // LLM uses to ground its replies. Kept inside the agent package so all
 // prompt evolution happens in one place.
-func (a *AgentUseCase) buildSystemPrompt(ctx context.Context) string {
+func (a *AgentUseCase) buildSystemPrompt(ctx context.Context, instruction string) string {
 	var sb strings.Builder
 	sb.WriteString("You are Hydra's orchestration assistant. Reply with a single JSON object: {\"type\":\"ask\"|\"plan\",\"message\":\"...\",\"plan\":{...}}.\n")
 	sb.WriteString("Use type=\"ask\" for a clarifying question (no plan). Use type=\"plan\" when the user wants an action; populate plan.intent and plan.actions.\n")
@@ -161,8 +165,8 @@ func (a *AgentUseCase) buildSystemPrompt(ctx context.Context) string {
 			}
 		}
 	}
-	if a.instruction != "" {
-		sb.WriteString("\nAdditional user instructions (follow these unless they conflict with safety):\n" + a.instruction + "\n")
+	if instruction != "" {
+		sb.WriteString("\nAdditional user instructions (follow these unless they conflict with safety):\n" + instruction + "\n")
 	}
 	return sb.String()
 }

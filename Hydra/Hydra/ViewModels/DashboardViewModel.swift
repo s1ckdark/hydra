@@ -252,7 +252,10 @@ class DashboardViewModel: ObservableObject {
         defer { agentBusy = false }
 
         do {
-            let resp = try await api.chat(ChatRequest(history: [], message: message))
+            let instr = UserDefaults.standard.string(forKey: "aiInstruction")
+            let resp = try await api.chat(ChatRequest(
+                history: [], message: message,
+                instruction: (instr?.isEmpty == false) ? instr : nil))
             if resp.type == "plan", let plan = resp.plan {
                 update(id) { e in e.plan = plan; e.planIntent = plan.intent; e.message = resp.message }
                 // For AI plans the planner already judges safety (it won't
