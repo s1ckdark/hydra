@@ -38,6 +38,7 @@ struct HydraApp: App {
                     MetricsReporter.shared.start(via: APIClient.shared)
                     #endif
                 }
+                .appAppearance()
         }
         .defaultSize(width: 1000, height: 700)
         .commands {
@@ -89,18 +90,23 @@ struct HydraApp: App {
                 .environmentObject(chatVM)
                 .environmentObject(appState)
                 .frame(minWidth: 600, minHeight: 500)
+                .appAppearance()
         }
         .defaultSize(width: 720, height: 600)
 
         Settings {
             SettingsView()
+                .appAppearance()
         }
 
-        MenuBarExtra("GPU Orch", systemImage: "server.rack") {
+        // Menu-bar glyph: connected nodes evoke Hydra's "many heads" — a mesh
+        // of coordinated machines — rather than a literal server rack.
+        MenuBarExtra("GPU Orch", systemImage: "point.3.connected.trianglepath.dotted") {
             MenuBarView()
                 .environmentObject(dashboardVM)
                 .environmentObject(chatVM)
                 .environmentObject(appState)
+                .appAppearance()
         }
         .menuBarExtraStyle(.window)
         #endif

@@ -97,8 +97,28 @@ chmod +x "$SERVER_BIN"
 # touch the bundle so Launch Services re-reads it on next open
 touch "$APP"
 
-echo "[6/7] ad-hoc code sign"
-codesign --force --deep --sign - "$APP" >/dev/null
+# Code-signing identity. A STABLE identity (e.g. "Apple Development: …") keeps
+# the app's designated requirement constant across rebuilds, so macOS Keychain
+# "Always Allow" grants persist instead of re-prompting on every build. Ad-hoc
+# ("-") signing changes the cdhash each build, which invalidates those grants.
+#
+# Resolution order:
+#   1. $CODESIGN_IDENTITY if exported (full name or SHA-1 hash)
+#   2. first "Apple Development" / "Developer ID Application" identity found
+#   3. ad-hoc ("-") fallback when no real identity exists (CI, fresh checkout)
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
+if [[ -z "$CODESIGN_IDENTITY" ]]; then
+    CODESIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+        | awk -F'"' '/Apple Development|Developer ID Application/ {print $2; exit}')"
+fi
+[[ -z "$CODESIGN_IDENTITY" ]] && CODESIGN_IDENTITY="-"
+
+if [[ "$CODESIGN_IDENTITY" == "-" ]]; then
+    echo "[6/7] ad-hoc code sign (no stable identity — Keychain re-prompts each build)"
+else
+    echo "[6/7] code sign: $CODESIGN_IDENTITY"
+fi
+codesign --force --deep --sign "$CODESIGN_IDENTITY" "$APP" >/dev/null
 
 echo "[7/7] done"
 echo
