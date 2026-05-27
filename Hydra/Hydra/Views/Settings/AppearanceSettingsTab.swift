@@ -42,24 +42,22 @@ enum AppFontDesign: String, CaseIterable, Identifiable {
     }
 }
 
-enum AppFontSize: String, CaseIterable, Identifiable {
-    case small, medium, large, xlarge
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .small:  return "Small"
-        case .medium: return "Default"
-        case .large:  return "Large"
-        case .xlarge: return "X-Large"
-        }
-    }
-    var dynamicTypeSize: DynamicTypeSize {
-        switch self {
-        case .small:  return .small
-        case .medium: return .medium
-        case .large:  return .large
-        case .xlarge: return .xLarge
-        }
+/// Global text-scale percentages. The app's text uses Dynamic Type styles,
+/// which scale app-wide via `dynamicTypeSize`. SwiftUI takes size categories
+/// (not arbitrary floats), so each percent maps to the nearest category — a
+/// percentage feel without touching every `.font(...)` call.
+let appFontScaleOptions = [80, 90, 100, 110, 125, 150]
+let appFontScaleDefault = 100
+
+func appDynamicTypeSize(forScalePercent p: Int) -> DynamicTypeSize {
+    switch p {
+    case ..<85:     return .xSmall
+    case 85..<95:   return .small
+    case 95..<107:  return .medium
+    case 107..<118: return .large
+    case 118..<138: return .xLarge
+    case 138..<170: return .xxLarge
+    default:        return .xxxLarge
     }
 }
 
@@ -71,12 +69,12 @@ enum AppFontSize: String, CaseIterable, Identifiable {
 struct AppearanceModifier: ViewModifier {
     @AppStorage("appTheme") private var theme = AppTheme.system.rawValue
     @AppStorage("appFontDesign") private var fontDesign = AppFontDesign.standard.rawValue
-    @AppStorage("appFontSize") private var fontSize = AppFontSize.medium.rawValue
+    @AppStorage("appFontScale") private var fontScale = appFontScaleDefault
 
     func body(content: Content) -> some View {
         content
             .fontDesign((AppFontDesign(rawValue: fontDesign) ?? .standard).design)
-            .dynamicTypeSize((AppFontSize(rawValue: fontSize) ?? .medium).dynamicTypeSize)
+            .dynamicTypeSize(appDynamicTypeSize(forScalePercent: fontScale))
             .preferredColorScheme((AppTheme(rawValue: theme) ?? .system).colorScheme)
     }
 }
@@ -92,7 +90,7 @@ extension View {
 struct AppearanceSettingsTab: View {
     @AppStorage("appTheme") private var theme = AppTheme.system.rawValue
     @AppStorage("appFontDesign") private var fontDesign = AppFontDesign.standard.rawValue
-    @AppStorage("appFontSize") private var fontSize = AppFontSize.medium.rawValue
+    @AppStorage("appFontScale") private var fontScale = appFontScaleDefault
 
     var body: some View {
         Form {
@@ -109,8 +107,8 @@ struct AppearanceSettingsTab: View {
                 Picker("Font", selection: $fontDesign) {
                     ForEach(AppFontDesign.allCases) { Text($0.label).tag($0.rawValue) }
                 }
-                Picker("Text size", selection: $fontSize) {
-                    ForEach(AppFontSize.allCases) { Text($0.label).tag($0.rawValue) }
+                Picker("Text size", selection: $fontScale) {
+                    ForEach(appFontScaleOptions, id: \.self) { Text("\($0)%").tag($0) }
                 }
                 .pickerStyle(.segmented)
             } header: {
