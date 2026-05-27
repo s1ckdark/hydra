@@ -208,6 +208,8 @@ struct DeviceDetailView: View {
     @State private var command = ""
     @State private var result: TaskResult?
     @State private var isExecuting = false
+    @State private var isGeneratingCommand = false
+    @State private var commandGenError: String?
     @State private var gpuStatus: GPUNodeStatus?
     @State private var metrics: DeviceMetrics?
     @State private var pollTask: Task<Void, Never>?
@@ -467,16 +469,35 @@ struct DeviceDetailView: View {
                 if device.isOnline && device.sshEnabled {
                     GroupBox("Execute Command") {
                         VStack(alignment: .leading, spacing: 8) {
-                            TextField("Command...", text: $command)
+                            TextField("Command, or describe it for AI…", text: $command)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(.body, design: .monospaced))
 
-                            Button(action: {
-                                Task { await executeCommand() }
-                            }) {
-                                Label(isExecuting ? "Running..." : "Execute", systemImage: "play.fill")
+                            HStack {
+                                // AI: natural language → a shell command for
+                                // THIS device's OS. Fills the field for review;
+                                // the user still runs it explicitly with Execute.
+                                Button {
+                                    Task { await generateCommand() }
+                                } label: {
+                                    Label(isGeneratingCommand ? "Generating…" : "Ask AI",
+                                          systemImage: isGeneratingCommand ? "hourglass" : "sparkles")
+                                }
+                                .disabled(command.isEmpty || isGeneratingCommand || isExecuting)
+
+                                Button(action: {
+                                    Task { await executeCommand() }
+                                }) {
+                                    Label(isExecuting ? "Running..." : "Execute", systemImage: "play.fill")
+                                }
+                                .disabled(command.isEmpty || isExecuting || isGeneratingCommand)
                             }
-                            .disabled(command.isEmpty || isExecuting)
+
+                            if let genErr = commandGenError {
+                                Label(genErr, systemImage: "sparkles")
+                                    .font(.caption2)
+                                    .foregroundStyle(.orange)
+                            }
 
                             if let result = result {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -913,6 +934,30 @@ struct DeviceDetailView: View {
             gpuStatus = response.nodes.first { $0.deviceId == device.id }
         } catch {
             // silently retry next cycle
+        }
+    }
+
+    /// Natural-language → shell command for this device, via the shared
+    /// /api/agent/command endpoint. Scopes the request to the device's OS
+    /// and name, then fills the command field for the user to review.
+    private func generateCommand() async {
+        let prompt = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        isGeneratingCommand = true
+        commandGenError = nil
+        defer { isGeneratingCommand = false }
+        do {
+            let resp = try await APIClient.shared.generateCommand(
+                prompt: prompt, os: device.os, deviceName: device.shortName)
+            if resp.refused {
+                commandGenError = "AI declined: \(resp.reason ?? "unsafe request")"
+            } else if resp.command.isEmpty {
+                commandGenError = "AI returned an empty command."
+            } else {
+                command = resp.command
+            }
+        } catch {
+            commandGenError = error.localizedDescription
         }
     }
 
