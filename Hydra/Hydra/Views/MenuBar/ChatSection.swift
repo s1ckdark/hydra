@@ -2,13 +2,13 @@ import SwiftUI
 
 /// Menubar chat surface. Read-only: status, last result, and a compact
 /// PlanCard for pending-plan approval. The actual conversation lives in
-/// the dashboard's Chat tab; the "Open Chat →" button routes there.
+/// the dashboard's chat drawer; the "Open Chat →" button opens it.
 struct ChatSection: View {
     @EnvironmentObject var vm: ChatViewModel
     @EnvironmentObject var appState: AppState
 
     /// Called when the user wants to open the dashboard window with the
-    /// Chat tab active. Hosted by `MenuBarView`, which owns the AppKit
+    /// chat drawer open. Hosted by `MenuBarView`, which owns the AppKit
     /// activation dance.
     var onOpenChat: () -> Void = {}
 

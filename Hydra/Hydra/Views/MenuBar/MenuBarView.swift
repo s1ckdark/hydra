@@ -227,7 +227,7 @@ struct MenuBarView: View {
     /// tab. Sets the shared activeTab first so the TabView's selection
     /// binding picks it up the moment SwiftUI materialises the window.
     private func openChat() {
-        appState.activeTab = .chat
+        appState.isChatDrawerOpen = true
         openDashboardWindow()
     }
 

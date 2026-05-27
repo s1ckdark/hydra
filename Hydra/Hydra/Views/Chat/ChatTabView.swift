@@ -53,9 +53,6 @@ struct ChatTabView: View {
         }
         .padding(.bottom, 8)
         .onAppear { inputFocused = true }
-        .onChange(of: appState.activeTab) { _, tab in
-            if tab == .chat { inputFocused = true }
-        }
     }
 
     private var emptyState: some View {

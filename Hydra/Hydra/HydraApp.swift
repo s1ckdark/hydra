@@ -74,7 +74,23 @@ struct HydraApp: App {
                 }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
             }
+
+            CommandMenu("Chat") {
+                Button("Toggle Chat Drawer") {
+                    appState.isChatDrawerOpen.toggle()
+                }
+                .keyboardShortcut("/", modifiers: .command)
+            }
         }
+
+        WindowGroup(id: "chat-expanded") {
+            ChatTabView()
+                .environmentObject(dashboardVM)
+                .environmentObject(chatVM)
+                .environmentObject(appState)
+                .frame(minWidth: 600, minHeight: 500)
+        }
+        .defaultSize(width: 720, height: 600)
 
         Settings {
             SettingsView()
