@@ -136,6 +136,25 @@ func (uc *DeviceUseCase) GetCapabilities(deviceID string) []string {
 	return cp
 }
 
+// uniqueHostCount counts devices by their stable network identity (DNSName /
+// Name), so the same physical host registered under two IDs counts once. The
+// REST→CLI migration left orphan numeric-id rows alongside each host's new CLI
+// StableNodeID; a raw len() comparison in the shrink-defense below then saw the
+// clean 12-device fetch as a 50% shrink from the duplicated 24-entry cache and
+// rejected it forever. Comparing distinct hosts instead breaks that deadlock
+// while still catching a genuine partial response (real hosts missing).
+func uniqueHostCount(devices []*domain.Device) int {
+	seen := make(map[string]struct{}, len(devices))
+	for _, d := range devices {
+		key := d.Name
+		if key == "" {
+			key = d.ID
+		}
+		seen[key] = struct{}{}
+	}
+	return len(seen)
+}
+
 // ListDevices returns all devices, using cache if available
 func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]*domain.Device, error) {
 	if !forceRefresh {
@@ -186,8 +205,10 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 	// flicker each time Tailscale momentarily dropped half its devices.
 	// 25% allows a normal device removal (e.g., user retired one node)
 	// without false positives.
-	if len(prevCache) >= 4 && len(devices)*4 < len(prevCache)*3 {
-		log.Printf("[devices] tailscale returned only %d of %d known devices — keeping stale set", len(devices), len(prevCache))
+	freshHosts := uniqueHostCount(devices)
+	prevHosts := uniqueHostCount(prevCache)
+	if prevHosts >= 4 && freshHosts*4 < prevHosts*3 {
+		log.Printf("[devices] tailscale returned only %d of %d known hosts — keeping stale set", freshHosts, prevHosts)
 		uc.cacheMu.Lock()
 		uc.cachedDevices = prevCache
 		uc.cacheTime = time.Now() // refresh TTL so we don't re-hit broken Tailscale every minute
