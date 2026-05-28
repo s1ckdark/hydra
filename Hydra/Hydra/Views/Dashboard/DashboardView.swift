@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DashboardView: View {
     @EnvironmentObject var vm: DashboardViewModel
+    @EnvironmentObject var appState: AppState
 
     var body: some View {
         ScrollView {
@@ -45,6 +46,10 @@ struct DashboardView: View {
                         color: .orange
                     )
                 }
+
+                // At-a-glance device cards (online first). Tap to jump to the
+                // device's detail in the Devices tab.
+                DevicesOverviewSection(vm: vm)
 
                 HStack(spacing: 16) {
                     // Left column
@@ -730,5 +735,184 @@ struct SummaryCard: View {
         .background(.background)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
+    }
+}
+
+// MARK: - Devices overview (compact cards)
+
+/// Compact, at-a-glance device cards for the dashboard: status, OS, and GPU
+/// load (or IP). Online devices come first; tapping a card opens that device
+/// in the Devices tab. Reuses the dashboard's existing device + GPU data —
+/// no extra API calls.
+struct DevicesOverviewSection: View {
+    @ObservedObject var vm: DashboardViewModel
+    @EnvironmentObject var appState: AppState
+
+    /// Average live GPU utilization per device, from the monitor data.
+    private var utilByDevice: [String: Double] {
+        var map: [String: Double] = [:]
+        for node in vm.gpuNodes {
+            guard let gpus = node.gpus, !gpus.isEmpty else { continue }
+            map[node.deviceId] = gpus.reduce(0) { $0 + $1.utilizationPercent } / Double(gpus.count)
+        }
+        return map
+    }
+
+    /// Online devices first, then alphabetical by short name.
+    private var sortedDevices: [Device] {
+        vm.devices.sorted { a, b in
+            if a.isOnline != b.isOnline { return a.isOnline }
+            return a.shortName.localizedCaseInsensitiveCompare(b.shortName) == .orderedAscending
+        }
+    }
+
+    var body: some View {
+        GroupBox {
+            if vm.devices.isEmpty {
+                Text("No devices")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 40)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
+                    ForEach(sortedDevices) { device in
+                        DashboardDeviceCard(
+                            device: device,
+                            gpuUtil: utilByDevice[device.id],
+                            metrics: vm.metricsByDevice[device.id]
+                        )
+                        .onTapGesture {
+                            appState.selectedDeviceId = device.id
+                            appState.activeTab = .devices
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label("Devices", systemImage: "desktopcomputer")
+        }
+    }
+}
+
+/// Rich device card. Header is fixed (status dot + name + OS); the body shows
+/// live CPU/RAM/GPU resource bars when metrics are available, and falls back
+/// to a single info line (GPU model or Tailscale IP) when they aren't yet.
+struct DashboardDeviceCard: View {
+    let device: Device
+    let gpuUtil: Double?
+    let metrics: DeviceMetrics?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Header — kept identical across density modes so the card's
+            // "at a glance" signal (status + name + OS) doesn't shift.
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(device.isOnline ? .green : .red)
+                    .frame(width: 7, height: 7)
+                Text(device.shortName)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Text(device.os)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(.quaternary)
+                    .clipShape(Capsule())
+            }
+
+            // Rich body — show CPU/RAM/GPU resource bars when we have a
+            // metrics snapshot for this device. Before the first poll lands
+            // (or for devices whose SSH probe is failing), keep the older
+            // single-line summary so the card never collapses.
+            if let m = metrics, !m.hasError {
+                richBody(metrics: m)
+            } else if device.hasGpu {
+                fallbackGPULine()
+            } else {
+                Text(device.tailscaleIp.isEmpty ? device.os : device.tailscaleIp)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(.quaternary, lineWidth: 1)
+        )
+        .opacity(device.isOnline ? 1 : 0.5)
+        .contentShape(Rectangle())
+        .help(device.isOnline ? "Open \(device.shortName)" : "\(device.shortName) — offline")
+    }
+
+    /// Resource bars (CPU + RAM, plus GPU when present). Three rows of the
+    /// same shape — short label, bar, %. Mirrors the thresholds used in
+    /// DeviceDetailView so a glance at the dashboard reads the same as the
+    /// detail page (>80 red, >50 orange, else green; RAM uses blue as its
+    /// nominal tint to stay visually distinct from CPU/GPU load).
+    @ViewBuilder
+    private func richBody(metrics m: DeviceMetrics) -> some View {
+        resourceRow(label: "CPU", value: m.cpu.usagePercent,
+                    color: thresholdColor(m.cpu.usagePercent))
+        resourceRow(label: "RAM", value: m.memory.usagePercent,
+                    color: m.memory.usagePercent > 80 ? .red
+                         : m.memory.usagePercent > 50 ? .orange : .blue)
+        if device.hasGpu, let util = gpuUtil {
+            resourceRow(label: "GPU", value: util, color: thresholdColor(util))
+        }
+    }
+
+    /// One resource row: short label, capped 0–100 progress bar, monospaced %.
+    /// Label/value columns are fixed so all three rows align under any locale.
+    private func resourceRow(label: String, value: Double, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, alignment: .leading)
+            ProgressView(value: min(max(value, 0), 100), total: 100)
+                .tint(color)
+            Text("\(Int(value))%")
+                .font(.system(.caption2, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 34, alignment: .trailing)
+        }
+    }
+
+    /// Shared CPU/GPU load threshold — matches DeviceDetailView so the
+    /// dashboard's color cue is the same one the detail page uses.
+    private func thresholdColor(_ v: Double) -> Color {
+        v > 80 ? .red : v > 50 ? .orange : .green
+    }
+
+    /// Pre-metrics fallback for GPU nodes: model + util bar so the card has
+    /// a useful first frame before the snapshot lands.
+    @ViewBuilder
+    private func fallbackGPULine() -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "gpu")
+                .font(.caption2)
+                .foregroundStyle(.purple)
+            Text("\(device.gpuCount)x \(device.gpuModel ?? "GPU")")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        if let util = gpuUtil {
+            HStack(spacing: 6) {
+                ProgressView(value: min(max(util, 0), 100), total: 100)
+                    .tint(util > 80 ? .red : util > 50 ? .orange : .green)
+                Text("\(Int(util))%")
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, alignment: .trailing)
+            }
+        }
     }
 }

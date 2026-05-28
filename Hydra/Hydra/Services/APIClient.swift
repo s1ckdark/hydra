@@ -56,6 +56,18 @@ actor APIClient {
         return try await get("/api/devices/\(id)/metrics")
     }
 
+    /// Bulk metrics for every device the server is tracking, keyed by device
+    /// ID. Server already maintains this as an in-memory snapshot, so one
+    /// call replaces N per-device /metrics fetches on the dashboard poll.
+    struct MetricsSnapshotResponse: Codable {
+        let devices: [String: DeviceMetrics]
+        let collectedAt: Date
+    }
+
+    func getMetricsSnapshot() async throws -> MetricsSnapshotResponse {
+        return try await get("/api/monitor/snapshot")
+    }
+
     func executeOnDevice(id: String, command: String, timeout: Int = 30) async throws -> TaskResult {
         return try await post("/api/devices/\(id)/execute", body: ExecuteRequest(command: command, timeout_seconds: timeout))
     }

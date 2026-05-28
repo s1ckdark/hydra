@@ -50,6 +50,10 @@ class DashboardViewModel: ObservableObject {
     @Published var devices: [Device] = []
     @Published var orchs: [Orch] = []
     @Published var gpuNodes: [GPUNodeStatus] = []
+    /// Per-device CPU/RAM/disk snapshot keyed by device ID. Populated each
+    /// poll cycle via /api/monitor/snapshot so dashboard cards can render
+    /// without per-device fan-out.
+    @Published var metricsByDevice: [String: DeviceMetrics] = [:]
     @Published var tasks: [NagaTask] = []
     @Published var isLoading = false
     @Published var error: String?
@@ -148,6 +152,7 @@ class DashboardViewModel: ObservableObject {
         }
         // Non-blocking secondary fetches
         await loadGPU()
+        await loadMetrics()
         await loadTasks()
         lastRefresh = Date()
         isLoading = false
@@ -358,6 +363,19 @@ class DashboardViewModel: ObservableObject {
             gpuNodes = response.nodes
         } catch {
             // GPU monitoring is optional
+        }
+    }
+
+    /// Pulls the bulk metrics snapshot (CPU/RAM/disk for every tracked
+    /// device) so dashboard cards can show a live resource summary without
+    /// fanning out per-device. Failures are silent — cards just fall back
+    /// to the lighter device-only layout when no metrics are present.
+    private func loadMetrics() async {
+        do {
+            let snap = try await api.getMetricsSnapshot()
+            metricsByDevice = snap.devices
+        } catch {
+            // Metrics snapshot is optional
         }
     }
 
