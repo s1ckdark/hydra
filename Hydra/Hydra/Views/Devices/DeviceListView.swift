@@ -450,6 +450,40 @@ struct DeviceDetailView: View {
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
+
+                                    // Processes occupying this GPU (nvidia-smi
+                                    // compute-apps): who is holding the VRAM.
+                                    if let procs = gpu.processes, !procs.isEmpty {
+                                        Divider()
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            HStack {
+                                                Label("Processes", systemImage: "cpu")
+                                                    .font(.caption2.bold())
+                                                    .foregroundStyle(.secondary)
+                                                Spacer()
+                                                Text("\(procs.count)")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.tertiary)
+                                            }
+                                            ForEach(procs) { p in
+                                                HStack(spacing: 6) {
+                                                    Text("\(p.pid)")
+                                                        .font(.system(.caption2, design: .monospaced))
+                                                        .foregroundStyle(.tertiary)
+                                                        .frame(width: 56, alignment: .leading)
+                                                    Text(p.name)
+                                                        .font(.caption2)
+                                                        .lineLimit(1)
+                                                        .truncationMode(.middle)
+                                                    Spacer(minLength: 6)
+                                                    Text(p.vramText)
+                                                        .font(.system(.caption2, design: .monospaced))
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                            }
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
                                 }
                             }
                         } else if let status = gpuStatus, status.hasError {

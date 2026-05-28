@@ -1928,7 +1928,15 @@ func (h *Handler) APIGPUMonitor(c echo.Context) error {
 			sshCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			output, err := h.executor.Execute(sshCtx, dev, "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit --format=csv,noheader,nounits")
+			// One SSH round-trip: GPU metrics (with uuid) + the compute-app
+			// process list, separated by a sentinel. uuid lets us map each
+			// process back to its GPU. The apps query's stderr ("no running
+			// processes found") is dropped so it never pollutes the payload.
+			const appsSentinel = "@@HYDRA_GPU_APPS@@"
+			cmd := "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit,uuid --format=csv,noheader,nounits" +
+				"; echo '" + appsSentinel + "'; " +
+				"nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null"
+			output, err := h.executor.Execute(sshCtx, dev, cmd)
 			r := GPUNodeStatus{
 				DeviceID:   dev.ID,
 				DeviceName: dev.GetDisplayName(),
@@ -1939,10 +1947,12 @@ func (h *Handler) APIGPUMonitor(c echo.Context) error {
 			if err != nil {
 				r.Error = err.Error()
 			} else {
-				gpus, parseErr := domain.ParseNvidiaSmiOutput(output)
+				gpuPart, appsPart, _ := strings.Cut(output, appsSentinel)
+				gpus, parseErr := domain.ParseNvidiaSmiOutput(gpuPart)
 				if parseErr != nil {
 					r.Error = parseErr.Error()
 				} else {
+					domain.AttachComputeApps(gpus, appsPart)
 					r.GPUs = gpus
 				}
 			}

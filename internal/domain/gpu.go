@@ -17,6 +17,20 @@ type GPUInfo struct {
 	TemperatureC       int     `json:"temperatureC"`
 	PowerDrawW         float64 `json:"powerDrawW"`
 	PowerLimitW        float64 `json:"powerLimitW"`
+	// UUID maps compute-app processes back to their GPU. Internal only —
+	// not exposed in the API payload.
+	UUID string `json:"-"`
+	// Processes lists the compute apps occupying this GPU. Populated by
+	// AttachComputeApps; omitted when none are running.
+	Processes []GPUProcess `json:"processes,omitempty"`
+}
+
+// GPUProcess is a single compute process occupying a GPU, from
+// `nvidia-smi --query-compute-apps`.
+type GPUProcess struct {
+	PID          int    `json:"pid"`
+	Name         string `json:"name"`
+	UsedMemoryMB int    `json:"usedMemoryMB"`
 }
 
 // MemoryUsagePercent returns memory usage as a percentage
@@ -89,8 +103,10 @@ func ParseNvidiaSmiOutput(raw string) ([]GPUInfo, error) {
 		}
 
 		parts := strings.Split(line, ", ")
-		if len(parts) != 8 {
-			return nil, fmt.Errorf("expected 8 fields, got %d: %q", len(parts), line)
+		// 8 fields = base query; 9 = base + uuid (used to map processes to
+		// this GPU). Accept both so callers that omit uuid keep working.
+		if len(parts) != 8 && len(parts) != 9 {
+			return nil, fmt.Errorf("expected 8 or 9 fields, got %d: %q", len(parts), line)
 		}
 
 		index, err := strconv.Atoi(strings.TrimSpace(parts[0]))
@@ -130,6 +146,11 @@ func ParseNvidiaSmiOutput(raw string) ([]GPUInfo, error) {
 			return nil, fmt.Errorf("invalid power.limit %q: %w", parts[7], err)
 		}
 
+		var uuid string
+		if len(parts) == 9 {
+			uuid = strings.TrimSpace(parts[8])
+		}
+
 		gpus = append(gpus, GPUInfo{
 			Index:              index,
 			Name:               name,
@@ -139,8 +160,69 @@ func ParseNvidiaSmiOutput(raw string) ([]GPUInfo, error) {
 			TemperatureC:       temp,
 			PowerDrawW:         powerDraw,
 			PowerLimitW:        powerLimit,
+			UUID:               uuid,
 		})
 	}
 
 	return gpus, nil
+}
+
+// AttachComputeApps parses `nvidia-smi --query-compute-apps=gpu_uuid,pid,
+// process_name,used_memory --format=csv,noheader,nounits` output and attaches
+// each process to its owning GPU (matched by UUID). It is tolerant: malformed
+// or unsupported rows ([N/A], [Not Supported]) are skipped rather than failing,
+// since "no running processes" is a normal, common state.
+func AttachComputeApps(gpus []GPUInfo, raw string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(gpus) == 0 {
+		return
+	}
+
+	// Index GPUs by UUID for O(1) lookup.
+	byUUID := make(map[string]int, len(gpus))
+	for i := range gpus {
+		if gpus[i].UUID != "" {
+			byUUID[gpus[i].UUID] = i
+		}
+	}
+
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Fields: gpu_uuid, pid, process_name, used_memory. process_name may
+		// itself contain ", " (rare), so split off the known head/tail and
+		// rejoin the middle as the name.
+		parts := strings.Split(line, ", ")
+		if len(parts) < 4 {
+			continue
+		}
+		uuid := strings.TrimSpace(parts[0])
+		pid, err := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil {
+			continue
+		}
+		mem, err := strconv.Atoi(strings.TrimSpace(parts[len(parts)-1]))
+		if err != nil {
+			mem = 0 // [N/A] / [Not Supported] — keep the process, unknown VRAM
+		}
+		name := strings.Join(parts[2:len(parts)-1], ", ")
+
+		gi, ok := byUUID[uuid]
+		if !ok {
+			// Single-GPU nodes (or drivers that omit uuid) can't be mapped by
+			// UUID; attach to GPU 0 so the data isn't silently dropped.
+			if len(gpus) == 1 {
+				gi = 0
+			} else {
+				continue
+			}
+		}
+		gpus[gi].Processes = append(gpus[gi].Processes, GPUProcess{
+			PID:          pid,
+			Name:         name,
+			UsedMemoryMB: mem,
+		})
+	}
 }
