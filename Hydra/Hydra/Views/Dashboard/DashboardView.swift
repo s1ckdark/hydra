@@ -837,9 +837,15 @@ struct DashboardDeviceCard: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+
+            // Footer row — uptime when known, pushed to the bottom by the
+            // Spacer above it so every card's footer aligns at the same
+            // vertical position regardless of body density.
+            Spacer(minLength: 0)
+            uptimeFooter()
         }
         .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
         .background(.background)
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .overlay(
@@ -849,6 +855,40 @@ struct DashboardDeviceCard: View {
         .opacity(device.isOnline ? 1 : 0.5)
         .contentShape(Rectangle())
         .help(device.isOnline ? "Open \(device.shortName)" : "\(device.shortName) — offline")
+    }
+
+    /// One-line footer with the host's uptime. Shown only when the metrics
+    /// snapshot carries a value; otherwise an empty placeholder keeps the
+    /// card's vertical rhythm consistent across cards.
+    @ViewBuilder
+    private func uptimeFooter() -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "clock")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            if let secs = metrics?.uptimeSeconds, secs > 0 {
+                Text("up \(Self.formatUptime(seconds: secs))")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            } else {
+                Text("uptime —")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// "12d 5h" / "5h 23m" / "23m" — coarsest two units, so the footer fits
+    /// in the narrowest card width without truncating.
+    static func formatUptime(seconds s: Int64) -> String {
+        let days = s / 86400
+        let hours = (s % 86400) / 3600
+        let mins = (s % 3600) / 60
+        if days > 0 { return "\(days)d \(hours)h" }
+        if hours > 0 { return "\(hours)h \(mins)m" }
+        return "\(mins)m"
     }
 
     /// Resource bars (CPU + RAM, plus GPU when present). Three rows of the

@@ -79,6 +79,21 @@ func (c *Collector) CollectMetrics(ctx context.Context, device *domain.Device) (
 		mu.Unlock()
 	}()
 
+	// Uptime — best-effort, doesn't escalate to metrics.Error since the
+	// host is still usable without it and we don't want one missing field
+	// to mark the whole snapshot as failed.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		secs, err := c.collectUptime(ctx, device)
+		if err != nil {
+			return
+		}
+		mu.Lock()
+		metrics.UptimeSeconds = secs
+		mu.Unlock()
+	}()
+
 	wg.Wait()
 
 	if len(errs) > 0 {
@@ -376,6 +391,27 @@ func (c *Collector) collectDisk(ctx context.Context, device *domain.Device) (*do
 	}
 
 	return disk, nil
+}
+
+// collectUptime returns the host's uptime in seconds. Linux reads
+// /proc/uptime (first field is uptime as a float); macOS doesn't expose
+// /proc/uptime, so we compute it from sysctl kern.boottime
+// ("{ sec = N, usec = M } ...") minus the current epoch.
+func (c *Collector) collectUptime(ctx context.Context, device *domain.Device) (int64, error) {
+	const cmd = `awk '{print int($1)}' /proc/uptime 2>/dev/null || ` +
+		`echo $(($(date +%s)-$(sysctl -n kern.boottime 2>/dev/null | awk '{print $4}' | tr -d ',')))`
+	output, err := c.executor.Execute(ctx, device, cmd)
+	if err != nil {
+		return 0, err
+	}
+	secs, err := strconv.ParseInt(strings.TrimSpace(output), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse uptime %q: %w", output, err)
+	}
+	if secs < 0 {
+		return 0, nil
+	}
+	return secs, nil
 }
 
 // CheckRayInstalled checks if Ray is installed on a device

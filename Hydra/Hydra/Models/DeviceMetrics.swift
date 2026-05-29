@@ -5,6 +5,9 @@ struct DeviceMetrics: Codable {
     let cpu: CPUMetrics
     let memory: MemoryMetrics
     let disk: DiskMetrics
+    /// Host uptime in seconds since boot. Optional — older servers and
+    /// self-reporting agents that haven't been updated yet omit it.
+    let uptimeSeconds: Int64?
     let collectedAt: Date
     let error: String?
 

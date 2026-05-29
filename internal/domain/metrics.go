@@ -101,8 +101,12 @@ type DeviceMetrics struct {
 	GPU         *GPUMetrics     `json:"gpu,omitempty"`
 	Network     *NetworkMetrics `json:"network,omitempty"`
 	Source      MetricsSource   `json:"source,omitempty"`   // NEW
-	CollectedAt time.Time       `json:"collectedAt"`
-	Error       string          `json:"error,omitempty"`
+	// UptimeSeconds is the host's uptime in seconds since boot. Optional
+	// (omitempty) — older collectors and agent payloads that don't set it
+	// keep round-tripping cleanly.
+	UptimeSeconds int64     `json:"uptimeSeconds,omitempty"`
+	CollectedAt   time.Time `json:"collectedAt"`
+	Error         string    `json:"error,omitempty"`
 }
 
 // HasError returns true if there was an error collecting metrics
