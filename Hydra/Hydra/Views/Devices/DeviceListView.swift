@@ -451,6 +451,49 @@ struct DeviceDetailView: View {
                                             .foregroundStyle(.secondary)
                                     }
 
+                                    // Extended nvidia-smi detail strip:
+                                    // clocks, P-state, PCIe link, fan speed.
+                                    // Each item renders only when reported,
+                                    // so cards/drivers that don't expose a
+                                    // counter (e.g., fanless Tesla) silently
+                                    // drop their badge instead of showing
+                                    // "N/A". The whole strip collapses if
+                                    // none of the extended fields arrived
+                                    // (older hydra-server, etc.).
+                                    if gpu.clocksText != nil || (gpu.pstate?.isEmpty == false)
+                                        || gpu.pcieText != nil || (gpu.fanSpeedPercent ?? 0) > 0 {
+                                        HStack(spacing: 10) {
+                                            if let clocks = gpu.clocksText {
+                                                Label(clocks, systemImage: "gauge.medium")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .help("Current SM / memory clock")
+                                            }
+                                            if let p = gpu.pstate, !p.isEmpty {
+                                                Text(p)
+                                                    .font(.system(.caption2, design: .monospaced).weight(.semibold))
+                                                    .padding(.horizontal, 5)
+                                                    .padding(.vertical, 1)
+                                                    .background(.quaternary)
+                                                    .clipShape(Capsule())
+                                                    .help("Performance state — P0 is max, P12+ is idle")
+                                            }
+                                            if let pcie = gpu.pcieText {
+                                                Label(pcie, systemImage: "cable.connector")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .help("Current PCIe link")
+                                            }
+                                            if let fan = gpu.fanSpeedPercent, fan > 0 {
+                                                Label("\(fan)%", systemImage: "fan")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(fan > 80 ? .orange : .secondary)
+                                                    .help("Fan speed")
+                                            }
+                                            Spacer()
+                                        }
+                                    }
+
                                     // Processes occupying this GPU (nvidia-smi
                                     // compute-apps): who is holding the VRAM.
                                     if let procs = gpu.processes, !procs.isEmpty {

@@ -1928,12 +1928,15 @@ func (h *Handler) APIGPUMonitor(c echo.Context) error {
 			sshCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			// One SSH round-trip: GPU metrics (with uuid) + the compute-app
-			// process list, separated by a sentinel. uuid lets us map each
-			// process back to its GPU. The apps query's stderr ("no running
-			// processes found") is dropped so it never pollutes the payload.
+			// One SSH round-trip: extended GPU metrics + the compute-app
+			// process list, separated by a sentinel. 15-field query carries
+			// uuid (for mapping processes back to GPUs) plus the extended
+			// counters surfaced in the GPU live-status panel — clocks
+			// (SM/Mem), fan, pstate, PCIe gen/width. The apps query's stderr
+			// ("no running processes found") is dropped so it never
+			// pollutes the payload.
 			const appsSentinel = "@@HYDRA_GPU_APPS@@"
-			cmd := "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit,uuid --format=csv,noheader,nounits" +
+			cmd := "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit,uuid,clocks.sm,clocks.mem,fan.speed,pstate,pcie.link.gen.current,pcie.link.width.current --format=csv,noheader,nounits" +
 				"; echo '" + appsSentinel + "'; " +
 				"nvidia-smi --query-compute-apps=gpu_uuid,pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null"
 			output, err := h.executor.Execute(sshCtx, dev, cmd)

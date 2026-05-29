@@ -23,6 +23,14 @@ type GPUInfo struct {
 	// Processes lists the compute apps occupying this GPU. Populated by
 	// AttachComputeApps; omitted when none are running.
 	Processes []GPUProcess `json:"processes,omitempty"`
+	// Extended nvidia-smi fields — populated only by the 15-field query.
+	// All omitempty so 8/9-field legacy callers keep producing clean JSON.
+	ClockSMMHz      int    `json:"clockSMMHz,omitempty"`      // current SM/graphics clock
+	ClockMemoryMHz  int    `json:"clockMemoryMHz,omitempty"`  // current memory clock
+	FanSpeedPercent int    `json:"fanSpeedPercent,omitempty"` // 0 when fanless (Tesla etc.)
+	PState          string `json:"pstate,omitempty"`          // "P0".."P15", P0 = max perf
+	PCIeLinkGen     int    `json:"pcieLinkGen,omitempty"`     // current PCIe generation
+	PCIeLinkWidth   int    `json:"pcieLinkWidth,omitempty"`   // current PCIe lane width
 }
 
 // GPUProcess is a single compute process occupying a GPU, from
@@ -103,10 +111,12 @@ func ParseNvidiaSmiOutput(raw string) ([]GPUInfo, error) {
 		}
 
 		parts := strings.Split(line, ", ")
-		// 8 fields = base query; 9 = base + uuid (used to map processes to
-		// this GPU). Accept both so callers that omit uuid keep working.
-		if len(parts) != 8 && len(parts) != 9 {
-			return nil, fmt.Errorf("expected 8 or 9 fields, got %d: %q", len(parts), line)
+		// Three accepted shapes, all back-compat:
+		//   8  = base query (index..power.limit) — legacy
+		//   9  = base + uuid (lets us map compute-app processes to GPUs)
+		//   15 = base + uuid + extended (clocks SM/Mem, fan, pstate, PCIe gen/width)
+		if len(parts) != 8 && len(parts) != 9 && len(parts) != 15 {
+			return nil, fmt.Errorf("expected 8, 9, or 15 fields, got %d: %q", len(parts), line)
 		}
 
 		index, err := strconv.Atoi(strings.TrimSpace(parts[0]))
@@ -147,11 +157,11 @@ func ParseNvidiaSmiOutput(raw string) ([]GPUInfo, error) {
 		}
 
 		var uuid string
-		if len(parts) == 9 {
+		if len(parts) >= 9 {
 			uuid = strings.TrimSpace(parts[8])
 		}
 
-		gpus = append(gpus, GPUInfo{
+		gpu := GPUInfo{
 			Index:              index,
 			Name:               name,
 			UtilizationPercent: utilization,
@@ -161,7 +171,23 @@ func ParseNvidiaSmiOutput(raw string) ([]GPUInfo, error) {
 			PowerDrawW:         powerDraw,
 			PowerLimitW:        powerLimit,
 			UUID:               uuid,
-		})
+		}
+
+		// Extended fields (15-field query). Each is tolerant: nvidia-smi
+		// emits "[N/A]" / "[Not Supported]" on cards that don't expose a
+		// given counter (e.g., Tesla data-center cards have no fan), which
+		// would fail strict int parsing. unsupportedOrInt collapses those
+		// to 0 so the rest of the row still parses.
+		if len(parts) == 15 {
+			gpu.ClockSMMHz = unsupportedOrInt(parts[9])
+			gpu.ClockMemoryMHz = unsupportedOrInt(parts[10])
+			gpu.FanSpeedPercent = unsupportedOrInt(parts[11])
+			gpu.PState = unsupportedOrString(parts[12])
+			gpu.PCIeLinkGen = unsupportedOrInt(parts[13])
+			gpu.PCIeLinkWidth = unsupportedOrInt(parts[14])
+		}
+
+		gpus = append(gpus, gpu)
 	}
 
 	return gpus, nil
@@ -225,4 +251,29 @@ func AttachComputeApps(gpus []GPUInfo, raw string) {
 			UsedMemoryMB: mem,
 		})
 	}
+}
+
+// unsupportedOrInt returns 0 for nvidia-smi's "[N/A]" / "[Not Supported]"
+// sentinels or any other unparsable field, so a single missing counter on
+// one card (e.g., fanless Tesla) doesn't fail the whole row.
+func unsupportedOrInt(s string) int {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.HasPrefix(s, "[") {
+		return 0
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// unsupportedOrString mirrors unsupportedOrInt for string fields like pstate.
+// "[N/A]" / "[Not Supported]" collapse to "" so the UI can omit the field.
+func unsupportedOrString(s string) string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "[") {
+		return ""
+	}
+	return s
 }
