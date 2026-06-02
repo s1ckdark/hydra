@@ -228,6 +228,10 @@ struct DeviceDetailView: View {
     @State private var recoveryMessage: String?
     @State private var showSSHBanner = false
     @State private var sshBannerManuallyDismissed = false
+    // True when the latest metrics error is the circuit breaker suppressing
+    // dials (cooling down) rather than a live failure — drives a distinct
+    // banner title and a manual "retry now" affordance.
+    @State private var metricsSuppressed = false
 
     @State private var keyCopyStatus: KeyCopyStatus = .idle
     @State private var keyCopyResetTask: Task<Void, Never>?
@@ -724,11 +728,13 @@ struct DeviceDetailView: View {
                     sshBannerManuallyDismissed = false
                 }
                 sshErrorText = m.error
+                metricsSuppressed = m.isSuppressed
                 showSSHBanner = true
             } else {
                 sshErrorText = nil
                 recoveryMessage = nil
                 diagnosis = nil
+                metricsSuppressed = false
                 showSSHBanner = false
                 sshBannerManuallyDismissed = false
             }
@@ -859,12 +865,12 @@ struct DeviceDetailView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                    Image(systemName: metricsSuppressed ? "zzz" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(metricsSuppressed ? .yellow : .orange)
                         .accessibilityHidden(true)
-                    Text(diagnosis?.humanTitle ?? "SSH 연결 오류")
+                    Text(bannerTitle)
                         .font(.callout.bold())
-                        .accessibilityLabel("SSH 연결 경고: \(diagnosis?.humanTitle ?? "SSH 연결 오류")")
+                        .accessibilityLabel("SSH 연결 경고: \(bannerTitle)")
                     Spacer()
                     if isDiagnosing {
                         ProgressView().controlSize(.small)
@@ -896,6 +902,17 @@ struct DeviceDetailView: View {
                         Label(recoveryActionTitle, systemImage: recoveryActionIcon)
                     }
                     .disabled(isDiagnosing)
+                    // When the breaker is cooling down, offer an explicit
+                    // "retry now" that clears it server-side and re-polls,
+                    // rather than making the user wait out the cooldown.
+                    if metricsSuppressed {
+                        Button {
+                            Task { await retryNow() }
+                        } label: {
+                            Label("지금 재시도", systemImage: "bolt.horizontal.circle")
+                        }
+                        .disabled(isDiagnosing)
+                    }
                     Spacer()
                 }
             }
@@ -909,6 +926,13 @@ struct DeviceDetailView: View {
         } message: {
             Text(fingerprintAlertMessage)
         }
+    }
+
+    private var bannerTitle: String {
+        if metricsSuppressed {
+            return "연결 일시 중단됨 — 재시도 대기 중"
+        }
+        return diagnosis?.humanTitle ?? "SSH 연결 오류"
     }
 
     private var recoveryActionTitle: String {
@@ -1021,6 +1045,23 @@ struct DeviceDetailView: View {
         } catch {
             recoveryMessage = "키를 저장하지 못했습니다. 잠시 후 다시 시도하세요."
             print("ssh accept host key error: \(error.localizedDescription)")
+        }
+    }
+
+    private func retryNow() async {
+        // User explicitly re-engaged; un-stick any prior dismiss.
+        sshBannerManuallyDismissed = false
+        isDiagnosing = true
+        recoveryMessage = nil
+        defer { isDiagnosing = false }
+        do {
+            _ = try await APIClient.shared.resetSSH(id: device.id)
+            recoveryMessage = "재시도 중..."
+            sshErrorText = nil
+            await fetchMetrics()
+        } catch {
+            recoveryMessage = "재시도를 시작할 수 없습니다. 잠시 후 다시 시도하세요."
+            print("ssh reset error: \(error.localizedDescription)")
         }
     }
 

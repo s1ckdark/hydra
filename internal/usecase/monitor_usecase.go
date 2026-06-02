@@ -10,6 +10,14 @@ import (
 	"github.com/s1ckdark/hydra/internal/repository"
 )
 
+// breakerResetter is implemented by collectors that keep a per-device
+// connection circuit breaker. It's an optional capability — RefreshAll uses a
+// type assertion so collectors (and test mocks) that don't track breakers
+// remain valid MetricsCollectors.
+type breakerResetter interface {
+	ResetBreakers()
+}
+
 // MonitorUseCase handles monitoring-related business logic
 type MonitorUseCase struct {
 	repos     *repository.Repositories
@@ -176,6 +184,13 @@ const refreshAllDeadline = 8 * time.Second
 func (uc *MonitorUseCase) RefreshAll(parent context.Context) {
 	ctx, cancel := context.WithTimeout(parent, refreshAllDeadline)
 	defer cancel()
+
+	// A user-triggered refresh is an explicit "try again now" — clear any open
+	// connection breakers so a device that previously failed gets a real dial
+	// this pass instead of a suppressed one.
+	if r, ok := uc.collector.(breakerResetter); ok {
+		r.ResetBreakers()
+	}
 
 	devices, err := uc.deviceUC.ListDevices(ctx, false)
 	if err != nil {

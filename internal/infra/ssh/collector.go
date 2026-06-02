@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -25,6 +26,14 @@ func NewCollector(executor *Executor) *Collector {
 	}
 }
 
+// ResetBreakers clears every per-device connection circuit breaker on the
+// underlying executor. A user-triggered refresh calls this so an explicit
+// "is it back?" check always dials for real instead of hitting a suppressed
+// (open) breaker.
+func (c *Collector) ResetBreakers() {
+	c.executor.ResetAllBreakers()
+}
+
 // CollectMetrics collects metrics from a single device
 func (c *Collector) CollectMetrics(ctx context.Context, device *domain.Device) (*domain.DeviceMetrics, error) {
 	metrics := &domain.DeviceMetrics{
@@ -36,6 +45,19 @@ func (c *Collector) CollectMetrics(ctx context.Context, device *domain.Device) (
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var errs []string
+	var suppressedMsg string // set when a sub-collector hit the circuit breaker
+
+	// note records a sub-collector failure. A CircuitOpenError means the breaker
+	// declined to dial; we surface that as a single clean message + the
+	// Suppressed flag instead of repeating it once per subsystem. Caller holds mu.
+	note := func(label string, err error) {
+		var coe *CircuitOpenError
+		if errors.As(err, &coe) {
+			suppressedMsg = coe.Error()
+			return
+		}
+		errs = append(errs, fmt.Sprintf("%s: %v", label, err))
+	}
 
 	// CPU metrics
 	wg.Add(1)
@@ -44,7 +66,7 @@ func (c *Collector) CollectMetrics(ctx context.Context, device *domain.Device) (
 		cpu, err := c.collectCPU(ctx, device)
 		mu.Lock()
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("cpu: %v", err))
+			note("cpu", err)
 		} else {
 			metrics.CPU = *cpu
 		}
@@ -58,7 +80,7 @@ func (c *Collector) CollectMetrics(ctx context.Context, device *domain.Device) (
 		mem, err := c.collectMemory(ctx, device)
 		mu.Lock()
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("memory: %v", err))
+			note("memory", err)
 		} else {
 			metrics.Memory = *mem
 		}
@@ -72,7 +94,7 @@ func (c *Collector) CollectMetrics(ctx context.Context, device *domain.Device) (
 		disk, err := c.collectDisk(ctx, device)
 		mu.Lock()
 		if err != nil {
-			errs = append(errs, fmt.Sprintf("disk: %v", err))
+			note("disk", err)
 		} else {
 			metrics.Disk = *disk
 		}
@@ -96,7 +118,12 @@ func (c *Collector) CollectMetrics(ctx context.Context, device *domain.Device) (
 
 	wg.Wait()
 
-	if len(errs) > 0 {
+	// A suppressed (breaker-open) result wins: it's a single, actionable cause,
+	// and the per-subsystem errs are just the same suppression repeated.
+	if suppressedMsg != "" {
+		metrics.Suppressed = true
+		metrics.Error = suppressedMsg
+	} else if len(errs) > 0 {
 		metrics.Error = strings.Join(errs, "; ")
 	}
 

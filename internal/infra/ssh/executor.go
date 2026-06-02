@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/s1ckdark/hydra/internal/domain"
 )
@@ -31,6 +32,17 @@ type Executor struct {
 	// Connection pool
 	connPool   map[string]*ssh.Client
 	connPoolMu sync.RWMutex
+
+	// dialGroup coalesces concurrent connect attempts to the same device so a
+	// burst of parallel sub-collectors (CPU/mem/disk/uptime all dial at once)
+	// makes a single auth attempt and records a single breaker result instead
+	// of one per goroutine.
+	dialGroup singleflight.Group
+
+	// Per-device circuit breaker. Stops re-dialing a host that keeps failing
+	// so we neither spam it nor get our IP blocked by sshd. See breaker.go.
+	breakers   map[string]*circuitBreaker
+	breakersMu sync.Mutex
 
 	// Tailscale auth state (checked once at startup)
 	tailscaleAuthed   bool
@@ -62,6 +74,7 @@ func NewExecutor(cfg Config) *Executor {
 		timeout:         cfg.Timeout,
 		useTailscaleSSH: cfg.UseTailscaleSSH,
 		connPool:        make(map[string]*ssh.Client),
+		breakers:        make(map[string]*circuitBreaker),
 	}
 }
 
@@ -142,7 +155,7 @@ func (e *Executor) executeTailscaleSSH(ctx context.Context, device *domain.Devic
 
 // executeRegularSSH uses standard SSH with key authentication
 func (e *Executor) executeRegularSSH(ctx context.Context, device *domain.Device, command string) (string, error) {
-	client, err := e.getClient(device)
+	client, err := e.getClient(ctx, device)
 	if err != nil {
 		return "", err
 	}
@@ -151,7 +164,7 @@ func (e *Executor) executeRegularSSH(ctx context.Context, device *domain.Device,
 	if err != nil {
 		// Connection might be stale, try to reconnect
 		e.closeClient(device.ID)
-		client, err = e.getClient(device)
+		client, err = e.getClient(ctx, device)
 		if err != nil {
 			return "", fmt.Errorf("failed to reconnect: %w", err)
 		}
@@ -194,35 +207,113 @@ func (e *Executor) executeRegularSSH(ctx context.Context, device *domain.Device,
 // blip) is evicted on the next call instead of poisoning every subsequent
 // Execute. The probe adds one short round-trip per call, which is negligible
 // compared to the cost of a failed handshake or a stale-error display.
-func (e *Executor) getClient(device *domain.Device) (*ssh.Client, error) {
+func (e *Executor) getClient(ctx context.Context, device *domain.Device) (*ssh.Client, error) {
 	e.connPoolMu.RLock()
 	client, exists := e.connPool[device.ID]
 	e.connPoolMu.RUnlock()
 
 	if exists {
 		if isClientAlive(client) {
+			// A live pooled connection is proof the host is healthy — clear any
+			// lingering breaker state so a recovered device dials freely again.
+			e.recordSuccess(device.ID)
 			return client, nil
 		}
 		e.closeClient(device.ID)
 	}
 
-	// Create new connection
+	// Coalesce concurrent dials to the same device. When the metric collector
+	// fires four parallel sub-collectors against a host with no pooled
+	// connection, only one of them actually dials; the rest share its result.
+	// For a failing host this collapses four auth attempts (and four breaker
+	// failures) into one per cycle; for a healthy host it shares a single
+	// connection instead of opening four. The leader's ctx governs the shared
+	// dial — acceptable since these callers run on comparable deadlines.
+	v, err, _ := e.dialGroup.Do(device.ID, func() (interface{}, error) {
+		return e.dialAndPool(ctx, device)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return v.(*ssh.Client), nil
+}
+
+// dialAndPool performs the actual connect for a device under the singleflight
+// group, consulting and updating the circuit breaker. It is only ever run by
+// the singleflight leader for a given device ID.
+func (e *Executor) dialAndPool(ctx context.Context, device *domain.Device) (*ssh.Client, error) {
+	// A sibling dial may have populated the pool just before we became leader.
+	e.connPoolMu.RLock()
+	pooled, ok := e.connPool[device.ID]
+	e.connPoolMu.RUnlock()
+	if ok {
+		if isClientAlive(pooled) {
+			e.recordSuccess(device.ID)
+			return pooled, nil
+		}
+		e.closeClient(device.ID)
+	}
+
+	now := time.Now()
+	if err := e.acquireAttempt(device.ID, now); err != nil {
+		// Breaker is open and the cooldown has not elapsed — the device is
+		// effectively disconnected. Return without touching the network.
+		return nil, err
+	}
+
 	config, err := e.getSSHConfig()
 	if err != nil {
+		// A missing or unparseable key file will never succeed on retry, so
+		// feed it through the breaker (key-file class trips on the first hit).
+		e.recordFailure(device.ID, err, time.Now())
 		return nil, err
 	}
 
 	addr := fmt.Sprintf("%s:%d", device.TailscaleIP, e.port)
-	client, err = ssh.Dial("tcp", addr, config)
+	client, err := e.dialSSH(ctx, addr, config)
 	if err != nil {
+		if ctx.Err() != nil {
+			// The caller (e.g. a refresh that hit its deadline) canceled the
+			// dial. That's our own backpressure, not the host rejecting us, so
+			// don't let it trip the breaker against an otherwise-fine device.
+			return nil, ctx.Err()
+		}
+		e.recordFailure(device.ID, err, time.Now())
 		return nil, fmt.Errorf("failed to connect to %s: %w", addr, err)
 	}
+
+	e.recordSuccess(device.ID)
 
 	e.connPoolMu.Lock()
 	e.connPool[device.ID] = client
 	e.connPoolMu.Unlock()
 
 	return client, nil
+}
+
+// dialSSH establishes an SSH client connection that honors ctx for
+// cancellation, with e.timeout as a backstop. Plain ssh.Dial only knows
+// ClientConfig.Timeout, so a caller that has already given up (a refresh past
+// its deadline, a canceled request) cannot abort an in-flight dial and the
+// goroutine lingers up to the full SSH timeout. Dialing through DialContext and
+// completing the handshake under a connection deadline fixes that.
+func (e *Executor) dialSSH(ctx context.Context, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+	dialCtx, cancel := context.WithTimeout(ctx, e.timeout)
+	defer cancel()
+	conn, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	// Bound the handshake by the same timeout, then clear the deadline so it
+	// does not apply to the long-lived session traffic on this connection.
+	_ = conn.SetDeadline(time.Now().Add(e.timeout))
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, config)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	_ = conn.SetDeadline(time.Time{})
+	return ssh.NewClient(sshConn, chans, reqs), nil
 }
 
 // isClientAlive sends an OpenSSH keepalive global request and reports whether
@@ -360,7 +451,7 @@ func (e *Executor) copyFileTailscaleSSH(ctx context.Context, device *domain.Devi
 }
 
 func (e *Executor) copyFileRegularSSH(ctx context.Context, device *domain.Device, localPath, remotePath string) error {
-	client, err := e.getClient(device)
+	client, err := e.getClient(ctx, device)
 	if err != nil {
 		return err
 	}

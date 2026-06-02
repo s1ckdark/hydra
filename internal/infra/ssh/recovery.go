@@ -260,6 +260,30 @@ func (e *Executor) Diagnose(ctx context.Context, device *domain.Device) (*SSHDia
 	}
 	conn.Close()
 
+	// If the breaker is open for this device, skip a fresh auth handshake for
+	// the error classes that would burn an sshd auth attempt — re-authenticating
+	// a host that already rejected us is exactly what trips MaxAuthTries/fail2ban
+	// and gets us blocked. Report the breaker's known cause instead. A host-key
+	// mismatch still has its fingerprint probed because that capture aborts
+	// before authentication. Network/unknown classes fall through: the TCP probe
+	// above just succeeded, so the host may be recovering and is worth a real
+	// handshake.
+	if ae := e.acquireAttempt(device.ID, time.Now()); ae != nil {
+		var coe *CircuitOpenError
+		if errors.As(ae, &coe) {
+			switch coe.Category {
+			case DiagAuthFailed, DiagKeyFileMissing:
+				return &SSHDiagnosis{Category: coe.Category, Message: coe.LastErr, Hostname: device.TailscaleIP}, nil
+			case DiagHostKeyMismatch:
+				diag := &SSHDiagnosis{Category: coe.Category, Message: coe.LastErr, Hostname: device.TailscaleIP}
+				if key, perr := e.probeHostKey(ctx, addr); perr == nil {
+					diag.HostKeyFingerprint = fingerprintSHA256(key)
+				}
+				return diag, nil
+			}
+		}
+	}
+
 	// Probe the SSH handshake using a throwaway client so we don't disturb
 	// in-flight executes, metric polls, or task supervisor sessions that may
 	// be holding the pooled client for this device.
@@ -327,8 +351,11 @@ func (e *Executor) AcceptHostKey(ctx context.Context, device *domain.Device, exp
 		return fmt.Errorf("update known_hosts: %w", err)
 	}
 
-	// Force the next getClient to re-handshake against the new host key.
+	// Force the next getClient to re-handshake against the new host key, and
+	// clear the breaker so the accepted key gets a real attempt instead of a
+	// suppressed one (a host-key mismatch trips the breaker on the first hit).
 	e.closeClient(device.ID)
+	e.ResetBreaker(device.ID)
 	return nil
 }
 

@@ -107,6 +107,11 @@ type DeviceMetrics struct {
 	UptimeSeconds int64     `json:"uptimeSeconds,omitempty"`
 	CollectedAt   time.Time `json:"collectedAt"`
 	Error         string    `json:"error,omitempty"`
+	// Suppressed is true when Error came from the connection circuit breaker
+	// declining to dial (too many recent failures) rather than a live dial that
+	// failed. The UI shows this as a "cooling down / retry pending" state,
+	// distinct from an outright connection error, and can offer a manual retry.
+	Suppressed bool `json:"suppressed,omitempty"`
 }
 
 // HasError returns true if there was an error collecting metrics
