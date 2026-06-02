@@ -211,6 +211,13 @@ actor APIClient {
         return try await post("/api/devices/\(id)/ssh/accept-key", body: AcceptKeyRequest(fingerprint: fingerprint))
     }
 
+    /// Clears the server-side connection circuit breaker for a device so the
+    /// next metric collection dials fresh. Backs the "retry now" action when a
+    /// device is in the cooling-down (suppressed) state.
+    func resetSSH(id: String) async throws -> OKResponse {
+        return try await post("/api/devices/\(id)/ssh/reset", body: EmptyBody())
+    }
+
     // MARK: - Orchs
 
     func listOrchs() async throws -> [Orch] {

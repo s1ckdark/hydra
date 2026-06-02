@@ -10,8 +10,17 @@ struct DeviceMetrics: Codable {
     let uptimeSeconds: Int64?
     let collectedAt: Date
     let error: String?
+    /// True when `error` is the connection circuit breaker declining to dial
+    /// (too many recent failures) rather than a live dial that failed. Drives
+    /// the "cooling down / retry pending" UI and the manual retry affordance.
+    /// Optional — older servers omit it.
+    let suppressed: Bool?
 
     var hasError: Bool { error != nil && !error!.isEmpty }
+
+    /// The device is in the breaker's cooling-down state: reachable attempts
+    /// are being suppressed on purpose, distinct from an outright failure.
+    var isSuppressed: Bool { suppressed == true }
 
     struct CPUMetrics: Codable {
         let usagePercent: Double

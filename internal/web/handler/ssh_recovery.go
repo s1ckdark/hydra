@@ -16,6 +16,9 @@ import (
 type SSHRecoverer interface {
 	Diagnose(ctx context.Context, device *domain.Device) (*sshpkg.SSHDiagnosis, error)
 	AcceptHostKey(ctx context.Context, device *domain.Device, expectedFingerprint string) error
+	// ResetBreaker clears the connection circuit breaker for a device so the
+	// next collection dials fresh. Backs the dashboard's manual "retry now".
+	ResetBreaker(deviceID string)
 }
 
 // SetSSHRecoverer wires an SSH recovery-capable executor into the handler.
@@ -65,6 +68,22 @@ func (h *Handler) APISSHAcceptHostKey(c echo.Context) error {
 		status, msg := classifyAcceptHostKeyError(err)
 		return c.JSON(status, map[string]string{"error": msg})
 	}
+	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// APISSHReset clears the connection circuit breaker for a device so the next
+// metric collection dials fresh instead of staying suppressed. Backs the
+// dashboard's "retry now" action when a device is in the cooling-down state.
+func (h *Handler) APISSHReset(c echo.Context) error {
+	id := c.Param("id")
+	if h.deviceUC == nil || h.sshRecoverer == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "service not available"})
+	}
+	device, err := h.deviceUC.GetDevice(c.Request().Context(), id)
+	if err != nil || device == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "device not found"})
+	}
+	h.sshRecoverer.ResetBreaker(device.ID)
 	return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 }
 

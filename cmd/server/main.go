@@ -329,6 +329,7 @@ func main() {
 	apiWrite.POST("/devices/:id/execute", h.APIExecuteOnDevice)
 	apiWrite.POST("/devices/:id/ssh/diagnose", h.APISSHDiagnose)
 	apiWrite.POST("/devices/:id/ssh/accept-key", h.APISSHAcceptHostKey)
+	apiWrite.POST("/devices/:id/ssh/reset", h.APISSHReset)
 
 	// WebSocket endpoint
 	e.GET("/ws", h.HandleWebSocket)
