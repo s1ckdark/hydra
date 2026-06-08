@@ -105,6 +105,36 @@ func TestParseNvidiaSmiOutput_MalformedLine(t *testing.T) {
 	}
 }
 
+// A single GPU reporting nvidia-smi's "[N/A]" / "[Not Supported]" sentinel in a
+// base numeric field (common on consumer cards, vGPU, MIG) must NOT discard the
+// whole node's GPU list. The sentinel field collapses to 0; every GPU survives.
+func TestParseNvidiaSmiOutput_UnsupportedBaseField(t *testing.T) {
+	// GPU 1's power.draw is "[N/A]"; GPU 2's utilization is "[Not Supported]".
+	raw := "0, NVIDIA GeForce RTX 3090, 45, 8192, 24576, 65, 150.50, 350.00\n" +
+		"1, NVIDIA GeForce RTX 3090, 78, 12000, 24576, 72, [N/A], 350.00\n" +
+		"2, NVIDIA A100, [Not Supported], 4000, 40960, 60, 90.00, 300.00"
+
+	gpus, err := ParseNvidiaSmiOutput(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(gpus) != 3 {
+		t.Fatalf("expected 3 GPUs (none dropped), got %d", len(gpus))
+	}
+	if gpus[1].PowerDrawW != 0 {
+		t.Errorf("gpu1 powerDraw [N/A]: got %f, want 0", gpus[1].PowerDrawW)
+	}
+	if gpus[1].MemoryUsedMB != 12000 {
+		t.Errorf("gpu1 memUsed: got %d, want 12000", gpus[1].MemoryUsedMB)
+	}
+	if gpus[2].UtilizationPercent != 0 {
+		t.Errorf("gpu2 utilization [Not Supported]: got %f, want 0", gpus[2].UtilizationPercent)
+	}
+	if gpus[2].Name != "NVIDIA A100" {
+		t.Errorf("gpu2 name: got %q, want %q", gpus[2].Name, "NVIDIA A100")
+	}
+}
+
 func TestGPUNodeMetrics_Summary(t *testing.T) {
 	m := &GPUNodeMetrics{
 		NodeName: "node-1",

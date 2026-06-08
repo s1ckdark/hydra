@@ -126,35 +126,17 @@ func ParseNvidiaSmiOutput(raw string) ([]GPUInfo, error) {
 
 		name := strings.TrimSpace(parts[1])
 
-		utilization, err := strconv.ParseFloat(strings.TrimSpace(parts[2]), 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid utilization %q: %w", parts[2], err)
-		}
-
-		memUsed, err := strconv.Atoi(strings.TrimSpace(parts[3]))
-		if err != nil {
-			return nil, fmt.Errorf("invalid memory.used %q: %w", parts[3], err)
-		}
-
-		memTotal, err := strconv.Atoi(strings.TrimSpace(parts[4]))
-		if err != nil {
-			return nil, fmt.Errorf("invalid memory.total %q: %w", parts[4], err)
-		}
-
-		temp, err := strconv.Atoi(strings.TrimSpace(parts[5]))
-		if err != nil {
-			return nil, fmt.Errorf("invalid temperature %q: %w", parts[5], err)
-		}
-
-		powerDraw, err := strconv.ParseFloat(strings.TrimSpace(parts[6]), 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid power.draw %q: %w", parts[6], err)
-		}
-
-		powerLimit, err := strconv.ParseFloat(strings.TrimSpace(parts[7]), 64)
-		if err != nil {
-			return nil, fmt.Errorf("invalid power.limit %q: %w", parts[7], err)
-		}
+		// Base numeric fields are tolerant of nvidia-smi's "[N/A]" /
+		// "[Not Supported]" sentinels (collapse to 0), mirroring the extended
+		// fields below. A single card omitting power.draw/utilization/temp
+		// (common on consumer cards, vGPU, MIG) must not discard the whole
+		// node's GPU list. Index stays strict — it's the GPU identifier.
+		utilization := unsupportedOrFloat(parts[2])
+		memUsed := unsupportedOrInt(parts[3])
+		memTotal := unsupportedOrInt(parts[4])
+		temp := unsupportedOrInt(parts[5])
+		powerDraw := unsupportedOrFloat(parts[6])
+		powerLimit := unsupportedOrFloat(parts[7])
 
 		var uuid string
 		if len(parts) >= 9 {
@@ -266,6 +248,21 @@ func unsupportedOrInt(s string) int {
 		return 0
 	}
 	return n
+}
+
+// unsupportedOrFloat mirrors unsupportedOrInt for float fields like power.draw
+// / utilization, collapsing "[N/A]" / "[Not Supported]" (and any unparsable
+// value) to 0 so one missing counter doesn't fail the whole row.
+func unsupportedOrFloat(s string) float64 {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.HasPrefix(s, "[") {
+		return 0
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0
+	}
+	return f
 }
 
 // unsupportedOrString mirrors unsupportedOrInt for string fields like pstate.
