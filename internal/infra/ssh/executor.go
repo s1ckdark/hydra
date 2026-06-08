@@ -380,6 +380,20 @@ func (e *Executor) getSSHConfig() (*ssh.ClientConfig, error) {
 	}, nil
 }
 
+// sameAlgorithmKnown reports whether keyErr records a key of the same algorithm
+// as the presented key. When true the host is known under this algorithm but the
+// bytes differ — a genuine key change to reject. When false the host is either
+// unknown (Want empty) or known only under other algorithms, both of which are
+// safe to accept-new.
+func sameAlgorithmKnown(keyErr *knownhosts.KeyError, presented ssh.PublicKey) bool {
+	for _, k := range keyErr.Want {
+		if k.Key.Type() == presented.Type() {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Executor) getHostKeyCallback() (ssh.HostKeyCallback, error) {
 	home, _ := os.UserHomeDir()
 	knownHostsPath := filepath.Join(home, ".ssh", "known_hosts")
@@ -407,19 +421,28 @@ func (e *Executor) getHostKeyCallback() (ssh.HostKeyCallback, error) {
 			return nil
 		}
 
-		// If it's a key-not-found error, auto-accept and save. We route the
-		// append through AppendKnownHostLine so it shares knownHostsMu with
-		// recovery's ReplaceKnownHost/RemoveKnownHost and can not interleave
-		// with their read-modify-write rewrites.
+		// Auto-accept and save when this is not a genuine key change. Two cases
+		// qualify, and both are distinguished by knownhosts.KeyError.Want:
+		//   - Want empty: the host is entirely unknown (trust-on-first-use).
+		//   - Want holds only keys of *other* algorithms: the host was recorded
+		//     under, say, ecdsa, but now presents the ed25519 key Go prefers.
+		//     That is not a changed key — we simply never stored this algorithm
+		//     — so we append it rather than rejecting the host forever.
+		// A genuine change (rotation / MITM) is a Want entry of the SAME
+		// algorithm as the presented key but different bytes; that still falls
+		// through to the reject below. We route the append through
+		// AppendKnownHostLine so it shares knownHostsMu with recovery's
+		// ReplaceKnownHost/RemoveKnownHost and can not interleave with their
+		// read-modify-write rewrites.
 		var keyErr *knownhosts.KeyError
-		if errors.As(err, &keyErr) && len(keyErr.Want) == 0 {
+		if errors.As(err, &keyErr) && !sameAlgorithmKnown(keyErr, key) {
 			if appendErr := AppendKnownHostLine(hostname, key); appendErr != nil {
 				return fmt.Errorf("unknown host key and failed to save: %w", appendErr)
 			}
 			return nil
 		}
 
-		// Key mismatch (possible MITM) — reject
+		// Same-algorithm key change (possible MITM) — reject
 		return err
 	}, nil
 }
