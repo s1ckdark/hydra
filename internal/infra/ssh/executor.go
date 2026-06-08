@@ -45,8 +45,8 @@ type Executor struct {
 	breakersMu sync.Mutex
 
 	// Tailscale auth state (checked once at startup)
-	tailscaleAuthed   bool
-	tailscaleCheckMu  sync.Once
+	tailscaleAuthed  bool
+	tailscaleCheckMu sync.Once
 }
 
 // Config holds SSH executor configuration
@@ -300,7 +300,13 @@ func (e *Executor) dialAndPool(ctx context.Context, device *domain.Device) (*ssh
 func (e *Executor) dialSSH(ctx context.Context, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
 	dialCtx, cancel := context.WithTimeout(ctx, e.timeout)
 	defer cancel()
-	conn, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", addr)
+	// Enable OS-level TCP keepalive so the kernel proactively detects a peer
+	// that vanished without tearing down the connection (sleeping tailnet node,
+	// dropped WireGuard path) and surfaces an error on the socket. This is
+	// defense-in-depth alongside the bounded application keepalive in
+	// isClientAlive — without either, a silently-dead pooled connection has no
+	// I/O deadline and never errors out on its own.
+	conn, err := (&net.Dialer{KeepAlive: 30 * time.Second}).DialContext(dialCtx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -316,13 +322,47 @@ func (e *Executor) dialSSH(ctx context.Context, addr string, config *ssh.ClientC
 	return ssh.NewClient(sshConn, chans, reqs), nil
 }
 
+// keepaliveTimeout bounds the pooled-connection liveness probe. A healthy peer
+// answers a keepalive in well under a second; this allows for a slow tailnet
+// path without letting a wedged probe hang the caller.
+const keepaliveTimeout = 4 * time.Second
+
+// aliveWithin runs probe and reports whether it completed with a nil error
+// before timeout elapses. A probe that blocks past timeout is reported
+// not-alive. The probe goroutine may outlive this call if it is truly wedged;
+// the caller is expected to Close() the connection on a false result, which
+// unblocks the underlying I/O and lets the goroutine exit.
+func aliveWithin(probe func() error, timeout time.Duration) bool {
+	done := make(chan error, 1)
+	go func() { done <- probe() }()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case err := <-done:
+		return err == nil
+	case <-timer.C:
+		return false
+	}
+}
+
 // isClientAlive sends an OpenSSH keepalive global request and reports whether
 // the peer responded. The request type is unsupported by the protocol on
 // purpose — peers respond with "request failure" which still proves the
 // connection is alive, while a transport-level error means it is not.
+//
+// The probe is bounded by keepaliveTimeout. After the SSH handshake the pooled
+// connection's I/O deadline is cleared (see dialSSH) so long-lived sessions are
+// not interrupted; the cost is that a peer which vanishes WITHOUT tearing down
+// TCP (a tailnet node that sleeps, a dropped WireGuard path) leaves SendRequest
+// with nothing to read and no deadline, blocking forever. Unbounded, that hangs
+// getClient on every later call and wedges the device until the process
+// restarts. Bounding the probe makes such a connection report not-alive so
+// getClient evicts and redials instead.
 func isClientAlive(client *ssh.Client) bool {
-	_, _, err := client.SendRequest("keepalive@openssh.com", true, nil)
-	return err == nil
+	return aliveWithin(func() error {
+		_, _, err := client.SendRequest("keepalive@openssh.com", true, nil)
+		return err
+	}, keepaliveTimeout)
 }
 
 // closeClient closes and removes a client from the pool
