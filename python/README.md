@@ -28,7 +28,7 @@ from hydra_client import HydraClient
 
 client = HydraClient(
     "http://head:8080",
-    api_key=None,   # Tailscale 밖에서만 필요 (X-API-Key 헤더)
+    api_key=None,   # 예약: 향후 서버 API-key 검증이 구현되면 필요할 수 있음
     timeout=10.0,   # HTTP 요청 타임아웃 — 초 단위
 )
 
@@ -185,10 +185,11 @@ REST `cancel_task()`/`update_task_status(..., "cancelled")`는 서버 쪽 task
 
 파이썬 워커는 오퍼레이터가 제출한 명령을 셸로 그대로 실행한다 — task
 제출 권한이 있는 누구나 워커 프로세스 권한으로 임의 명령을 실행할 수
-있다는 뜻이다. `/ws` 접속은 이제 Tailscale 네트워크 또는 API 키 인증을
-요구하지만, 인증된 접속 주체를 접속 시 넘기는 `device_id` 쿼리 파라미터에
-바인딩하지는 않는다 — 인증된 누구나 임의의 `device_id`를 자칭해 접속할 수
-있다는 점은 알려진 갭으로 남아 있다.
+있다는 뜻이다. `/ws` 접속은 현재 **Tailscale 네트워크 또는 localhost IP
+기반**으로만 게이트되며, 워커가 보내는 X-API-Key 헤더는 아직 서버에서
+검증되지 않는다(향후 과제). 또한 인증된 접속 주체를 접속 시 넘기는
+`device_id` 쿼리 파라미터에 바인딩하지는 않는다 — 인증된 누구나 임의의
+`device_id`를 자칭해 접속할 수 있다는 점도 알려진 갭으로 남아 있다.
 
 ## 단위 주의
 
