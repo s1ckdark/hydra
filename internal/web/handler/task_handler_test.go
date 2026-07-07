@@ -55,3 +55,27 @@ func TestAPITaskCreateBindsResourceReqs(t *testing.T) {
 		t.Fatalf("queued task ResourceReqs = %+v", in)
 	}
 }
+
+func TestAPITaskCreateRejectsNegativeResourceReqs(t *testing.T) {
+	h, q := newTestHandlerWithQueue(t)
+
+	body := `{"type":"command","payload":{"command":"echo hi"},` +
+		`"resourceReqs":{"gpuCount":-1}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/tasks", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+
+	if err := h.APITaskCreate(c); err != nil {
+		t.Fatalf("APITaskCreate: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "negative values not allowed") {
+		t.Errorf("body = %s, want negative-values error", rec.Body.String())
+	}
+	if q.PendingCount() != 0 {
+		t.Errorf("task should not be enqueued, queue = %d", q.PendingCount())
+	}
+}

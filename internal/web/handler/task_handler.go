@@ -74,6 +74,10 @@ func (h *Handler) APITaskCreate(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "type is required"})
 	}
 
+	if hasNegativeResourceReqs(req.ResourceReqs) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "resourceReqs: negative values not allowed"})
+	}
+
 	task := &domain.Task{
 		ID:                   generateID(),
 		Type:                 req.Type,
@@ -111,6 +115,15 @@ func (h *Handler) APITaskCreate(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, task)
+}
+
+// hasNegativeResourceReqs reports whether any resource field is negative.
+// A nil ResourceReqs is not itself invalid (it means "no requirements").
+func hasNegativeResourceReqs(r *domain.ResourceRequirements) bool {
+	if r == nil {
+		return false
+	}
+	return r.GPUCount < 0 || r.GPUMemoryMB < 0 || r.CPUCores < 0 || r.MemoryMB < 0
 }
 
 // APITaskList lists tasks with optional status filter

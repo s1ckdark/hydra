@@ -432,6 +432,9 @@ func cloneTask(t *Task) *Task {
 	if t.BlockedDeviceIDs != nil {
 		cp.BlockedDeviceIDs = append([]string(nil), t.BlockedDeviceIDs...)
 	}
+	if t.AssignedGPUIndexes != nil {
+		cp.AssignedGPUIndexes = append([]int(nil), t.AssignedGPUIndexes...)
+	}
 	if t.Payload != nil {
 		cp.Payload = make(map[string]interface{}, len(t.Payload))
 		for k, v := range t.Payload {

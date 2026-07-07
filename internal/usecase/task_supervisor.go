@@ -118,9 +118,24 @@ func (s *TaskSupervisor) Start(ctx context.Context) {
 				s.reconcileBoot(ctx)
 				bootReconciled = true
 			}
-			s.check(ctx)
+			s.safeCheck(ctx)
 		}
 	}
+}
+
+// safeCheck runs check and recovers from any panic inside it, logging
+// instead of letting the panic escape and kill the process. The tick
+// goroutine in Start has no other recover, so an unguarded panic here
+// (e.g. from a scheduling edge case) would crash the whole server and,
+// on restart, replay the same poisoned task from persisted queue state —
+// a standing crash loop.
+func (s *TaskSupervisor) safeCheck(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[supervisor] tick panic recovered: %v", r)
+		}
+	}()
+	s.check(ctx)
 }
 
 // reconcileBoot is a one-shot pass invoked after bootGracePeriod elapses.
@@ -277,7 +292,10 @@ func (s *TaskSupervisor) scheduleQueue(ctx context.Context) {
 			log.Printf("[supervisor] task %s: no worker selected", task.ID)
 			continue
 		}
-		gpuIndexes, _ := ai.PackGPUs(task, *best)
+		gpuIndexes, ok := ai.PackGPUs(task, *best)
+		if !ok {
+			log.Printf("[supervisor] task %s: PackGPUs failed post-selection on %s (assigning unpinned)", task.ID, best.DeviceID)
+		}
 		assigned := s.taskQueue.AssignToDevice(task.ID, best.DeviceID, gpuIndexes)
 		if assigned == nil {
 			continue // raced: another pass claimed it

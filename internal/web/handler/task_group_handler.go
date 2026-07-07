@@ -106,6 +106,11 @@ func (h *Handler) APITaskBatchCreate(c echo.Context) error {
 				"error": fmt.Sprintf("tasks[%d]: type is required", i),
 			})
 		}
+		if hasNegativeResourceReqs(e.ResourceReqs) {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"error": fmt.Sprintf("tasks[%d]: resourceReqs: negative values not allowed", i),
+			})
+		}
 	}
 
 	ctx := c.Request().Context()

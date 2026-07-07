@@ -29,7 +29,7 @@ def pack_gpus(task: TaskSpec, w: WorkerSnapshot) -> list[int] | None:
     r = task.resource_reqs
     if r is None or (r.gpu_memory_mb == 0 and r.gpu_count == 0):
         return []
-    count = r.gpu_count or 1
+    count = r.gpu_count if r.gpu_count > 0 else 1
     if not w.gpus:
         if count >= 2:
             return None

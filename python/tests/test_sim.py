@@ -70,3 +70,9 @@ def test_pack_gpus_best_fit_and_selected_util_scoring():
 
 def test_pack_gpus_no_constraint_empty():
     assert pack_gpus(TaskSpec(), _worker("a")) == []
+
+
+def test_pack_gpus_negative_count_clamped_to_one():
+    spec = TaskSpec(resource_reqs=ResourceRequirements(gpu_memory_mb=16000, gpu_count=-1))
+    w = _worker("a", gpus=[GPUFree(0, 24000, 10.0), GPUFree(1, 20000, 50.0)])
+    assert pack_gpus(spec, w) == [1]

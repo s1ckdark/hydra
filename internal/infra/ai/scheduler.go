@@ -78,7 +78,7 @@ func PackGPUs(task *domain.Task, w WorkerSnapshot) ([]int, bool) {
 		return nil, true
 	}
 	count := r.GPUCount
-	if count == 0 {
+	if count < 1 {
 		count = 1
 	}
 	if len(w.GPUs) == 0 {

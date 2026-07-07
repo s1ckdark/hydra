@@ -1,4 +1,3 @@
-// internal/infra/ai/pack_test.go
 package ai
 
 import (
@@ -22,11 +21,11 @@ func reqs(memMB, count int) *domain.Task {
 
 func TestPackGPUs(t *testing.T) {
 	cases := []struct {
-		name    string
-		task    *domain.Task
-		w       WorkerSnapshot
-		want    []int
-		wantOK  bool
+		name   string
+		task   *domain.Task
+		w      WorkerSnapshot
+		want   []int
+		wantOK bool
 	}{
 		{"no_reqs_no_constraint", &domain.Task{}, gpuWorker(GPUFree{0, 10000, 20}), nil, true},
 		{"zero_reqs_no_constraint", reqs(0, 0), gpuWorker(GPUFree{0, 10000, 20}), nil, true},
@@ -34,6 +33,8 @@ func TestPackGPUs(t *testing.T) {
 			reqs(20000, 0), gpuWorker(GPUFree{0, 10000, 20}, GPUFree{1, 10000, 30}), nil, false},
 		{"single_best_fit_smallest_sufficient",
 			reqs(16000, 0), gpuWorker(GPUFree{0, 24000, 10}, GPUFree{1, 20000, 50}), []int{1}, true},
+		{"negative_count_clamped_to_one",
+			reqs(16000, -1), gpuWorker(GPUFree{0, 24000, 10}, GPUFree{1, 20000, 50}), []int{1}, true},
 		{"exact_fit_passes",
 			reqs(20000, 1), gpuWorker(GPUFree{0, 20000, 10}), []int{0}, true},
 		{"two_of_three_best_fit_indexes_sorted",
