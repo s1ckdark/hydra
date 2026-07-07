@@ -125,6 +125,39 @@ def test_execute_task_popen_failure_reports_worker_exception(monkeypatch):
     assert json.loads(responses.calls[2].request.body) == {"status": "failed"}
 
 
+@responses.activate
+def test_execute_task_report_failure_does_not_flip_success_to_failed(monkeypatch):
+    # Fix 3: 성공 경로(_report)에서 non-HydraError 가 나도, 그건 실행 가드
+    # 밖에서 일어나야 한다 — 안에서 잡히면 완료된 task 가 두 번째 실패
+    # _report(failed=True) 호출로 덮여버린다.
+    responses.put(f"{BASE}/api/tasks/t1/status", json={"id": "t1"})
+
+    calls = []
+    original_report = None
+
+    def boom_report(self, task_id, output, *, failed, duration_ns):
+        calls.append((output, failed))
+        if len(calls) == 1:
+            raise ValueError("malformed 2xx JSON")
+
+    monkeypatch.setattr(Worker, "_report", boom_report)
+    w = make_worker()
+    with pytest.raises(ValueError):
+        w.execute_task({"id": "t1", "payload": {"command": "echo hello"}})
+
+    # _report 는 정확히 한 번만 호출된다 — 성공 경로에서 던진 예외가
+    # exception-path 의 두 번째 failed 보고를 유발하지 않아야 한다.
+    assert len(calls) == 1
+    output, failed = calls[0]
+    assert output["exitCode"] == 0
+    assert failed is False
+
+
+def test_worker_rejects_schemeless_server_url():
+    with pytest.raises(ValueError, match="http://|https://"):
+        Worker("head:8080", device_id="gpu1")
+
+
 def test_kill_tolerates_process_already_reaped(monkeypatch):
     # poll() 확인 시점과 getpgid/killpg 사이에 프로세스가 이미 회수된 경합(TOCTOU)을 재현.
     w = make_worker()

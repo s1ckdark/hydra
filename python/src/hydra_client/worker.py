@@ -34,6 +34,10 @@ class Worker:
                  reconnect_max_backoff: float = 30.0,
                  api_key: str | None = None,
                  term_grace: float = 5.0):
+        if "://" not in server:
+            raise ValueError(
+                "server URL must include http:// or https://"
+                f" (got: {server!r})")
         self.server = server.rstrip("/")
         self.device_id = device_id or socket.gethostname()
         self.capabilities = capabilities or ["compute"]
@@ -143,20 +147,25 @@ class Worker:
             finally:
                 with self._procs_lock:
                     self._procs.pop(task_id, None)
-
-            duration_ns = int((time.monotonic() - start) * 1e9)
-            exit_code = proc.returncode
-            failed = timed_out or exit_code != 0
-            self._report(task_id,
-                         {"stdout": stdout, "stderr": stderr,
-                          "exitCode": exit_code, "timedOut": timed_out},
-                         failed=failed, duration_ns=duration_ns)
         except Exception as e:  # noqa: BLE001 — Popen 등 실행 경로 실패도 반드시 서버에 보고
+            # 이 가드는 실행(env/Popen/communicate) 경로만 감싼다 — 성공 경로의
+            # _report 호출까지 감싸면, 보고 자체가 던진 비-HydraError(예: 2xx
+            # 응답의 JSON 파싱 실패)가 여기서 잡혀 성공한 task 를 다시
+            # failed 로 보고하게 된다.
             duration_ns = int((time.monotonic() - start) * 1e9)
             self._report(task_id,
                          {"stdout": "", "stderr": f"worker exception: {e}",
                           "exitCode": -1, "timedOut": False},
                          failed=True, duration_ns=duration_ns)
+            return
+
+        duration_ns = int((time.monotonic() - start) * 1e9)
+        exit_code = proc.returncode
+        failed = timed_out or exit_code != 0
+        self._report(task_id,
+                     {"stdout": stdout, "stderr": stderr,
+                      "exitCode": exit_code, "timedOut": timed_out},
+                     failed=failed, duration_ns=duration_ns)
 
     def _kill(self, task_id: str) -> None:
         with self._procs_lock:

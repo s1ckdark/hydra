@@ -147,8 +147,12 @@ class HydraClient:
         GPU 사용률 평균 / 여유 VRAM 합산 / bytes→GB, running_jobs 는
         assigned+running task 수. 시점 차이와 AI 중재 때문에 실제 배치와
         다를 수 있다 — sim.explain() 문서 참조.
+
+        Go 스케줄러는 WS 로 연결된(온라인) 워커만 점수 계산 대상으로 삼는다
+        — 여기서는 그 신호를 얻을 수 없어 `status == "online"` 디바이스로
+        근사한다. offline 디바이스는 스냅샷에서 제외된다.
         """
-        devices = self.list_devices()
+        devices = [d for d in self.list_devices() if d.status == "online"]
         metrics = (self.metrics_snapshot().get("devices") or {})
         running: dict[str, int] = {}
         for t in self.list_tasks():
@@ -219,7 +223,7 @@ class TaskHandle:
         일시적 연결 오류는 지수 백오프(최대 30s)로 재시도한다. timeout 초과 시:
         마지막 시도가 연결 오류였으면 HydraConnectionError, 아니면 TimeoutError.
         """
-        deadline = time.monotonic() + timeout if timeout else None
+        deadline = time.monotonic() + timeout if timeout is not None else None
         backoff = poll_interval
         last_conn_error: Exception | None = None
         while True:
@@ -271,11 +275,22 @@ class TaskGroupHandle:
 
     def wait_all(self, timeout: float | None = None,
                  poll_interval: float = 2.0) -> dict:
-        """그룹 status 가 terminal 이 될 때까지 폴링."""
-        deadline = time.monotonic() + timeout if timeout else None
+        """그룹 status 가 terminal 이 될 때까지 폴링.
+
+        terminal 도달 시 detail=full 로 그룹을 재조회해 각 TaskHandle 을
+        최신 상태로 동기화한다 (그룹 스냅샷의 임베디드 task 는 배치 응답
+        시점 그대로라 완료 후에도 초기 상태를 반환할 수 있다).
+        """
+        deadline = time.monotonic() + timeout if timeout is not None else None
         while True:
             snap = self.refresh()
             if snap.get("status") in self.GROUP_TERMINAL:
+                detail = self._client.get_group(self.group_id, detail=True)
+                by_id = {h.id: h for h in self.tasks}
+                for t in (detail.get("tasks") or []):
+                    handle = by_id.get(t.get("id"))
+                    if handle is not None:
+                        handle.task = Task.from_json(t)
                 return snap
             if deadline is not None and time.monotonic() >= deadline:
                 raise TimeoutError(

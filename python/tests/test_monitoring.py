@@ -11,8 +11,10 @@ MB = 1024 ** 2
 def test_cluster_snapshot_mirrors_go_aggregation():
     client = HydraClient(BASE)
     responses.get(f"{BASE}/api/devices", json=[
-        {"id": "gpu1", "capabilities": ["gpu"], "gpuCount": 2},
-        {"id": "cpu1", "capabilities": ["compute"], "gpuCount": 0},
+        {"id": "gpu1", "capabilities": ["gpu"], "gpuCount": 2, "status": "online"},
+        {"id": "cpu1", "capabilities": ["compute"], "gpuCount": 0, "status": "online"},
+        {"id": "gpu2-offline", "capabilities": ["gpu"], "gpuCount": 1,
+         "status": "offline"},
     ])
     responses.get(f"{BASE}/api/monitor/snapshot", json={
         "devices": {
@@ -36,6 +38,8 @@ def test_cluster_snapshot_mirrors_go_aggregation():
     ])
 
     snaps = {s.device_id: s for s in client.cluster_snapshot()}
+    # Fix 4: offline 디바이스는 Go 스케줄러가 점수화하지 않는 워커이므로 제외된다
+    assert "gpu2-offline" not in snaps
     g = snaps["gpu1"]
     assert g.gpu_utilization == 30.0            # (20+40)/2
     assert g.gpu_memory_free_mb == 30000        # 합산
