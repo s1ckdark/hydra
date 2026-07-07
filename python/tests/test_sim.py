@@ -1,3 +1,5 @@
+import pytest
+
 from hydra_client.models import TaskSpec, WorkerSnapshot
 from hydra_client.sim import INELIGIBLE, explain, pick_best_worker, score_for_task
 
@@ -39,3 +41,13 @@ def test_explain_sorted_by_total_desc():
     spec = TaskSpec()
     rows = explain(spec, [_worker("busy", running_jobs=8), _worker("idle", running_jobs=0)])
     assert [r.worker_id for r in rows] == ["idle", "busy"]
+
+
+def test_explain_terms_reconstruct_total():
+    """Invariant: decomposed terms from explain() reconstruct score_for_task() total."""
+    spec = TaskSpec(priority="high")
+    rows = [r for r in explain(spec, [_worker("a", running_jobs=0), _worker("b", running_jobs=8)]) if r.eligible]
+    assert rows, "expected eligible rows"
+    for r in rows:
+        reconstructed = (r.gpu_free_term + r.mem_term + r.cpu_term + r.queue_term) * r.priority_mult
+        assert reconstructed == pytest.approx(r.total, abs=1e-9)
