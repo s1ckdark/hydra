@@ -250,6 +250,54 @@ def test_retry_gives_up_immediately_on_auth_error(monkeypatch):
 
 # ── B5: WS URL device_id 인코딩 + 인증 헤더 ────────────────────────────
 
+# ── E1: cancel-before-start tombstone ──────────────────────────────────
+
+@responses.activate
+def test_execute_task_skips_when_cancelled_before_start(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("Popen must not be called for a pre-cancelled task")
+
+    monkeypatch.setattr(subprocess, "Popen", fail_if_called)
+    w = make_worker()
+    w.handle_message({"type": "task.cancel", "taskId": "t1"})
+    assert "t1" in w._cancelled
+
+    w.execute_task({"id": "t1", "payload": {"command": "echo hello"}})
+
+    assert len(responses.calls) == 0
+    assert "t1" not in w._cancelled  # consumed, no unbounded growth
+
+
+@responses.activate
+def test_execute_task_runs_normally_when_not_cancelled():
+    responses.put(f"{BASE}/api/tasks/t1/status", json={"id": "t1"})
+    responses.put(f"{BASE}/api/tasks/t1/result", json={"id": "t1"})
+    w = make_worker()
+    w.execute_task({"id": "t1", "payload": {"command": "echo hello"}})
+
+    assert len(responses.calls) == 2
+    body = json.loads(responses.calls[1].request.body)
+    assert body["output"]["exitCode"] == 0
+
+
+# ── E2: stop() 이후 새 task 를 실행하지 않는다 ──────────────────────────
+
+@responses.activate
+def test_execute_task_skips_when_stopped(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("Popen must not be called after stop()")
+
+    monkeypatch.setattr(subprocess, "Popen", fail_if_called)
+    w = make_worker()
+    w._stop.set()
+
+    w.execute_task({"id": "t1", "payload": {"command": "echo hello"}})
+    # no REST calls at all — not even the "running" status report.
+    # (responses.activate with no registered routes means any HTTP call
+    # would raise instantly rather than block on a real network attempt.)
+    assert len(responses.calls) == 0
+
+
 def test_run_uses_percent_encoded_device_id_and_sends_auth_header(monkeypatch):
     w = Worker(BASE, device_id="gpu 1", capabilities=["gpu"], api_key="secret")
     monkeypatch.setattr(w.client, "register_capabilities", lambda *a, **kw: None)

@@ -54,6 +54,10 @@ class Worker:
         self._pool = ThreadPoolExecutor(max_workers=max_concurrent)
         self._procs: dict[str, subprocess.Popen] = {}
         self._procs_lock = threading.Lock()
+        # task.cancel 이 도착했지만 아직 시작 전인 task 를 기록 — 큐 대기중이거나
+        # task.assign 과 Popen 등록 사이의 틈에서 취소되면 _kill 이 아무것도 찾지
+        # 못해 조용히 무시되던 문제(§E1)를 막는다. _procs_lock 을 재사용해 잠근다.
+        self._cancelled: set[str] = set()
         self._stop = threading.Event()
         self._conn = None  # 현재 살아있는 WS 커넥션 — stop() 이 강제로 닫을 수 있게 보관
         self._conn_lock = threading.Lock()
@@ -95,8 +99,11 @@ class Worker:
                     time.sleep(backoff)
                     backoff = min(backoff * 2, self.reconnect_max_backoff)
         finally:
-            # KeyboardInterrupt 등 어떤 경로로 빠지든 풀은 반드시 정리한다
-            self._pool.shutdown(wait=True)
+            # KeyboardInterrupt 등 어떤 경로로 빠지든 풀은 반드시 정리한다.
+            # cancel_futures=True (3.9+) 로 아직 시작 안 한 future 를 버려
+            # stop() 이후 새로 spawn 되는 걸 막는다 — 실행 중인 것은 execute_task
+            # 상단의 _stop 체크와 stop() 의 kill 루프가 정리한다.
+            self._pool.shutdown(wait=True, cancel_futures=True)
 
     def stop(self) -> None:
         self._stop.set()
@@ -124,18 +131,36 @@ class Worker:
                 task = json.loads(task)
             self._pool.submit(self.execute_task, task)
         elif mtype == "task.cancel":
-            self._kill(msg.get("taskId", ""))
+            task_id = msg.get("taskId", "")
+            # _kill 보다 먼저 tombstone 을 남긴다 — 아직 큐에 있거나 막 시작하려는
+            # task 가 이 시점 이후 execute_task 에 진입해도 취소를 관측하게 한다.
+            with self._procs_lock:
+                self._cancelled.add(task_id)
+            self._kill(task_id)
         # ping/pong 등은 websockets 가 처리, 나머지는 무시
 
     # ── 실행 ────────────────────────────────────────────────────
     def execute_task(self, task: dict) -> None:
         task_id = task.get("id", "")
+        if self._stop.is_set():
+            # 워커가 종료 중 — 새 프로세스를 스폰하지 않는다 (§E2).
+            log.info("execute_task skipped (worker stopping): %s", task_id)
+            return
+        with self._procs_lock:
+            was_cancelled = task_id in self._cancelled
+            self._cancelled.discard(task_id)
+        if was_cancelled:
+            # 시작 전에 취소됨 — 서버는 이미 취소로 처리했으니 실행하지 않는다 (§E1).
+            log.info("execute_task skipped (cancelled before start): %s", task_id)
+            return
         command = (task.get("payload") or {}).get("command")
         self._try_report_status(task_id, "running")
         if not command:
             self._report(task_id, {"stdout": "", "stderr": "no command in payload",
                                    "exitCode": 1, "timedOut": False},
                          failed=True, duration_ns=0)
+            with self._procs_lock:
+                self._cancelled.discard(task_id)
             return
 
         start = time.monotonic()
@@ -164,6 +189,7 @@ class Worker:
             finally:
                 with self._procs_lock:
                     self._procs.pop(task_id, None)
+                    self._cancelled.discard(task_id)
         except Exception as e:  # noqa: BLE001 — Popen 등 실행 경로 실패도 반드시 서버에 보고
             # 이 가드는 실행(env/Popen/communicate) 경로만 감싼다 — 성공 경로의
             # _report 호출까지 감싸면, 보고 자체가 던진 비-HydraError(예: 2xx
@@ -176,6 +202,8 @@ class Worker:
                           "exitCode": -1, "timedOut": False,
                           "truncated": err_truncated},
                          failed=True, duration_ns=duration_ns)
+            with self._procs_lock:
+                self._cancelled.discard(task_id)
             return
 
         duration_ns = int((time.monotonic() - start) * 1e9)
