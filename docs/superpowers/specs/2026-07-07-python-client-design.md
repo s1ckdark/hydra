@@ -220,7 +220,10 @@ HydraError
 
 1. **1단계 — 파이썬 라이브러리** (이 스펙의 §3~5, §7~9)
    - models/errors → client → sim(+Go 픽스처 덤프 테스트) → worker → 테스트
-   - 이 단계에서 Go 변경은 픽스처 덤프 테스트 추가뿐 (동작 변경 없음)
+   - 이 단계의 Go 변경 두 가지: ① 픽스처 덤프 테스트 추가, ② `POST /api/tasks`·
+     `/api/tasks/batch`에 `resourceReqs` 바인딩 추가 + `gpuCount` 계약 필드
+     (구현 조사에서 발견: 현재 생성 핸들러가 resourceReqs 를 받지 않아 클라이언트의
+     자원 요구가 무시됨 — 순수 바인딩 추가, 스케줄링 동작 변경 없음)
 2. **2단계 — per-GPU 할당** (별도 계획으로 진행, §6 계약 준수)
    - Go: WorkerSnapshot GPU별 상태 → 적격성/packing → assignedGpuIndexes 전파
    - Python: sim per-GPU 갱신 + 새 픽스처, 같은 커밋으로
