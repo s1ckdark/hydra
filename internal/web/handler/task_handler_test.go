@@ -174,3 +174,66 @@ func TestAPITaskUpdateStatus_CancelAlreadyCompletedTask_StaysCompleted(t *testin
 		t.Errorf("status = %v, want completed (terminal guard should reject the cancel)", got.Status)
 	}
 }
+
+// --- D2: status whitelist validation ---
+//
+// An unknown status string (e.g. "bogus") must be rejected with 400 before
+// it ever reaches h.taskQueue.UpdateStatus, so it can't be written into a
+// task's Status field. A known status on a non-terminal task must still
+// go through normally.
+
+func TestAPITaskUpdateStatus_UnknownStatusRejected(t *testing.T) {
+	h, q := newTestHandlerWithQueue(t)
+	task := &domain.Task{ID: "t1", Status: domain.TaskStatusQueued}
+	q.Enqueue(task)
+
+	body := `{"status":"bogus"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/tasks/t1/status", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("t1")
+
+	if err := h.APITaskUpdateStatus(c); err != nil {
+		t.Fatalf("APITaskUpdateStatus: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid status: bogus") {
+		t.Errorf("body = %s, want invalid-status error mentioning the bad value", rec.Body.String())
+	}
+	if got := q.Get("t1"); got == nil || got.Status != domain.TaskStatusQueued {
+		t.Errorf("task status = %+v, want unchanged (queued)", got)
+	}
+}
+
+func TestAPITaskUpdateStatus_KnownStatusAccepted(t *testing.T) {
+	h, q := newTestHandlerWithQueue(t)
+	task := &domain.Task{ID: "t1", Status: domain.TaskStatusQueued}
+	q.Enqueue(task)
+
+	body := `{"status":"running"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/tasks/t1/status", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("t1")
+
+	if err := h.APITaskUpdateStatus(c); err != nil {
+		t.Fatalf("APITaskUpdateStatus: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+
+	var got domain.Task
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Status != domain.TaskStatusRunning {
+		t.Errorf("status = %v, want running", got.Status)
+	}
+}

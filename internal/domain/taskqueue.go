@@ -316,6 +316,15 @@ func (q *TaskQueue) UpdateStatus(taskID string, status TaskStatus) *Task {
 // task the server already considers cancelled or failed. Reporting a
 // result on a running/assigned task (the normal path) and re-reporting on
 // an already-completed task both remain allowed.
+//
+// Zombie-worker guard: a worker presumed dead can have its task reassigned
+// to a different device (see ReassignTasksFromDevice / CheckTimeouts). If
+// the original worker later finishes and POSTs its result, that result
+// must not clobber the new assignee's outcome. So the result is also
+// rejected when the task currently has an assignee, the result names a
+// device, and that device is not the current assignee. Both empty cases
+// stay permissive: a result with no DeviceID (legacy callers that omit
+// it) and a task with no assignee are both still accepted.
 func (q *TaskQueue) SetResult(taskID string, result *TaskResult) *Task {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -325,6 +334,10 @@ func (q *TaskQueue) SetResult(taskID string, result *TaskResult) *Task {
 	}
 	if task.Status == TaskStatusCancelled || task.Status == TaskStatusFailed {
 		log.Printf("[taskqueue] rejecting late result for terminal task %s (status=%s)", taskID, task.Status)
+		return task
+	}
+	if task.AssignedDeviceID != "" && result.DeviceID != "" && result.DeviceID != task.AssignedDeviceID {
+		log.Printf("[taskqueue] rejecting result for %s from non-assigned device %s (assigned to %s)", taskID, result.DeviceID, task.AssignedDeviceID)
 		return task
 	}
 	task.Result = result
