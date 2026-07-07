@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/s1ckdark/hydra/internal/domain"
+	"github.com/s1ckdark/hydra/internal/infra/ai"
 	"github.com/s1ckdark/hydra/internal/web/ws"
 )
 
@@ -68,9 +69,9 @@ func TestReconcileBoot_ReassignsTasksFromDisconnectedWorkers(t *testing.T) {
 
 	// Two assigned tasks across two devices, both disconnected.
 	taskQueue.Enqueue(&domain.Task{ID: "t1", Priority: domain.TaskPriorityNormal, MaxRetries: 3})
-	taskQueue.AssignToDevice("t1", "dev-1")
+	taskQueue.AssignToDevice("t1", "dev-1", nil)
 	taskQueue.Enqueue(&domain.Task{ID: "t2", Priority: domain.TaskPriorityNormal, MaxRetries: 3})
-	taskQueue.AssignToDevice("t2", "dev-2")
+	taskQueue.AssignToDevice("t2", "dev-2", nil)
 
 	s.reconcileBoot(context.Background())
 
@@ -96,7 +97,7 @@ func TestReconcileBoot_DedupesByDevice(t *testing.T) {
 	// Three tasks, all on the same device.
 	for _, id := range []string{"t1", "t2", "t3"} {
 		taskQueue.Enqueue(&domain.Task{ID: id, Priority: domain.TaskPriorityNormal, MaxRetries: 3})
-		taskQueue.AssignToDevice(id, "dev-A")
+		taskQueue.AssignToDevice(id, "dev-A", nil)
 	}
 
 	s.reconcileBoot(context.Background())
@@ -145,11 +146,40 @@ func TestReconcileBoot_NilHubIsNoOp(t *testing.T) {
 	s := NewTaskSupervisor(taskQueue, nil, nil, nil)
 
 	taskQueue.Enqueue(&domain.Task{ID: "t1", Priority: domain.TaskPriorityNormal, MaxRetries: 3})
-	taskQueue.AssignToDevice("t1", "dev-1")
+	taskQueue.AssignToDevice("t1", "dev-1", nil)
 
 	s.reconcileBoot(context.Background()) // must not panic
 
 	if got := taskQueue.Get("t1"); got.Status != domain.TaskStatusAssigned {
 		t.Errorf("t1.Status = %q; want unchanged when hub is nil", got.Status)
+	}
+}
+
+func TestBuildWorkerSnapshotPopulatesPerGPU(t *testing.T) {
+	dev := &domain.Device{ID: "gpu1", GPUCount: 2}
+	metrics := &domain.DeviceMetrics{
+		GPU: &domain.GPUMetrics{GPUs: []domain.SingleGPUMetrics{
+			{Index: 0, MemoryFree: 20000 * 1024 * 1024, UsagePercent: 15},
+			{Index: 1, MemoryFree: 4000 * 1024 * 1024, UsagePercent: 90},
+		}},
+	}
+	snap := buildWorkerSnapshot(dev, metrics, 0)
+	if len(snap.GPUs) != 2 {
+		t.Fatalf("GPUs = %v", snap.GPUs)
+	}
+	if snap.GPUs[0].MemoryFreeMB != 20000 || snap.GPUs[1].Utilization != 90 {
+		t.Fatalf("GPUs = %+v", snap.GPUs)
+	}
+}
+
+func TestBumpGPUReservationSubtracts(t *testing.T) {
+	snaps := []ai.WorkerSnapshot{{DeviceID: "gpu1",
+		GPUs: []ai.GPUFree{{Index: 0, MemoryFreeMB: 20000}, {Index: 1, MemoryFreeMB: 24000}}}}
+	bumpGPUReservation(snaps, "gpu1", []int{1}, 16000)
+	if snaps[0].GPUs[1].MemoryFreeMB != 8000 {
+		t.Fatalf("free = %d", snaps[0].GPUs[1].MemoryFreeMB)
+	}
+	if snaps[0].GPUs[0].MemoryFreeMB != 20000 {
+		t.Fatalf("untouched GPU changed: %d", snaps[0].GPUs[0].MemoryFreeMB)
 	}
 }
