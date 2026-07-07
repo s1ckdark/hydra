@@ -2,10 +2,13 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
 
 import pytest
 import responses
 
+from hydra_client.errors import HydraAuthError
 from hydra_client.worker import Worker
 
 BASE = "http://head:8080"
@@ -173,3 +176,104 @@ def test_kill_tolerates_process_already_reaped(monkeypatch):
 
     monkeypatch.setattr(os, "getpgid", raise_lookup)
     w._kill("t1")  # 예외가 발생하면 안 된다
+
+
+# ── B1: stop() 이 실행 중 subprocess 를 정리한다 ──────────────────────
+
+@responses.activate
+def test_stop_kills_running_processes():
+    responses.put(f"{BASE}/api/tasks/t1/status", json={"id": "t1"})
+    responses.put(f"{BASE}/api/tasks/t1/result", json={"id": "t1"})
+    responses.put(f"{BASE}/api/tasks/t1/status", json={"id": "t1"})
+    w = make_worker(term_grace=0.2)
+
+    thread = threading.Thread(
+        target=w.execute_task,
+        args=({"id": "t1", "payload": {"command": "sleep 30"}},))
+    thread.start()
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and "t1" not in w._procs:
+            time.sleep(0.01)
+        assert "t1" in w._procs, "subprocess never registered in time"
+        proc = w._procs["t1"]
+
+        w.stop()
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+        assert proc.poll() is not None
+    finally:
+        thread.join(timeout=1)
+
+
+# ── B2: 출력 메모리 캡 ────────────────────────────────────────────────
+
+@responses.activate
+def test_execute_task_caps_oversized_output_and_flags_truncated():
+    responses.put(f"{BASE}/api/tasks/t1/status", json={"id": "t1"})
+    responses.put(f"{BASE}/api/tasks/t1/result", json={"id": "t1"})
+    w = make_worker(max_output_bytes=100)
+    cmd = f"{sys.executable} -c \"print('x' * 1000)\""
+    w.execute_task({"id": "t1", "payload": {"command": cmd}})
+
+    body = json.loads(responses.calls[1].request.body)
+    assert len(body["output"]["stdout"].encode("utf-8")) <= 100
+    assert body["output"]["truncated"] is True
+
+
+@responses.activate
+def test_execute_task_small_output_not_truncated():
+    responses.put(f"{BASE}/api/tasks/t1/status", json={"id": "t1"})
+    responses.put(f"{BASE}/api/tasks/t1/result", json={"id": "t1"})
+    w = make_worker()
+    w.execute_task({"id": "t1", "payload": {"command": "echo hi"}})
+
+    body = json.loads(responses.calls[1].request.body)
+    assert body["output"]["truncated"] is False
+
+
+# ── B4: _retry 는 auth/치명적 오류를 즉시 포기한다 ─────────────────────
+
+def test_retry_gives_up_immediately_on_auth_error(monkeypatch):
+    w = make_worker()
+    calls = []
+
+    def raise_auth(*a, **kw):
+        calls.append(1)
+        raise HydraAuthError("invalid key")
+
+    monkeypatch.setattr(w.client, "update_task_status", raise_auth)
+    w._try_report_status("t1", "failed")
+
+    assert len(calls) == 1  # 재시도 없이 1회만 호출
+
+
+# ── B5: WS URL device_id 인코딩 + 인증 헤더 ────────────────────────────
+
+def test_run_uses_percent_encoded_device_id_and_sends_auth_header(monkeypatch):
+    w = Worker(BASE, device_id="gpu 1", capabilities=["gpu"], api_key="secret")
+    monkeypatch.setattr(w.client, "register_capabilities", lambda *a, **kw: None)
+
+    captured = {}
+
+    class FakeConn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def __iter__(self):
+            return iter(())
+
+    def fake_connect(url, max_size=None, additional_headers=None):
+        captured["url"] = url
+        captured["headers"] = additional_headers
+        w._stop.set()  # 한 번의 접속만 관찰하고 run() 루프를 빠져나가게 한다
+        return FakeConn()
+
+    monkeypatch.setattr("websockets.sync.client.connect", fake_connect)
+    w.run()
+
+    assert captured["url"] == "ws://head:8080/ws?device_id=gpu+1"
+    assert captured["headers"] == {"X-API-Key": "secret"}

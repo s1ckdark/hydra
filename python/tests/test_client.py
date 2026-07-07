@@ -98,6 +98,16 @@ def test_connection_error_wrapped(client):
 
 
 @responses.activate
+def test_task_and_device_ids_are_percent_encoded_in_paths(client):
+    # id 값에 슬래시/공백처럼 경로를 깨는 문자가 있어도 안전하게 인코딩되어야 한다
+    responses.get(f"{BASE}/api/tasks/a%2Fb%20c", json={"id": "a/b c"})
+    responses.post(f"{BASE}/api/devices/d%2F1/capabilities",
+                   json={"deviceId": "d/1", "capabilities": []})
+    assert client.get_task("a/b c").id == "a/b c"
+    client.register_capabilities("d/1", [])
+
+
+@responses.activate
 def test_devices_and_capabilities(client):
     responses.get(f"{BASE}/api/devices",
                   json=[{"id": "d1", "hasGpu": True, "gpuCount": 2}])

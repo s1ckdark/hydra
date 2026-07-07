@@ -5,8 +5,10 @@
 """
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any
+from urllib.parse import quote
 
 import requests
 
@@ -22,18 +24,24 @@ class HydraClient:
                  timeout: float = 10.0):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.api_key = api_key
         self._session = requests.Session()
         if api_key:
             self._session.headers["X-API-Key"] = api_key
+        # requests.Session 은 동시 사용에 안전하지 않다 — worker 가
+        # max_concurrent>1 로 여러 스레드에서 같은 클라이언트를 쓸 수 있어
+        # 요청 자체를 직렬화한다 (worker 의 낮은 요청 빈도상 문제 없음).
+        self._request_lock = threading.Lock()
 
     # ── 내부 공통 ────────────────────────────────────────────────
     def _request(self, method: str, path: str, *,
                  json_body: Any = None, params: dict | None = None) -> Any:
         url = f"{self.base_url}{path}"
         try:
-            resp = self._session.request(
-                method, url, json=json_body, params=params,
-                timeout=self.timeout)
+            with self._request_lock:
+                resp = self._session.request(
+                    method, url, json=json_body, params=params,
+                    timeout=self.timeout)
         except requests.RequestException as e:
             raise HydraConnectionError(f"{method} {url}: {e}") from e
 
@@ -77,7 +85,8 @@ class HydraClient:
         return TaskHandle(self, Task.from_json(data))
 
     def get_task(self, task_id: str) -> Task:
-        return Task.from_json(self._request("GET", f"/api/tasks/{task_id}"))
+        return Task.from_json(
+            self._request("GET", f"/api/tasks/{quote(task_id, safe='')}"))
 
     def list_tasks(self, status: str | None = None,
                    device_id: str | None = None) -> list[Task]:
@@ -90,8 +99,9 @@ class HydraClient:
         return [Task.from_json(d) for d in data]
 
     def update_task_status(self, task_id: str, status: str) -> Task:
-        data = self._request("PUT", f"/api/tasks/{task_id}/status",
-                             json_body={"status": status})
+        data = self._request(
+            "PUT", f"/api/tasks/{quote(task_id, safe='')}/status",
+            json_body={"status": status})
         return Task.from_json(data)
 
     def cancel_task(self, task_id: str) -> Task:
@@ -103,8 +113,9 @@ class HydraClient:
                         duration_ns: int = 0) -> Task:
         body = {"deviceId": device_id, "deviceName": device_name,
                 "output": output or {}, "durationMs": duration_ns}
-        data = self._request("PUT", f"/api/tasks/{task_id}/result",
-                             json_body=body)
+        data = self._request(
+            "PUT", f"/api/tasks/{quote(task_id, safe='')}/result",
+            json_body=body)
         return Task.from_json(data)
 
     # ── device ──────────────────────────────────────────────────
@@ -114,12 +125,15 @@ class HydraClient:
 
     def get_device(self, device_id: str) -> Device:
         return Device.from_json(
-            self._request("GET", f"/api/devices/{device_id}"))
+            self._request(
+                "GET", f"/api/devices/{quote(device_id, safe='')}"))
 
     def register_capabilities(self, device_id: str,
                               capabilities: list[str]) -> None:
-        self._request("POST", f"/api/devices/{device_id}/capabilities",
-                      json_body={"capabilities": capabilities})
+        self._request(
+            "POST",
+            f"/api/devices/{quote(device_id, safe='')}/capabilities",
+            json_body={"capabilities": capabilities})
 
     # ── batch ───────────────────────────────────────────────────
     def submit_batch(self, specs: list[TaskSpec], name: str = "",
@@ -131,7 +145,8 @@ class HydraClient:
 
     def get_group(self, group_id: str, detail: bool = False) -> dict:
         params = {"detail": "full"} if detail else None
-        return self._request("GET", f"/api/groups/{group_id}", params=params)
+        return self._request(
+            "GET", f"/api/groups/{quote(group_id, safe='')}", params=params)
 
     # ── monitoring ──────────────────────────────────────────────
     def gpu_metrics(self) -> dict:
