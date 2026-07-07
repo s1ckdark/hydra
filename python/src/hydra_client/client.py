@@ -133,6 +133,50 @@ class HydraClient:
         params = {"detail": "full"} if detail else None
         return self._request("GET", f"/api/groups/{group_id}", params=params)
 
+    # ── monitoring ──────────────────────────────────────────────
+    def gpu_metrics(self) -> dict:
+        return self._request("GET", "/api/monitor/gpu")
+
+    def metrics_snapshot(self) -> dict:
+        return self._request("GET", "/api/monitor/snapshot")
+
+    def cluster_snapshot(self) -> list[WorkerSnapshot]:
+        """sim 입력용 WorkerSnapshot 목록.
+
+        Go buildWorkerSnapshot(task_supervisor.go)과 같은 집계:
+        GPU 사용률 평균 / 여유 VRAM 합산 / bytes→GB, running_jobs 는
+        assigned+running task 수. 시점 차이와 AI 중재 때문에 실제 배치와
+        다를 수 있다 — sim.explain() 문서 참조.
+        """
+        devices = self.list_devices()
+        metrics = (self.metrics_snapshot().get("devices") or {})
+        running: dict[str, int] = {}
+        for t in self.list_tasks():
+            if t.status in ("assigned", "running") and t.assigned_device_id:
+                running[t.assigned_device_id] = (
+                    running.get(t.assigned_device_id, 0) + 1)
+
+        snaps: list[WorkerSnapshot] = []
+        for dev in devices:
+            snap = WorkerSnapshot(
+                device_id=dev.id, capabilities=dev.capabilities,
+                running_jobs=running.get(dev.id, 0), gpu_count=dev.gpu_count)
+            m = metrics.get(dev.id)
+            if m and not m.get("error"):
+                snap.cpu_usage = (m.get("cpu") or {}).get("usagePercent", 0.0)
+                snap.memory_free_gb = (
+                    (m.get("memory") or {}).get("free", 0) / (1024 ** 3))
+                gpus = ((m.get("gpu") or {}).get("gpus") or [])
+                if gpus:
+                    snap.gpu_utilization = (
+                        sum(g.get("usagePercent", 0.0) for g in gpus)
+                        / len(gpus))
+                    snap.gpu_memory_free_mb = int(
+                        sum(g.get("memoryFree", 0) for g in gpus)
+                        / (1024 ** 2))
+            snaps.append(snap)
+        return snaps
+
 
 def _error_message(resp) -> str:
     try:
