@@ -28,6 +28,15 @@ type ChatProvider interface {
 	Complete(ctx context.Context, system, prompt string) (string, error)
 }
 
+// GPUFree is one GPU's schedulable state inside a WorkerSnapshot.
+// JSON tags match the per-GPU contract in the 2026-07-07 design spec §6
+// (fixtures and the Python sim consume the same camelCase keys).
+type GPUFree struct {
+	Index        int     `json:"index"`
+	MemoryFreeMB int     `json:"memoryFreeMB"`
+	Utilization  float64 `json:"utilization"`
+}
+
 // WorkerSnapshot captures a worker's current resource state.
 type WorkerSnapshot struct {
 	DeviceID        string
@@ -38,6 +47,10 @@ type WorkerSnapshot struct {
 	RunningJobs     int
 	GPUCount        int
 	GPUMemoryFreeMB int
+	// GPUs carries per-GPU free memory/utilization when the collector
+	// provides it. Empty = per-GPU data unavailable; PackGPUs falls back
+	// to the aggregate GPUMemoryFreeMB check for single-GPU requests.
+	GPUs []GPUFree
 }
 
 // ScheduleDecision is the AI response for task placement.

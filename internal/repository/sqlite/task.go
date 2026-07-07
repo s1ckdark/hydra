@@ -30,6 +30,10 @@ func (r *TaskRepository) Save(ctx context.Context, t *domain.Task) error {
 	if t.BlockedDeviceIDs == nil {
 		blocked = []byte("[]")
 	}
+	gpuIdx, _ := json.Marshal(t.AssignedGPUIndexes)
+	if t.AssignedGPUIndexes == nil {
+		gpuIdx = []byte("[]")
+	}
 	payload, _ := json.Marshal(t.Payload)
 	if t.Payload == nil {
 		payload = []byte("{}")
@@ -50,10 +54,10 @@ func (r *TaskRepository) Save(ctx context.Context, t *domain.Task) error {
 			payload, result, error,
 			created_at, assigned_at, started_at, completed_at,
 			timeout_ns, retry_count, max_retries, created_by,
-			resource_reqs, blocked_device_ids, ai_schedule, group_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			resource_reqs, blocked_device_ids, ai_schedule, group_id, assigned_gpu_indexes
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		-- Write-once (identity/payload/timeout): id, parent_id, orch_id, type, payload, timeout_ns, max_retries, created_at, created_by
-		-- Mutable (lifecycle/routing): status, priority, assigned_device_id, result, error, assigned_at, started_at, completed_at, retry_count, required_capabilities, blocked_device_ids, ai_schedule, group_id
+		-- Mutable (lifecycle/routing): status, priority, assigned_device_id, result, error, assigned_at, started_at, completed_at, retry_count, required_capabilities, blocked_device_ids, ai_schedule, group_id, assigned_gpu_indexes
 		ON CONFLICT(id) DO UPDATE SET
 			status = excluded.status,
 			priority = excluded.priority,
@@ -67,14 +71,15 @@ func (r *TaskRepository) Save(ctx context.Context, t *domain.Task) error {
 			required_capabilities = excluded.required_capabilities,
 			blocked_device_ids = excluded.blocked_device_ids,
 			ai_schedule = excluded.ai_schedule,
-			group_id = excluded.group_id
+			group_id = excluded.group_id,
+			assigned_gpu_indexes = excluded.assigned_gpu_indexes
 	`,
 		t.ID, t.ParentID, t.OrchID, t.Type, string(t.Status), string(t.Priority),
 		string(reqCaps), t.PreferredDeviceID, t.AssignedDeviceID,
 		string(payload), string(result), t.Error,
 		t.CreatedAt, t.AssignedAt, t.StartedAt, t.CompletedAt,
 		int64(t.Timeout), t.RetryCount, t.MaxRetries, t.CreatedBy,
-		string(resourceReqs), string(blocked), encodeAISchedule(t.AISchedule), t.GroupID,
+		string(resourceReqs), string(blocked), encodeAISchedule(t.AISchedule), t.GroupID, string(gpuIdx),
 	)
 	return err
 }
@@ -126,7 +131,7 @@ const taskSelectColumns = `
 		   payload, result, error,
 		   created_at, assigned_at, started_at, completed_at,
 		   timeout_ns, retry_count, max_retries, created_by,
-		   resource_reqs, blocked_device_ids, ai_schedule, group_id
+		   resource_reqs, blocked_device_ids, ai_schedule, group_id, assigned_gpu_indexes
 	FROM tasks`
 
 type taskRowScanner interface {
@@ -139,6 +144,7 @@ func scanTask(row taskRowScanner) (*domain.Task, error) {
 		status, priority                           string
 		reqCaps, blocked, payload, result, resReqs string
 		aiSched                                    string
+		gpuIdx                                     string
 		assignedAt, startedAt, completedAt         sql.NullTime
 		timeoutNS                                  int64
 	)
@@ -148,7 +154,7 @@ func scanTask(row taskRowScanner) (*domain.Task, error) {
 		&payload, &result, &t.Error,
 		&t.CreatedAt, &assignedAt, &startedAt, &completedAt,
 		&timeoutNS, &t.RetryCount, &t.MaxRetries, &t.CreatedBy,
-		&resReqs, &blocked, &aiSched, &t.GroupID,
+		&resReqs, &blocked, &aiSched, &t.GroupID, &gpuIdx,
 	)
 	if err != nil {
 		return nil, err
@@ -200,6 +206,11 @@ func scanTask(row taskRowScanner) (*domain.Task, error) {
 		}
 	}
 	t.AISchedule = decodeAISchedule(aiSched)
+	if gpuIdx != "" {
+		if err := json.Unmarshal([]byte(gpuIdx), &t.AssignedGPUIndexes); err != nil {
+			log.Printf("[taskrepo] assigned_gpu_indexes unmarshal failed for task %s: %v", t.ID, err)
+		}
+	}
 	return &t, nil
 }
 

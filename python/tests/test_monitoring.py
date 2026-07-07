@@ -22,8 +22,8 @@ def test_cluster_snapshot_mirrors_go_aggregation():
                      "cpu": {"usagePercent": 10.0},
                      "memory": {"free": 32 * GB},
                      "gpu": {"gpus": [
-                         {"usagePercent": 20.0, "memoryFree": 20000 * MB},
-                         {"usagePercent": 40.0, "memoryFree": 10000 * MB}]}},
+                         {"index": 0, "usagePercent": 20.0, "memoryFree": 20000 * MB},
+                         {"index": 1, "usagePercent": 40.0, "memoryFree": 10000 * MB}]}},
             "cpu1": {"deviceId": "cpu1",
                      "cpu": {"usagePercent": 50.0},
                      "memory": {"free": 8 * GB},
@@ -47,5 +47,9 @@ def test_cluster_snapshot_mirrors_go_aggregation():
     assert g.cpu_usage == 10.0
     assert g.running_jobs == 2                  # running + assigned
     assert g.gpu_count == 2
+    # per-GPU 상태 검증
+    assert [(x.index, x.memory_free_mb, x.utilization) for x in g.gpus] == [
+        (0, 20000, 20.0), (1, 10000, 40.0)]
     c = snaps["cpu1"]
     assert c.cpu_usage == 0.0 and c.memory_free_gb == 0.0  # error 디바이스
+    assert c.gpus == []          # error 디바이스는 GPU별 상태도 비움

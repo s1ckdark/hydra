@@ -38,28 +38,32 @@ type ResourceRequirements struct {
 
 // Task represents a unit of work to be executed on a capable node
 type Task struct {
-	ID                   string                 `json:"id"`
-	ParentID             string                 `json:"parentId,omitempty"`        // for sub-tasks split by head
-	OrchID            string                 `json:"orchId,omitempty"`
-	Type                 string                 `json:"type"`                      // "command", "gps", "camera", "sms", "phone", "sensor"
-	Status               TaskStatus             `json:"status"`
-	Priority             TaskPriority           `json:"priority"`
-	RequiredCapabilities []string               `json:"requiredCapabilities"`      // capabilities needed to run this task
-	PreferredDeviceID    string                 `json:"preferredDeviceId,omitempty"`
-	AssignedDeviceID     string                 `json:"assignedDeviceId,omitempty"`
-	Payload              map[string]interface{} `json:"payload"`                   // task-specific data
-	Result               *TaskResult            `json:"result,omitempty"`
-	Error                string                 `json:"error,omitempty"`
-	CreatedAt            time.Time              `json:"createdAt"`
-	AssignedAt           *time.Time             `json:"assignedAt,omitempty"`
-	StartedAt            *time.Time             `json:"startedAt,omitempty"`
-	CompletedAt          *time.Time             `json:"completedAt,omitempty"`
-	Timeout              time.Duration          `json:"timeout,omitempty"`         // max execution time
-	RetryCount           int                    `json:"retryCount"`
-	MaxRetries           int                    `json:"maxRetries"`
-	CreatedBy            string                 `json:"createdBy,omitempty"`       // device ID of creator/head
-	ResourceReqs         *ResourceRequirements  `json:"resourceReqs,omitempty"`
-	BlockedDeviceIDs     []string               `json:"blockedDeviceIds,omitempty"` // workers excluded after failure; prevents flapping on retry
+	ID                   string       `json:"id"`
+	ParentID             string       `json:"parentId,omitempty"` // for sub-tasks split by head
+	OrchID               string       `json:"orchId,omitempty"`
+	Type                 string       `json:"type"` // "command", "gps", "camera", "sms", "phone", "sensor"
+	Status               TaskStatus   `json:"status"`
+	Priority             TaskPriority `json:"priority"`
+	RequiredCapabilities []string     `json:"requiredCapabilities"` // capabilities needed to run this task
+	PreferredDeviceID    string       `json:"preferredDeviceId,omitempty"`
+	AssignedDeviceID     string       `json:"assignedDeviceId,omitempty"`
+	// AssignedGPUIndexes are the GPU indexes the scheduler reserved on the
+	// assigned device (spec §6). The worker converts them to
+	// CUDA_VISIBLE_DEVICES. Empty = no per-GPU pinning (whole node visible).
+	AssignedGPUIndexes []int                  `json:"assignedGpuIndexes,omitempty"`
+	Payload            map[string]interface{} `json:"payload"` // task-specific data
+	Result             *TaskResult            `json:"result,omitempty"`
+	Error              string                 `json:"error,omitempty"`
+	CreatedAt          time.Time              `json:"createdAt"`
+	AssignedAt         *time.Time             `json:"assignedAt,omitempty"`
+	StartedAt          *time.Time             `json:"startedAt,omitempty"`
+	CompletedAt        *time.Time             `json:"completedAt,omitempty"`
+	Timeout            time.Duration          `json:"timeout,omitempty"` // max execution time
+	RetryCount         int                    `json:"retryCount"`
+	MaxRetries         int                    `json:"maxRetries"`
+	CreatedBy          string                 `json:"createdBy,omitempty"` // device ID of creator/head
+	ResourceReqs       *ResourceRequirements  `json:"resourceReqs,omitempty"`
+	BlockedDeviceIDs   []string               `json:"blockedDeviceIds,omitempty"` // workers excluded after failure; prevents flapping on retry
 	// AISchedule overrides the server-wide AlwaysConsult flag for this task:
 	//   nil   → use the server config default
 	//   true  → always run scheduling through the AI provider
@@ -74,7 +78,7 @@ type Task struct {
 type TaskResult struct {
 	DeviceID   string                 `json:"deviceId"`
 	DeviceName string                 `json:"deviceName"`
-	Output     map[string]interface{} `json:"output"`    // flexible output (GPS coords, image URL, command stdout, etc.)
+	Output     map[string]interface{} `json:"output"` // flexible output (GPS coords, image URL, command stdout, etc.)
 	Duration   time.Duration          `json:"durationMs"`
 }
 

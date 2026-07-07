@@ -118,9 +118,24 @@ func (s *TaskSupervisor) Start(ctx context.Context) {
 				s.reconcileBoot(ctx)
 				bootReconciled = true
 			}
-			s.check(ctx)
+			s.safeCheck(ctx)
 		}
 	}
+}
+
+// safeCheck runs check and recovers from any panic inside it, logging
+// instead of letting the panic escape and kill the process. The tick
+// goroutine in Start has no other recover, so an unguarded panic here
+// (e.g. from a scheduling edge case) would crash the whole server and,
+// on restart, replay the same poisoned task from persisted queue state —
+// a standing crash loop.
+func (s *TaskSupervisor) safeCheck(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[supervisor] tick panic recovered: %v", r)
+		}
+	}()
+	s.check(ctx)
 }
 
 // reconcileBoot is a one-shot pass invoked after bootGracePeriod elapses.
@@ -277,13 +292,20 @@ func (s *TaskSupervisor) scheduleQueue(ctx context.Context) {
 			log.Printf("[supervisor] task %s: no worker selected", task.ID)
 			continue
 		}
-		assigned := s.taskQueue.AssignToDevice(task.ID, best.DeviceID)
+		gpuIndexes, ok := ai.PackGPUs(task, *best)
+		if !ok {
+			log.Printf("[supervisor] task %s: PackGPUs failed post-selection on %s (assigning unpinned)", task.ID, best.DeviceID)
+		}
+		assigned := s.taskQueue.AssignToDevice(task.ID, best.DeviceID, gpuIndexes)
 		if assigned == nil {
 			continue // raced: another pass claimed it
 		}
-		log.Printf("[supervisor] task %s assigned to %s", task.ID, best.DeviceID)
+		log.Printf("[supervisor] task %s assigned to %s (gpus=%v)", task.ID, best.DeviceID, gpuIndexes)
 		s.notifyDeviceOfTask(best.DeviceID, assigned)
 		bumpRunningJobs(snaps, best.DeviceID)
+		if r := task.ResourceReqs; r != nil && r.GPUMemoryMB > 0 && len(gpuIndexes) > 0 {
+			bumpGPUReservation(snaps, best.DeviceID, gpuIndexes, r.GPUMemoryMB)
+		}
 	}
 }
 
@@ -305,6 +327,11 @@ func buildWorkerSnapshot(dev *domain.Device, metrics *domain.DeviceMetrics, runn
 		for _, g := range metrics.GPU.GPUs {
 			utilSum += g.UsagePercent
 			freeBytes += g.MemoryFree
+			snap.GPUs = append(snap.GPUs, ai.GPUFree{
+				Index:        g.Index,
+				MemoryFreeMB: int(g.MemoryFree / (1024 * 1024)),
+				Utilization:  g.UsagePercent,
+			})
 		}
 		snap.GPUUtilization = utilSum / float64(len(metrics.GPU.GPUs))
 		snap.GPUMemoryFreeMB = int(freeBytes / (1024 * 1024))
@@ -318,6 +345,30 @@ func bumpRunningJobs(snaps []ai.WorkerSnapshot, deviceID string) {
 			snaps[i].RunningJobs++
 			return
 		}
+	}
+}
+
+// bumpGPUReservation subtracts memMB from the selected GPUs' free VRAM in
+// the local snapshot slice so later tasks in the same tick don't overcommit
+// the GPUs this assignment just claimed. Cross-tick accuracy comes from
+// nvidia-smi remeasurement; there is deliberately no reservation table
+// (spec §6 accepted tradeoff).
+func bumpGPUReservation(snaps []ai.WorkerSnapshot, deviceID string, indexes []int, memMB int) {
+	for i := range snaps {
+		if snaps[i].DeviceID != deviceID {
+			continue
+		}
+		for _, idx := range indexes {
+			for j := range snaps[i].GPUs {
+				if snaps[i].GPUs[j].Index == idx {
+					snaps[i].GPUs[j].MemoryFreeMB -= memMB
+					if snaps[i].GPUs[j].MemoryFreeMB < 0 {
+						snaps[i].GPUs[j].MemoryFreeMB = 0
+					}
+				}
+			}
+		}
+		return
 	}
 }
 

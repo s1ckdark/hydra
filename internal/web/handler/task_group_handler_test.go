@@ -271,3 +271,36 @@ func TestAPITaskBatchCreate_InvalidTaskRollsBack(t *testing.T) {
 		t.Errorf("queue should be empty after rollback, got %d", tq.PendingCount())
 	}
 }
+
+func TestAPITaskBatchCreate_NegativeResourceReqsRejected(t *testing.T) {
+	gRepo := &stubTaskGroupRepo{data: map[string]*domain.TaskGroup{}}
+	tq := domain.NewTaskQueue()
+	h := &Handler{
+		taskGroupRepo:  &stubTaskGroupRepo{data: map[string]*domain.TaskGroup{}},
+		taskGroupTasks: &stubTaskRepoForGroup{data: map[string][]*domain.Task{}},
+		taskGroupSaver: gRepo,
+		taskQueue:      tq,
+	}
+	e := echo.New()
+	body := `{"tasks":[{"type":"shell"},{"type":"shell","resourceReqs":{"memoryMB":-1}}]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/tasks/batch", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.APITaskBatchCreate(c); err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "tasks[1]: resourceReqs: negative values not allowed") {
+		t.Errorf("body = %s, want tasks[1] negative-values error", rec.Body.String())
+	}
+	if len(gRepo.data) != 0 {
+		t.Errorf("group should not be saved on validation failure: %+v", gRepo.data)
+	}
+	if tq.PendingCount() != 0 {
+		t.Errorf("queue should be empty after rollback, got %d", tq.PendingCount())
+	}
+}

@@ -296,5 +296,302 @@
       "gpuMemoryFreeMB": 40000
     },
     "expectedScore": 98
+  },
+  {
+    "name": "pergpu_split_vram_rejected",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "gpuMemoryMB": 20000
+      }
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000,
+      "gpus": [
+        {
+          "index": 0,
+          "memoryFreeMB": 10000,
+          "utilization": 20
+        },
+        {
+          "index": 1,
+          "memoryFreeMB": 10000,
+          "utilization": 30
+        }
+      ]
+    },
+    "expectedScore": -1
+  },
+  {
+    "name": "pergpu_single_best_fit_uses_selected_util",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "gpuMemoryMB": 16000
+      }
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000,
+      "gpus": [
+        {
+          "index": 0,
+          "memoryFreeMB": 24000,
+          "utilization": 10
+        },
+        {
+          "index": 1,
+          "memoryFreeMB": 20000,
+          "utilization": 50
+        }
+      ]
+    },
+    "expectedScore": 95
+  },
+  {
+    "name": "pergpu_exact_fit_passes",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "gpuMemoryMB": 20000,
+        "gpuCount": 1
+      }
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000,
+      "gpus": [
+        {
+          "index": 0,
+          "memoryFreeMB": 20000,
+          "utilization": 40
+        }
+      ]
+    },
+    "expectedScore": 99
+  },
+  {
+    "name": "pergpu_two_of_three",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "gpuMemoryMB": 16000,
+        "gpuCount": 2
+      }
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000,
+      "gpus": [
+        {
+          "index": 0,
+          "memoryFreeMB": 8000,
+          "utilization": 90
+        },
+        {
+          "index": 1,
+          "memoryFreeMB": 24000,
+          "utilization": 30
+        },
+        {
+          "index": 2,
+          "memoryFreeMB": 20000,
+          "utilization": 10
+        }
+      ]
+    },
+    "expectedScore": 107
+  },
+  {
+    "name": "pergpu_count_insufficient",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "gpuMemoryMB": 8000,
+        "gpuCount": 3
+      }
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000,
+      "gpus": [
+        {
+          "index": 0,
+          "memoryFreeMB": 10000,
+          "utilization": 0
+        },
+        {
+          "index": 1,
+          "memoryFreeMB": 10000,
+          "utilization": 0
+        }
+      ]
+    },
+    "expectedScore": -1
+  },
+  {
+    "name": "pergpu_count_only_no_mem",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "gpuCount": 2
+      }
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000,
+      "gpus": [
+        {
+          "index": 0,
+          "memoryFreeMB": 100,
+          "utilization": 10
+        },
+        {
+          "index": 1,
+          "memoryFreeMB": 200,
+          "utilization": 20
+        },
+        {
+          "index": 2,
+          "memoryFreeMB": 50,
+          "utilization": 30
+        }
+      ]
+    },
+    "expectedScore": 107
+  },
+  {
+    "name": "pergpu_no_gpu_requirement_uses_node_util",
+    "task": {
+      "priority": "normal"
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000,
+      "gpus": [
+        {
+          "index": 0,
+          "memoryFreeMB": 10000,
+          "utilization": 5
+        },
+        {
+          "index": 1,
+          "memoryFreeMB": 10000,
+          "utilization": 95
+        }
+      ]
+    },
+    "expectedScore": 107
+  },
+  {
+    "name": "fallback_no_pergpu_multi_rejected",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "gpuMemoryMB": 1000,
+        "gpuCount": 2
+      }
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": -1
+  },
+  {
+    "name": "fallback_no_pergpu_single_fits",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "gpuMemoryMB": 16000
+      }
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": 107
   }
 ]

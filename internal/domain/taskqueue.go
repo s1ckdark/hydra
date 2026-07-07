@@ -366,6 +366,7 @@ func (q *TaskQueue) ReassignTasksFromDevice(deviceID string) []*Task {
 				task.AssignedDeviceID = ""
 				task.AssignedAt = nil
 				task.StartedAt = nil
+				task.AssignedGPUIndexes = nil
 				task.Error = fmt.Sprintf("worker %s failed, reassigning (retry %d/%d)", deviceID, task.RetryCount, task.MaxRetries)
 				q.insertByPriority(task)
 				reassigned = append(reassigned, task)
@@ -394,7 +395,7 @@ func (q *TaskQueue) ListQueuedByPriority() []*Task {
 // AssignToDevice atomically removes a queued task from the queue and marks it
 // assigned to deviceID. Returns nil if the task is unknown or no longer queued
 // (e.g. another scheduler pass already claimed it).
-func (q *TaskQueue) AssignToDevice(taskID, deviceID string) *Task {
+func (q *TaskQueue) AssignToDevice(taskID, deviceID string, gpuIndexes []int) *Task {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	task, ok := q.tasks[taskID]
@@ -411,6 +412,7 @@ func (q *TaskQueue) AssignToDevice(taskID, deviceID string) *Task {
 	task.Status = TaskStatusAssigned
 	task.AssignedDeviceID = deviceID
 	task.AssignedAt = &now
+	task.AssignedGPUIndexes = gpuIndexes
 	q.persist(task)
 	return task
 }
@@ -429,6 +431,9 @@ func cloneTask(t *Task) *Task {
 	}
 	if t.BlockedDeviceIDs != nil {
 		cp.BlockedDeviceIDs = append([]string(nil), t.BlockedDeviceIDs...)
+	}
+	if t.AssignedGPUIndexes != nil {
+		cp.AssignedGPUIndexes = append([]int(nil), t.AssignedGPUIndexes...)
 	}
 	if t.Payload != nil {
 		cp.Payload = make(map[string]interface{}, len(t.Payload))

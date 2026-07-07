@@ -14,7 +14,7 @@ from .errors import (
     HydraAuthError, HydraConnectionError, HydraError,
     HydraNotFoundError, HydraServerError, TaskFailedError,
 )
-from .models import Device, ResourceRequirements, Task, TaskSpec, WorkerSnapshot
+from .models import Device, GPUFree, ResourceRequirements, Task, TaskSpec, WorkerSnapshot
 
 
 class HydraClient:
@@ -178,6 +178,14 @@ class HydraClient:
                     snap.gpu_memory_free_mb = int(
                         sum(g.get("memoryFree", 0) for g in gpus)
                         / (1024 ** 2))
+                    snap.gpus = [
+                        GPUFree(
+                            index=g.get("index", 0),
+                            memory_free_mb=int(g.get("memoryFree", 0) / (1024 ** 2)),
+                            utilization=g.get("usagePercent", 0.0),
+                        )
+                        for g in gpus
+                    ]
             snaps.append(snap)
         return snaps
 

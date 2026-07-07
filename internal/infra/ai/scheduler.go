@@ -63,6 +63,56 @@ func PickBestWorker(task *domain.Task, workers []WorkerSnapshot) *WorkerSnapshot
 	return best
 }
 
+// PackGPUs selects which GPUs on w the task would occupy.
+// Returns (indexes ascending, true) when w can satisfy the task's per-GPU
+// requirement; (nil, false) when it cannot. A task with no GPU requirement
+// (nil ResourceReqs, or GPUMemoryMB==0 && GPUCount==0) returns (nil, true):
+// eligible, nothing pinned. GPUMemoryMB is interpreted per-GPU (spec §6);
+// gpuCount 0 means 1. Selection is best-fit: smallest sufficient free VRAM
+// first (tie broken by index), so large-VRAM GPUs stay available for
+// larger future tasks. Workers without per-GPU data fall back to the
+// aggregate check for single-GPU requests and are ineligible for multi-GPU.
+func PackGPUs(task *domain.Task, w WorkerSnapshot) ([]int, bool) {
+	r := task.ResourceReqs
+	if r == nil || (r.GPUMemoryMB == 0 && r.GPUCount == 0) {
+		return nil, true
+	}
+	count := r.GPUCount
+	if count < 1 {
+		count = 1
+	}
+	if len(w.GPUs) == 0 {
+		if count >= 2 {
+			return nil, false
+		}
+		if r.GPUMemoryMB > w.GPUMemoryFreeMB {
+			return nil, false
+		}
+		return nil, true
+	}
+	eligible := make([]GPUFree, 0, len(w.GPUs))
+	for _, g := range w.GPUs {
+		if g.MemoryFreeMB >= r.GPUMemoryMB {
+			eligible = append(eligible, g)
+		}
+	}
+	if len(eligible) < count {
+		return nil, false
+	}
+	sort.Slice(eligible, func(i, j int) bool {
+		if eligible[i].MemoryFreeMB != eligible[j].MemoryFreeMB {
+			return eligible[i].MemoryFreeMB < eligible[j].MemoryFreeMB
+		}
+		return eligible[i].Index < eligible[j].Index
+	})
+	indexes := make([]int, count)
+	for i := 0; i < count; i++ {
+		indexes[i] = eligible[i].Index
+	}
+	sort.Ints(indexes)
+	return indexes, true
+}
+
 // ScoreForTask returns a placement score for w given task. Higher = better.
 // Returns `ineligible` if w cannot run task due to capability, resource, or
 // anti-affinity constraints.
@@ -88,16 +138,31 @@ func ScoreForTask(task *domain.Task, w WorkerSnapshot) float64 {
 		return ineligible
 	}
 	// Strict resource check: reject if worker can't physically fit the task.
+	// GPU fit is per-GPU (spec §6): PackGPUs verifies gpuCount GPUs each with
+	// gpuMemoryMB free, replacing the old node-aggregate VRAM check that let
+	// a 20GB request land on a 10GB×2 node.
+	selectedGPUs, gpuOK := PackGPUs(task, w)
+	if !gpuOK {
+		return ineligible
+	}
 	if r := task.ResourceReqs; r != nil {
-		if r.GPUMemoryMB > 0 && r.GPUMemoryMB > w.GPUMemoryFreeMB {
-			return ineligible
-		}
 		if r.MemoryMB > 0 && float64(r.MemoryMB)/1024.0 > w.MemoryFreeGB {
 			return ineligible
 		}
 	}
 	// Soft score: weighted resource availability.
 	gpuFree := 100 - w.GPUUtilization
+	if len(selectedGPUs) > 0 {
+		byIndex := make(map[int]GPUFree, len(w.GPUs))
+		for _, g := range w.GPUs {
+			byIndex[g.Index] = g
+		}
+		var freeSum float64
+		for _, idx := range selectedGPUs {
+			freeSum += 100 - byIndex[idx].Utilization
+		}
+		gpuFree = freeSum / float64(len(selectedGPUs))
+	}
 	memScore := w.MemoryFreeGB * 5.0
 	cpuFree := 100 - w.CPUUsage
 	queueScore := float64(100 - w.RunningJobs*10)

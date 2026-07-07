@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
@@ -33,7 +34,7 @@ func TestListQueuedByPriority_SkipsNonQueued(t *testing.T) {
 	q := NewTaskQueue()
 	q.Enqueue(newTask("a", TaskPriorityNormal))
 	q.Enqueue(newTask("b", TaskPriorityNormal))
-	q.AssignToDevice("a", "dev-1")
+	q.AssignToDevice("a", "dev-1", nil)
 
 	got := q.ListQueuedByPriority()
 	if len(got) != 1 || got[0].ID != "b" {
@@ -45,7 +46,7 @@ func TestAssignToDevice_MovesToAssigned(t *testing.T) {
 	q := NewTaskQueue()
 	q.Enqueue(newTask("a", TaskPriorityNormal))
 
-	assigned := q.AssignToDevice("a", "dev-1")
+	assigned := q.AssignToDevice("a", "dev-1", nil)
 	if assigned == nil {
 		t.Fatal("expected task to be assigned")
 	}
@@ -66,14 +67,14 @@ func TestAssignToDevice_MovesToAssigned(t *testing.T) {
 func TestAssignToDevice_ReturnsNilWhenNotQueued(t *testing.T) {
 	q := NewTaskQueue()
 	q.Enqueue(newTask("a", TaskPriorityNormal))
-	q.AssignToDevice("a", "dev-1")
+	q.AssignToDevice("a", "dev-1", nil)
 
 	// Second attempt on same task — already assigned.
-	if got := q.AssignToDevice("a", "dev-2"); got != nil {
+	if got := q.AssignToDevice("a", "dev-2", nil); got != nil {
 		t.Fatalf("expected nil for already-assigned task, got %+v", got)
 	}
 	// Unknown task.
-	if got := q.AssignToDevice("missing", "dev-1"); got != nil {
+	if got := q.AssignToDevice("missing", "dev-1", nil); got != nil {
 		t.Fatalf("expected nil for unknown task, got %+v", got)
 	}
 }
@@ -83,7 +84,7 @@ func TestReassignTasksFromDevice_PopulatesBlockedIDs(t *testing.T) {
 	t1 := newTask("t1", TaskPriorityNormal)
 	t1.MaxRetries = 2
 	q.Enqueue(t1)
-	q.AssignToDevice("t1", "dev-a")
+	q.AssignToDevice("t1", "dev-a", nil)
 
 	q.ReassignTasksFromDevice("dev-a")
 
@@ -99,7 +100,7 @@ func TestReassignTasksFromDevice_PopulatesBlockedIDs(t *testing.T) {
 	}
 
 	// Second failure on different worker accumulates the block list.
-	q.AssignToDevice("t1", "dev-b")
+	q.AssignToDevice("t1", "dev-b", nil)
 	q.ReassignTasksFromDevice("dev-b")
 	got = q.Get("t1")
 	if len(got.BlockedDeviceIDs) != 2 {
@@ -164,6 +165,34 @@ func TestReplay_PreservesStatusAndCreatedAt(t *testing.T) {
 	}
 	if !got.CreatedAt.Equal(created) {
 		t.Errorf("Replay mutated CreatedAt: got %v, want %v", got.CreatedAt, created)
+	}
+}
+
+func TestAssignToDeviceRecordsGPUIndexes(t *testing.T) {
+	q := NewTaskQueue()
+	task := &Task{ID: "t1", Type: "command", Status: TaskStatusPending, Priority: TaskPriorityNormal}
+	q.Enqueue(task)
+	got := q.AssignToDevice("t1", "gpu1", []int{0, 3})
+	if got == nil {
+		t.Fatal("assign returned nil")
+	}
+	if !reflect.DeepEqual(got.AssignedGPUIndexes, []int{0, 3}) {
+		t.Fatalf("indexes = %v", got.AssignedGPUIndexes)
+	}
+}
+
+func TestReassignClearsGPUIndexes(t *testing.T) {
+	q := NewTaskQueue()
+	task := &Task{ID: "t1", Type: "command", Status: TaskStatusPending,
+		Priority: TaskPriorityNormal, MaxRetries: 3}
+	q.Enqueue(task)
+	q.AssignToDevice("t1", "gpu1", []int{2})
+	reassigned := q.ReassignTasksFromDevice("gpu1")
+	if len(reassigned) != 1 {
+		t.Fatalf("reassigned = %d", len(reassigned))
+	}
+	if len(reassigned[0].AssignedGPUIndexes) != 0 {
+		t.Fatalf("indexes not cleared: %v", reassigned[0].AssignedGPUIndexes)
 	}
 }
 

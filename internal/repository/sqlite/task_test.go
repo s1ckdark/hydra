@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -25,8 +26,8 @@ func TestTaskRepo_SaveInsertThenUpdate(t *testing.T) {
 
 	task := &domain.Task{
 		ID: "t1", Type: "shell", Status: domain.TaskStatusQueued,
-		Priority: domain.TaskPriorityNormal,
-		Payload:  map[string]interface{}{"cmd": "echo a"},
+		Priority:  domain.TaskPriorityNormal,
+		Payload:   map[string]interface{}{"cmd": "echo a"},
 		CreatedAt: time.Now().UTC().Truncate(time.Second),
 	}
 	if err := r.Save(ctx, task); err != nil {
@@ -245,6 +246,41 @@ func TestTaskRepo_LoadNonTerminal_EmptyDB(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("got %d, want 0 on empty DB", len(got))
+	}
+}
+
+func TestTaskRoundTripAssignedGPUIndexes(t *testing.T) {
+	r := newTaskRepoForTest(t)
+	ctx := context.Background()
+
+	task := &domain.Task{
+		ID: "t-gpu", Type: "command", Status: domain.TaskStatusAssigned,
+		Priority: domain.TaskPriorityNormal, CreatedAt: time.Now(),
+		AssignedGPUIndexes: []int{0, 3},
+	}
+	if err := r.Save(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+	got, err := r.GetByID(ctx, "t-gpu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.AssignedGPUIndexes, []int{0, 3}) {
+		t.Fatalf("AssignedGPUIndexes = %v, want [0 3]", got.AssignedGPUIndexes)
+	}
+
+	// Empty value round-trip should be safe (no per-GPU pinning).
+	task2 := &domain.Task{ID: "t-nogpu", Type: "command",
+		Status: domain.TaskStatusQueued, Priority: domain.TaskPriorityNormal, CreatedAt: time.Now()}
+	if err := r.Save(ctx, task2); err != nil {
+		t.Fatal(err)
+	}
+	got2, err := r.GetByID(ctx, "t-nogpu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got2.AssignedGPUIndexes) != 0 {
+		t.Fatalf("expected empty indexes, got %v", got2.AssignedGPUIndexes)
 	}
 }
 

@@ -107,11 +107,14 @@ else:
 
 for row in sim.explain(spec, workers):
     print(row.worker_id, row.eligible, row.reject_reason, row.total)
+
+sim.pack_gpus(spec, workers[0])   # -> [1, 2] (선택 인덱스) / None (부적격) / [] (GPU 제약 없음)
 ```
 
 `explain()`은 워커별 점수 분해(`gpu_free_term`/`mem_term`/`cpu_term`/`queue_term`
 /`priority_mult`/`total`)를 `total` 내림차순으로 반환해 왜 특정 워커가
-선택되거나 탈락했는지 보여준다.
+선택되거나 탈락했는지 보여준다. `pack_gpus(spec, worker)`는 per-GPU packing
+로직을 재현해 할당 가능한 GPU 인덱스 목록을 반환한다.
 
 ### sim 한계
 
@@ -124,15 +127,15 @@ for row in sim.explain(spec, workers):
 ### gpu_count / gpu_memory_mb 주의
 
 `ResourceRequirements.gpu_count`와 `gpu_memory_mb`는 per-GPU 할당(GPU 한 장당
-요구량 + 개수)을 위한 **선행 계약(forward contract)** 필드다. 그러나 **현행
-서버는 아직 노드 합산 VRAM 기준으로 체크**한다 (per-GPU packing은 2단계 작업으로
-별도 구현 예정). 즉 `gpu_memory_mb=16000`을 보내도 서버는 이를 "노드 전체 여유
-VRAM ≥ 16000MB"로 해석하며, `gpu_count`는 신버전 서버 전까지 무시된다. 하위호환은
-다음과 같다:
+요구량 + 개수)을 위한 필드다. 서버가 per-GPU packing을 지원하므로,
+`gpu_count=2, gpu_memory_mb=16000`으로 제출하면 "각 GPU당 여유 VRAM ≥ 16000MB인
+2개 GPU 확보"를 의미한다. 배치 시 서버가 `Task.assignedGpuIndexes`로 할당된 GPU
+인덱스를 전달하면, 워커가 환경변수 `CUDA_VISIBLE_DEVICES`를 그에 맞게 설정한다.
+구버전 서버에 대한 하위호환:
 
 | 클라이언트 | 서버 | 동작 |
 |---|---|---|
-| `gpu_count` 전송 | 구버전(현행) | 필드 무시 → 기존 노드 단위 배치 |
+| `gpu_count` 전송 | 구버전(이전) | 필드 무시 → 기존 노드 단위 배치 |
 | `gpu_count` 없음 | 신버전 | 1로 간주, 단일 GPU fit 체크 |
 | `assignedGpuIndexes` 없음 | — | 워커가 `CUDA_VISIBLE_DEVICES` 미설정 (전 GPU 노출) |
 
