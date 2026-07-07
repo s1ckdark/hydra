@@ -1,4 +1,6 @@
 import json
+import os
+import subprocess
 import sys
 
 import pytest
@@ -99,3 +101,42 @@ def test_handle_message_ignores_unknown_types():
     w = make_worker()
     w.handle_message({"type": "ping"})       # 예외 없이 무시
     w.handle_message({"type": "task.cancel", "taskId": "none"})
+
+
+@responses.activate
+def test_execute_task_popen_failure_reports_worker_exception(monkeypatch):
+    # Popen 자체가 실패해도 (running → result → failed) 를 반드시 보고해야 한다.
+    responses.put(f"{BASE}/api/tasks/t1/status", json={"id": "t1"})
+    responses.put(f"{BASE}/api/tasks/t1/result", json={"id": "t1"})
+    responses.put(f"{BASE}/api/tasks/t1/status", json={"id": "t1"})
+
+    def raise_spawn_fail(*args, **kwargs):
+        raise OSError("spawn fail")
+
+    monkeypatch.setattr(subprocess, "Popen", raise_spawn_fail)
+    w = make_worker()
+    w.execute_task({"id": "t1", "payload": {"command": "echo hi"}})
+
+    assert len(responses.calls) == 3
+    assert json.loads(responses.calls[0].request.body) == {"status": "running"}
+    body = json.loads(responses.calls[1].request.body)
+    assert body["output"]["exitCode"] == -1
+    assert "spawn fail" in body["output"]["stderr"]
+    assert json.loads(responses.calls[2].request.body) == {"status": "failed"}
+
+
+def test_kill_tolerates_process_already_reaped(monkeypatch):
+    # poll() 확인 시점과 getpgid/killpg 사이에 프로세스가 이미 회수된 경합(TOCTOU)을 재현.
+    w = make_worker()
+    proc = subprocess.Popen("true", shell=True, start_new_session=True)
+    proc.wait()  # 이미 종료·회수됨
+    # poll() 이 여전히 "실행 중"으로 보이게 해 _kill 이 getpgid 까지 진행하도록 유도
+    monkeypatch.setattr(proc, "poll", lambda: None)
+    with w._procs_lock:
+        w._procs["t1"] = proc
+
+    def raise_lookup(pid):
+        raise ProcessLookupError()
+
+    monkeypatch.setattr(os, "getpgid", raise_lookup)
+    w._kill("t1")  # 예외가 발생하면 안 된다

@@ -44,6 +44,8 @@ class Worker:
         self._procs: dict[str, subprocess.Popen] = {}
         self._procs_lock = threading.Lock()
         self._stop = threading.Event()
+        self._conn = None  # 현재 살아있는 WS 커넥션 — stop() 이 강제로 닫을 수 있게 보관
+        self._conn_lock = threading.Lock()
 
     # ── 수신 루프 ────────────────────────────────────────────────
     def run(self) -> None:
@@ -54,26 +56,44 @@ class Worker:
         host = self.server.split("://", 1)[1]
         url = f"{scheme}://{host}/ws?device_id={self.device_id}"
         backoff = 1.0
-        while not self._stop.is_set():
-            try:
-                with ws_connect(url, max_size=512 * 1024) as conn:
-                    log.info("connected to %s as %s", url, self.device_id)
-                    backoff = 1.0
-                    # 재접속마다 재등록 — 서버 재시작에도 능력 정보 유지
-                    self.client.register_capabilities(
-                        self.device_id, self.capabilities)
-                    for raw in conn:
-                        self.handle_message(json.loads(raw))
-            except Exception as e:  # noqa: BLE001 — 루프는 죽지 않는다
-                if self._stop.is_set():
-                    break
-                log.warning("ws error: %s (reconnect in %.0fs)", e, backoff)
-                time.sleep(backoff)
-                backoff = min(backoff * 2, self.reconnect_max_backoff)
-        self._pool.shutdown(wait=True)
+        try:
+            while not self._stop.is_set():
+                try:
+                    with ws_connect(url, max_size=512 * 1024) as conn:
+                        with self._conn_lock:
+                            self._conn = conn
+                        try:
+                            log.info("connected to %s as %s", url, self.device_id)
+                            backoff = 1.0
+                            # 재접속마다 재등록 — 서버 재시작에도 능력 정보 유지
+                            self.client.register_capabilities(
+                                self.device_id, self.capabilities)
+                            for raw in conn:
+                                self.handle_message(json.loads(raw))
+                        finally:
+                            with self._conn_lock:
+                                if self._conn is conn:
+                                    self._conn = None
+                except Exception as e:  # noqa: BLE001 — 루프는 죽지 않는다
+                    if self._stop.is_set():
+                        break
+                    log.warning("ws error: %s (reconnect in %.0fs)", e, backoff)
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, self.reconnect_max_backoff)
+        finally:
+            # KeyboardInterrupt 등 어떤 경로로 빠지든 풀은 반드시 정리한다
+            self._pool.shutdown(wait=True)
 
     def stop(self) -> None:
         self._stop.set()
+        # for raw in conn: 이 블로킹 recv 에 갇혀 있을 수 있으니 강제로 깨운다
+        with self._conn_lock:
+            conn = self._conn
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001 — best-effort, 이미 닫혔을 수도 있음
+                pass
 
     def handle_message(self, msg: dict) -> None:
         mtype = msg.get("type")
@@ -97,53 +117,67 @@ class Worker:
                          failed=True, duration_ns=0)
             return
 
-        env = os.environ.copy()
-        gpu_indexes = task.get("assignedGpuIndexes")
-        if gpu_indexes:
-            env["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in gpu_indexes)
-
-        timeout_ns = task.get("timeout") or 0
-        timeout_s = timeout_ns / 1e9 if timeout_ns else None
-
         start = time.monotonic()
-        proc = subprocess.Popen(
-            command, shell=True, start_new_session=True,
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, env=env)
-        with self._procs_lock:
-            self._procs[task_id] = proc
-        timed_out = False
         try:
-            stdout, stderr = proc.communicate(timeout=timeout_s)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            self._kill(task_id)
-            stdout, stderr = proc.communicate()
-        finally:
-            with self._procs_lock:
-                self._procs.pop(task_id, None)
+            env = os.environ.copy()
+            gpu_indexes = task.get("assignedGpuIndexes")
+            if gpu_indexes:
+                env["CUDA_VISIBLE_DEVICES"] = ",".join(str(i) for i in gpu_indexes)
 
-        duration_ns = int((time.monotonic() - start) * 1e9)
-        exit_code = proc.returncode
-        failed = timed_out or exit_code != 0
-        self._report(task_id,
-                     {"stdout": stdout, "stderr": stderr,
-                      "exitCode": exit_code, "timedOut": timed_out},
-                     failed=failed, duration_ns=duration_ns)
+            timeout_ns = task.get("timeout") or 0
+            timeout_s = timeout_ns / 1e9 if timeout_ns else None
+
+            proc = subprocess.Popen(
+                command, shell=True, start_new_session=True,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                text=True, env=env)
+            with self._procs_lock:
+                self._procs[task_id] = proc
+            timed_out = False
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout_s)
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                self._kill(task_id)
+                stdout, stderr = proc.communicate()
+            finally:
+                with self._procs_lock:
+                    self._procs.pop(task_id, None)
+
+            duration_ns = int((time.monotonic() - start) * 1e9)
+            exit_code = proc.returncode
+            failed = timed_out or exit_code != 0
+            self._report(task_id,
+                         {"stdout": stdout, "stderr": stderr,
+                          "exitCode": exit_code, "timedOut": timed_out},
+                         failed=failed, duration_ns=duration_ns)
+        except Exception as e:  # noqa: BLE001 — Popen 등 실행 경로 실패도 반드시 서버에 보고
+            duration_ns = int((time.monotonic() - start) * 1e9)
+            self._report(task_id,
+                         {"stdout": "", "stderr": f"worker exception: {e}",
+                          "exitCode": -1, "timedOut": False},
+                         failed=True, duration_ns=duration_ns)
 
     def _kill(self, task_id: str) -> None:
         with self._procs_lock:
             proc = self._procs.get(task_id)
         if proc is None or proc.poll() is not None:
             return
-        pgid = os.getpgid(proc.pid)
-        os.killpg(pgid, signal.SIGTERM)
+        try:
+            pgid = os.getpgid(proc.pid)
+            os.killpg(pgid, signal.SIGTERM)
+        except ProcessLookupError:
+            # poll() 확인과 getpgid/killpg 사이에 프로세스가 이미 회수됨 — 이미 죽었으니 완료 처리
+            return
         deadline = time.monotonic() + self.term_grace
         while time.monotonic() < deadline:
             if proc.poll() is not None:
                 return
             time.sleep(0.1)
-        os.killpg(pgid, signal.SIGKILL)
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except ProcessLookupError:
+            return
 
     # ── 보고 ────────────────────────────────────────────────────
     def _report(self, task_id: str, output: dict, *, failed: bool,
