@@ -63,6 +63,56 @@ func PickBestWorker(task *domain.Task, workers []WorkerSnapshot) *WorkerSnapshot
 	return best
 }
 
+// PackGPUs selects which GPUs on w the task would occupy.
+// Returns (indexes ascending, true) when w can satisfy the task's per-GPU
+// requirement; (nil, false) when it cannot. A task with no GPU requirement
+// (nil ResourceReqs, or GPUMemoryMB==0 && GPUCount==0) returns (nil, true):
+// eligible, nothing pinned. GPUMemoryMB is interpreted per-GPU (spec §6);
+// gpuCount 0 means 1. Selection is best-fit: smallest sufficient free VRAM
+// first (tie broken by index), so large-VRAM GPUs stay available for
+// larger future tasks. Workers without per-GPU data fall back to the
+// aggregate check for single-GPU requests and are ineligible for multi-GPU.
+func PackGPUs(task *domain.Task, w WorkerSnapshot) ([]int, bool) {
+	r := task.ResourceReqs
+	if r == nil || (r.GPUMemoryMB == 0 && r.GPUCount == 0) {
+		return nil, true
+	}
+	count := r.GPUCount
+	if count == 0 {
+		count = 1
+	}
+	if len(w.GPUs) == 0 {
+		if count >= 2 {
+			return nil, false
+		}
+		if r.GPUMemoryMB > w.GPUMemoryFreeMB {
+			return nil, false
+		}
+		return nil, true
+	}
+	eligible := make([]GPUFree, 0, len(w.GPUs))
+	for _, g := range w.GPUs {
+		if g.MemoryFreeMB >= r.GPUMemoryMB {
+			eligible = append(eligible, g)
+		}
+	}
+	if len(eligible) < count {
+		return nil, false
+	}
+	sort.Slice(eligible, func(i, j int) bool {
+		if eligible[i].MemoryFreeMB != eligible[j].MemoryFreeMB {
+			return eligible[i].MemoryFreeMB < eligible[j].MemoryFreeMB
+		}
+		return eligible[i].Index < eligible[j].Index
+	})
+	indexes := make([]int, count)
+	for i := 0; i < count; i++ {
+		indexes[i] = eligible[i].Index
+	}
+	sort.Ints(indexes)
+	return indexes, true
+}
+
 // ScoreForTask returns a placement score for w given task. Higher = better.
 // Returns `ineligible` if w cannot run task due to capability, resource, or
 // anti-affinity constraints.
