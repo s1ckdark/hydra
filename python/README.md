@@ -45,7 +45,7 @@ task = client.submit_task(
     ai_schedule=None,               # None=서버 기본 / True / False
 )
 
-result = task.wait(timeout=7200, poll_interval=2.0, raise_on_failure=True)
+task.wait(timeout=7200, poll_interval=2.0, raise_on_failure=True)
 print(task.status, task.assigned_device_id, task.result.output)
 ```
 
@@ -83,7 +83,7 @@ client.list_tasks(status="running")      # GET /api/tasks
 client.cancel_task(task_id)              # PUT /api/tasks/:id/status → cancelled
 client.list_devices() / client.get_device(device_id)
 client.gpu_metrics()                     # GET /api/monitor/gpu
-client.cluster_snapshot()                # GET /api/monitor/snapshot → sim 입력용
+client.cluster_snapshot()                # 디바이스/메트릭/실행중 task를 집계해 sim 입력 생성
 ```
 
 ## 스케줄러 시뮬레이션 (sim)
@@ -99,7 +99,11 @@ spec = TaskSpec.command("train.py", required_capabilities=["gpu"], priority="hig
 workers = client.cluster_snapshot()   # WorkerSnapshot 목록
 
 best = sim.pick_best_worker(spec, workers)
-score = sim.score_for_task(spec, best)
+if best is None:
+    print("적합한 워커 없음")
+else:
+    score = sim.score_for_task(spec, best)
+    print(best.device_id, score)
 
 for row in sim.explain(spec, workers):
     print(row.worker_id, row.eligible, row.reject_reason, row.total)
