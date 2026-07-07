@@ -295,3 +295,69 @@ func TestSetResult_FailedTaskStaysFailed(t *testing.T) {
 		t.Errorf("Result = %+v, want nil (late result must not attach)", got.Result)
 	}
 }
+
+// --- D1: SetResult must bind to AssignedDeviceID (zombie-worker clobber guard) ---
+//
+// A worker presumed dead can have its task reassigned to another device.
+// If the original (zombie) worker later finishes and POSTs its result, that
+// stale result must not overwrite the new assignee's result. SetResult
+// rejects a result whose DeviceID names a device other than the task's
+// current AssignedDeviceID. Empty cases stay permissive: a result with no
+// DeviceID (legacy callers) or a task with no assignee is still accepted.
+
+func TestSetResult_RejectsResultFromNonAssignedDevice(t *testing.T) {
+	q := NewTaskQueue()
+	task := newTask("t1", TaskPriorityNormal)
+	task.Status = TaskStatusRunning
+	task.AssignedDeviceID = "devA"
+	q.AttachAssigned(task)
+
+	got := q.SetResult("t1", &TaskResult{DeviceID: "devB", Output: map[string]interface{}{"x": 1}})
+	if got == nil {
+		t.Fatal("SetResult returned nil")
+	}
+	if got.Status != TaskStatusRunning {
+		t.Errorf("status = %v, want running (result from non-assigned device must be rejected)", got.Status)
+	}
+	if got.Result != nil {
+		t.Errorf("Result = %+v, want nil (stale zombie-worker result must not attach)", got.Result)
+	}
+}
+
+func TestSetResult_AcceptsResultFromAssignedDevice(t *testing.T) {
+	q := NewTaskQueue()
+	task := newTask("t1", TaskPriorityNormal)
+	task.Status = TaskStatusRunning
+	task.AssignedDeviceID = "devA"
+	q.AttachAssigned(task)
+
+	got := q.SetResult("t1", &TaskResult{DeviceID: "devA", Output: map[string]interface{}{"x": 1}})
+	if got == nil {
+		t.Fatal("SetResult returned nil")
+	}
+	if got.Status != TaskStatusCompleted {
+		t.Errorf("status = %v, want completed", got.Status)
+	}
+	if got.Result == nil {
+		t.Error("Result = nil, want set (result from the current assignee must be accepted)")
+	}
+}
+
+func TestSetResult_AcceptsResultWithEmptyDeviceID(t *testing.T) {
+	q := NewTaskQueue()
+	task := newTask("t1", TaskPriorityNormal)
+	task.Status = TaskStatusRunning
+	task.AssignedDeviceID = "devA"
+	q.AttachAssigned(task)
+
+	got := q.SetResult("t1", &TaskResult{Output: map[string]interface{}{"x": 1}})
+	if got == nil {
+		t.Fatal("SetResult returned nil")
+	}
+	if got.Status != TaskStatusCompleted {
+		t.Errorf("status = %v, want completed (empty DeviceID must stay permissive for legacy callers)", got.Status)
+	}
+	if got.Result == nil {
+		t.Error("Result = nil, want set")
+	}
+}

@@ -87,6 +87,20 @@ func (t *Task) IsTerminal() bool {
 	return t.Status == TaskStatusCompleted || t.Status == TaskStatusFailed || t.Status == TaskStatusCancelled
 }
 
+// IsValidTaskStatus reports whether s is one of the known TaskStatus
+// constants. Used to whitelist status values coming from external input
+// (e.g. APITaskUpdateStatus) before they are written into a task, so an
+// arbitrary/misspelled string can't be persisted as a task's status.
+func IsValidTaskStatus(s TaskStatus) bool {
+	switch s {
+	case TaskStatusPending, TaskStatusQueued, TaskStatusAssigned, TaskStatusRunning,
+		TaskStatusCompleted, TaskStatusFailed, TaskStatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
 // CanRetry returns true if the task can be retried
 func (t *Task) CanRetry() bool {
 	return t.Status == TaskStatusFailed && t.RetryCount < t.MaxRetries

@@ -192,6 +192,9 @@ func (h *Handler) APITaskUpdateStatus(c echo.Context) error {
 	}
 
 	requestedStatus := domain.TaskStatus(req.Status)
+	if !domain.IsValidTaskStatus(requestedStatus) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid status: " + req.Status})
+	}
 	task := h.taskQueue.UpdateStatus(c.Param("id"), requestedStatus)
 	if task == nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
