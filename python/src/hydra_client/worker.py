@@ -179,6 +179,20 @@ class Worker:
                 text=True, env=env)
             with self._procs_lock:
                 self._procs[task_id] = proc
+                # 등록과 같은 락 안에서 tombstone 을 재확인한다 — "running" 보고 +
+                # Popen 사이의 틈(§TOCTOU)에 task.cancel 이 도착하면 handle_message
+                # 는 _procs_lock 을 잡고 _cancelled 에 추가한 뒤 _kill 을 호출하는데,
+                # 그 시점엔 아직 _procs 에 없어 _kill 이 아무것도 못 찾고 조용히
+                # 리턴해버린다. 여기서 등록 직후 같은 락으로 재확인하면 그 틈이
+                # 사라진다: cancel 이 먼저 락을 잡았으면 우리가 cancelled_mid=True 로
+                # 보고, cancel 이 나중에 락을 잡으면 이미 _procs 에 있는 proc 을
+                # 정상적으로 찾아 _kill 한다 — 어느 순서든 누락이 없다.
+                cancelled_mid = task_id in self._cancelled
+            if cancelled_mid:
+                # lock 밖에서 kill — _kill 자체가 락을 다시 잡고, TERM→grace→KILL
+                # 동안 network/blocking 호출을 락 안에 두지 않기 위함.
+                log.info("execute_task cancelled mid-start, killing: %s", task_id)
+                self._kill(task_id)
             timed_out = False
             try:
                 stdout, stderr = proc.communicate(timeout=timeout_s)

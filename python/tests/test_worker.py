@@ -280,6 +280,44 @@ def test_execute_task_runs_normally_when_not_cancelled():
     assert body["output"]["exitCode"] == 0
 
 
+@responses.activate
+def test_execute_task_closes_toctou_race_when_cancelled_mid_start(monkeypatch):
+    # 리뷰 지적: "running" 보고 + Popen 사이에 task.cancel 이 도착하면 아직
+    # _procs 에 등록되지 않아 _kill 이 아무것도 찾지 못하고 조용히 무시되던
+    # TOCTOU 레이스 — 취소된 task 가 끝까지 실행돼버렸다. 실제 register+
+    # recheck 경로를 태우기 위해 subprocess.Popen 을 감싸, 실제 프로세스가
+    # 뜬 직후(= execute_task 가 아직 _procs 에 등록하기 전) handle_message 와
+    # 동일한 방식(같은 락, 같은 set)으로 취소를 주입한다.
+    responses.put(f"{BASE}/api/tasks/t1/status", json={"id": "t1"})
+    responses.put(f"{BASE}/api/tasks/t1/result", json={"id": "t1"})
+    responses.put(f"{BASE}/api/tasks/t1/status", json={"id": "t1"})
+
+    w = make_worker(term_grace=0.2)
+    real_popen = subprocess.Popen
+    spawned = {}
+
+    def popen_inject_cancel(*args, **kwargs):
+        proc = real_popen(*args, **kwargs)
+        spawned["proc"] = proc
+        with w._procs_lock:
+            w._cancelled.add("t1")
+        return proc
+
+    monkeypatch.setattr(subprocess, "Popen", popen_inject_cancel)
+    w.execute_task({"id": "t1", "payload": {"command": "sleep 5"}})
+
+    proc = spawned["proc"]
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline and proc.poll() is None:
+        time.sleep(0.05)
+    assert proc.poll() is not None, "process should have been killed, not left running"
+
+    body = json.loads(responses.calls[1].request.body)
+    assert body["output"]["exitCode"] != 0
+    assert json.loads(responses.calls[2].request.body) == {"status": "failed"}
+    assert "t1" not in w._cancelled
+
+
 # ── E2: stop() 이후 새 task 를 실행하지 않는다 ──────────────────────────
 
 @responses.activate
