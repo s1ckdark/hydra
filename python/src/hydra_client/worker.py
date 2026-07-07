@@ -170,9 +170,11 @@ class Worker:
             # 응답의 JSON 파싱 실패)가 여기서 잡혀 성공한 task 를 다시
             # failed 로 보고하게 된다.
             duration_ns = int((time.monotonic() - start) * 1e9)
+            stderr, err_truncated = self._cap_output(f"worker exception: {e}")
             self._report(task_id,
-                         {"stdout": "", "stderr": f"worker exception: {e}",
-                          "exitCode": -1, "timedOut": False},
+                         {"stdout": "", "stderr": stderr,
+                          "exitCode": -1, "timedOut": False,
+                          "truncated": err_truncated},
                          failed=True, duration_ns=duration_ns)
             return
 
