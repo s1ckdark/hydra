@@ -121,6 +121,18 @@ class HydraClient:
         self._request("POST", f"/api/devices/{device_id}/capabilities",
                       json_body={"capabilities": capabilities})
 
+    # ── batch ───────────────────────────────────────────────────
+    def submit_batch(self, specs: list[TaskSpec], name: str = "",
+                     metadata: dict | None = None) -> "TaskGroupHandle":
+        body = {"name": name, "metadata": metadata or {},
+                "tasks": [s.to_json() for s in specs]}
+        snap = self._request("POST", "/api/tasks/batch", json_body=body)
+        return TaskGroupHandle(self, snap)
+
+    def get_group(self, group_id: str, detail: bool = False) -> dict:
+        params = {"detail": "full"} if detail else None
+        return self._request("GET", f"/api/groups/{group_id}", params=params)
+
 
 def _error_message(resp) -> str:
     try:
@@ -155,3 +167,73 @@ class TaskHandle:
     def refresh(self) -> Task:
         self.task = self._client.get_task(self.task.id)
         return self.task
+
+    def wait(self, timeout: float | None = None, poll_interval: float = 2.0,
+             raise_on_failure: bool = True) -> Task:
+        """terminal 상태(completed/failed/cancelled)까지 폴링.
+
+        일시적 연결 오류는 지수 백오프(최대 30s)로 재시도한다. timeout 초과 시:
+        마지막 시도가 연결 오류였으면 HydraConnectionError, 아니면 TimeoutError.
+        """
+        deadline = time.monotonic() + timeout if timeout else None
+        backoff = poll_interval
+        last_conn_error: Exception | None = None
+        while True:
+            try:
+                self.refresh()
+                last_conn_error = None
+                backoff = poll_interval
+                if self.task.is_terminal:
+                    if self.task.status == "failed" and raise_on_failure:
+                        raise TaskFailedError(
+                            self.task, f"task {self.task.id} failed")
+                    return self.task
+            except HydraConnectionError as e:
+                last_conn_error = e
+                backoff = min(backoff * 2, 30.0)
+            if deadline is not None and time.monotonic() >= deadline:
+                if last_conn_error is not None:
+                    raise HydraConnectionError(
+                        f"wait({self.task.id}): server unreachable"
+                    ) from last_conn_error
+                raise TimeoutError(
+                    f"task {self.task.id} not terminal after {timeout}s "
+                    f"(status={self.task.status})")
+            time.sleep(min(backoff,
+                           max(0.0, deadline - time.monotonic())
+                           if deadline is not None else backoff))
+
+
+class TaskGroupHandle:
+    """배치 제출 결과 핸들. snapshot 은 TaskGroupSnapshot raw dict."""
+
+    # 그룹 terminal 상태는 domain.DeriveGroupStatus 기준:
+    # completed(전부 성공) / failed(전부 실패) / partial(혼합). running 만 비종결.
+    GROUP_TERMINAL = ("completed", "failed", "partial")
+
+    def __init__(self, client: HydraClient, snapshot: dict):
+        self._client = client
+        self.snapshot = snapshot
+        self.tasks = [TaskHandle(client, Task.from_json(t))
+                      for t in (snapshot.get("tasks") or [])]
+
+    @property
+    def group_id(self) -> str:
+        return self.snapshot.get("id", "")
+
+    def refresh(self) -> dict:
+        self.snapshot = self._client.get_group(self.group_id)
+        return self.snapshot
+
+    def wait_all(self, timeout: float | None = None,
+                 poll_interval: float = 2.0) -> dict:
+        """그룹 status 가 terminal 이 될 때까지 폴링."""
+        deadline = time.monotonic() + timeout if timeout else None
+        while True:
+            snap = self.refresh()
+            if snap.get("status") in self.GROUP_TERMINAL:
+                return snap
+            if deadline is not None and time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"group {self.group_id} not terminal after {timeout}s")
+            time.sleep(poll_interval)
