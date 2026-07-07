@@ -1,0 +1,300 @@
+[
+  {
+    "name": "baseline_normal",
+    "task": {
+      "priority": "normal"
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": 107
+  },
+  {
+    "name": "priority_urgent",
+    "task": {
+      "priority": "urgent"
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": 214
+  },
+  {
+    "name": "priority_high",
+    "task": {
+      "priority": "high"
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": 139.1
+  },
+  {
+    "name": "priority_low",
+    "task": {
+      "priority": "low"
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": 74.89999999999999
+  },
+  {
+    "name": "priority_unknown_defaults_normal",
+    "task": {
+      "priority": "weird"
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": 107
+  },
+  {
+    "name": "blocked_device",
+    "task": {
+      "priority": "normal",
+      "blockedDeviceIds": [
+        "gpu1"
+      ]
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": -1
+  },
+  {
+    "name": "pinned_other_device",
+    "task": {
+      "priority": "normal",
+      "preferredDeviceId": "gpu9"
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": -1
+  },
+  {
+    "name": "pinned_this_device",
+    "task": {
+      "priority": "normal",
+      "preferredDeviceId": "gpu1"
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": 107
+  },
+  {
+    "name": "missing_capability",
+    "task": {
+      "priority": "normal",
+      "requiredCapabilities": [
+        "gpu",
+        "cuda12"
+      ]
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": -1
+  },
+  {
+    "name": "gpu_mem_does_not_fit",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "gpuMemoryMB": 50000
+      }
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": -1
+  },
+  {
+    "name": "gpu_mem_exact_fit",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "gpuMemoryMB": 40000
+      }
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": 107
+  },
+  {
+    "name": "ram_does_not_fit",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "memoryMB": 65536
+      }
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": -1
+  },
+  {
+    "name": "queue_clamp_at_10",
+    "task": {
+      "priority": "normal"
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 10,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": 98
+  },
+  {
+    "name": "queue_clamp_below_zero",
+    "task": {
+      "priority": "normal"
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 12,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": 98
+  }
+]
