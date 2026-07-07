@@ -176,6 +176,11 @@ REST `cancel_task()`/`update_task_status(..., "cancelled")`는 서버 쪽 task
 거부하므로, 취소 이후 워커가 뒤늦게 보고하는 결과가 `cancelled` 상태를
 `completed`/`failed`로 덮어쓰는 일은 없다.
 
+단, `task.cancel` 전송은 **best-effort**다 — 대상 워커가 그 순간 WS로
+연결돼 있어야 프로세스가 즉시 중단된다. 워커가 일시적으로 끊긴 상태라면
+서버 task 는 `cancelled`로 표시되지만 실행 중인 프로세스는 계속 돌 수 있고
+(재연결 시 재송신은 아직 없음), 늦은 결과 보고는 위 가드에 의해 무시된다.
+
 ### 워커 신뢰 모델
 
 파이썬 워커는 오퍼레이터가 제출한 명령을 셸로 그대로 실행한다 — task
