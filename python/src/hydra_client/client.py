@@ -303,19 +303,36 @@ class TaskGroupHandle:
         terminal 도달 시 detail=full 로 그룹을 재조회해 각 TaskHandle 을
         최신 상태로 동기화한다 (그룹 스냅샷의 임베디드 task 는 배치 응답
         시점 그대로라 완료 후에도 초기 상태를 반환할 수 있다).
+
+        일시적 연결 오류는 지수 백오프(최대 30s)로 재시도한다. timeout 초과 시:
+        마지막 시도가 연결 오류였으면 HydraConnectionError, 아니면 TimeoutError.
         """
         deadline = time.monotonic() + timeout if timeout is not None else None
+        backoff = poll_interval
+        last_conn_error: Exception | None = None
         while True:
-            snap = self.refresh()
-            if snap.get("status") in self.GROUP_TERMINAL:
-                detail = self._client.get_group(self.group_id, detail=True)
-                by_id = {h.id: h for h in self.tasks}
-                for t in (detail.get("tasks") or []):
-                    handle = by_id.get(t.get("id"))
-                    if handle is not None:
-                        handle.task = Task.from_json(t)
-                return snap
+            try:
+                snap = self.refresh()
+                last_conn_error = None
+                backoff = poll_interval
+                if snap.get("status") in self.GROUP_TERMINAL:
+                    detail = self._client.get_group(self.group_id, detail=True)
+                    by_id = {h.id: h for h in self.tasks}
+                    for t in (detail.get("tasks") or []):
+                        handle = by_id.get(t.get("id"))
+                        if handle is not None:
+                            handle.task = Task.from_json(t)
+                    return snap
+            except HydraConnectionError as e:
+                last_conn_error = e
+                backoff = min(backoff * 2, 30.0)
             if deadline is not None and time.monotonic() >= deadline:
+                if last_conn_error is not None:
+                    raise HydraConnectionError(
+                        f"wait_all({self.group_id}): server unreachable"
+                    ) from last_conn_error
                 raise TimeoutError(
                     f"group {self.group_id} not terminal after {timeout}s")
-            time.sleep(poll_interval)
+            time.sleep(min(backoff,
+                           max(0.0, deadline - time.monotonic())
+                           if deadline is not None else backoff))
