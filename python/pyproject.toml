@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hydra-client"
+version = "0.1.0"
+description = "Python client, scheduler simulator, and worker for the hydra GPU cluster"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "websockets>=12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "responses>=0.25",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hydra_client"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["e2e: requires a running hydra-server (deselected by default)"]
+addopts = "-m 'not e2e'"
