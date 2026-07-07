@@ -24,7 +24,9 @@ def pack_gpus(task: TaskSpec, w: WorkerSnapshot) -> list[int] | None:
 
     Go PackGPUs(scheduler.go)와 동일: gpuMemoryMB는 장당 요구량,
     gpuCount 0은 1로 간주, best-fit(여유 작은 순, 동률 시 인덱스 순).
-    GPU별 데이터 없는 워커는 단일 GPU 요구만 합산치로 폴백 검사.
+    GPU별 데이터 없는 워커는 단일 GPU 요구만 합산치로 폴백 검사하되,
+    인벤토리(gpu_count)가 count 미만이면 부적격 — count-only 요구가
+    CPU-only 워커에 배치되는 것을 막는다.
     """
     r = task.resource_reqs
     if r is None or (r.gpu_memory_mb == 0 and r.gpu_count == 0):
@@ -32,6 +34,8 @@ def pack_gpus(task: TaskSpec, w: WorkerSnapshot) -> list[int] | None:
     count = r.gpu_count if r.gpu_count > 0 else 1
     if not w.gpus:
         if count >= 2:
+            return None
+        if w.gpu_count < count:
             return None
         if r.gpu_memory_mb > w.gpu_memory_free_mb:
             return None

@@ -76,3 +76,12 @@ def test_pack_gpus_negative_count_clamped_to_one():
     spec = TaskSpec(resource_reqs=ResourceRequirements(gpu_memory_mb=16000, gpu_count=-1))
     w = _worker("a", gpus=[GPUFree(0, 24000, 10.0), GPUFree(1, 20000, 50.0)])
     assert pack_gpus(spec, w) == [1]
+
+
+def test_pack_gpus_count_only_rejects_cpu_worker():
+    spec = TaskSpec(resource_reqs=ResourceRequirements(gpu_count=1))
+    cpu = _worker("cpu1", capabilities=["compute"], gpu_memory_free_mb=0)  # gpu_count=0
+    gpu = _worker("gpu1", gpu_count=2)
+    assert pack_gpus(spec, cpu) is None
+    assert score_for_task(spec, cpu) == INELIGIBLE
+    assert pack_gpus(spec, gpu) == []  # 인벤토리 있으면 폴백 통과 (핀 없음)

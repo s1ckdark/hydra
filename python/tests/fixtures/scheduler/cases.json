@@ -593,5 +593,50 @@
       "gpuMemoryFreeMB": 40000
     },
     "expectedScore": 107
+  },
+  {
+    "name": "fallback_count_only_cpu_worker_rejected",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "gpuCount": 1
+      }
+    },
+    "worker": {
+      "deviceId": "cpu1",
+      "capabilities": [
+        "compute"
+      ],
+      "gpuUtilization": 0,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 0,
+      "gpuMemoryFreeMB": 0
+    },
+    "expectedScore": -1
+  },
+  {
+    "name": "fallback_count_only_with_inventory",
+    "task": {
+      "priority": "normal",
+      "resourceReqs": {
+        "gpuCount": 1
+      }
+    },
+    "worker": {
+      "deviceId": "gpu1",
+      "capabilities": [
+        "gpu",
+        "compute"
+      ],
+      "gpuUtilization": 20,
+      "memoryFreeGB": 32,
+      "cpuUsage": 10,
+      "runningJobs": 1,
+      "gpuCount": 2,
+      "gpuMemoryFreeMB": 40000
+    },
+    "expectedScore": 107
   }
 ]
