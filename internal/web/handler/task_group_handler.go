@@ -69,14 +69,15 @@ type taskBatchRequest struct {
 }
 
 type taskBatchEntry struct {
-	Type                 string                 `json:"type"`
-	Priority             string                 `json:"priority"`
-	RequiredCapabilities []string               `json:"requiredCapabilities"`
-	PreferredDeviceID    string                 `json:"preferredDeviceId"`
-	Payload              map[string]interface{} `json:"payload"`
-	Timeout              int                    `json:"timeout"`
-	MaxRetries           int                    `json:"maxRetries"`
-	AISchedule           *bool                  `json:"aiSchedule"`
+	Type                 string                       `json:"type"`
+	Priority             string                       `json:"priority"`
+	RequiredCapabilities []string                     `json:"requiredCapabilities"`
+	PreferredDeviceID    string                       `json:"preferredDeviceId"`
+	Payload              map[string]interface{}       `json:"payload"`
+	Timeout              int                          `json:"timeout"`
+	MaxRetries           int                          `json:"maxRetries"`
+	AISchedule           *bool                        `json:"aiSchedule"`
+	ResourceReqs         *domain.ResourceRequirements `json:"resourceReqs"`
 }
 
 // APITaskBatchCreate creates a TaskGroup and N tasks in a single API call.
@@ -142,6 +143,7 @@ func (h *Handler) APITaskBatchCreate(c echo.Context) error {
 			Timeout:              time.Duration(e.Timeout) * time.Second,
 			MaxRetries:           e.MaxRetries,
 			AISchedule:           e.AISchedule,
+			ResourceReqs:         e.ResourceReqs,
 			GroupID:              group.ID,
 		}
 		if task.Priority == "" {

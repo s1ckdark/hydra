@@ -55,14 +55,15 @@ func (h *Handler) APITaskCreate(c echo.Context) error {
 	}
 
 	var req struct {
-		Type                 string                 `json:"type"`
-		Priority             string                 `json:"priority"`
-		RequiredCapabilities []string               `json:"requiredCapabilities"`
-		PreferredDeviceID    string                 `json:"preferredDeviceId"`
-		Payload              map[string]interface{} `json:"payload"`
-		Timeout              int                    `json:"timeout"` // seconds
-		MaxRetries           int                    `json:"maxRetries"`
-		AISchedule           *bool                  `json:"aiSchedule"` // override server-wide AlwaysConsult for this task
+		Type                 string                       `json:"type"`
+		Priority             string                       `json:"priority"`
+		RequiredCapabilities []string                     `json:"requiredCapabilities"`
+		PreferredDeviceID    string                       `json:"preferredDeviceId"`
+		Payload              map[string]interface{}       `json:"payload"`
+		Timeout              int                          `json:"timeout"` // seconds
+		MaxRetries           int                          `json:"maxRetries"`
+		AISchedule           *bool                        `json:"aiSchedule"` // override server-wide AlwaysConsult for this task
+		ResourceReqs         *domain.ResourceRequirements `json:"resourceReqs"`
 	}
 
 	if err := c.Bind(&req); err != nil {
@@ -84,6 +85,7 @@ func (h *Handler) APITaskCreate(c echo.Context) error {
 		Timeout:              time.Duration(req.Timeout) * time.Second,
 		MaxRetries:           req.MaxRetries,
 		AISchedule:           req.AISchedule,
+		ResourceReqs:         req.ResourceReqs,
 	}
 
 	if task.Priority == "" {

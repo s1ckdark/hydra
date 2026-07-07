@@ -29,6 +29,11 @@ type ResourceRequirements struct {
 	CPUCores       int     `json:"cpuCores,omitempty"`
 	MemoryMB       int     `json:"memoryMB,omitempty"`
 	GPUUtilization float64 `json:"gpuUtilization,omitempty"`
+	// GPUCount is the number of GPUs the task needs, with GPUMemoryMB
+	// interpreted per-GPU once per-GPU packing lands (spec 2026-07-07 §6).
+	// 0 means "1 GPU" for schedulers that understand it; the current
+	// scheduler ignores this field entirely.
+	GPUCount int `json:"gpuCount,omitempty"`
 }
 
 // Task represents a unit of work to be executed on a capable node
