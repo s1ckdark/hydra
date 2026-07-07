@@ -263,6 +263,10 @@ func (d *DB) migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_tasks_group_id   ON tasks(group_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)`,
 
+		// Per-GPU packing column on tasks (idempotent ALTER TABLE, same
+		// pattern as the devices GPU columns above).
+		`ALTER TABLE tasks ADD COLUMN assigned_gpu_indexes TEXT NOT NULL DEFAULT '[]'`,
+
 		// Task groups table — fan-out batch identity.
 		`CREATE TABLE IF NOT EXISTS task_groups (
 			id          TEXT PRIMARY KEY,
