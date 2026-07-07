@@ -79,3 +79,98 @@ func TestAPITaskCreateRejectsNegativeResourceReqs(t *testing.T) {
 		t.Errorf("task should not be enqueued, queue = %d", q.PendingCount())
 	}
 }
+
+func TestAPITaskCreateRejectsNegativeCPUCores(t *testing.T) {
+	h, q := newTestHandlerWithQueue(t)
+
+	body := `{"type":"command","payload":{"command":"echo hi"},` +
+		`"resourceReqs":{"cpuCores":-1}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/tasks", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+
+	if err := h.APITaskCreate(c); err != nil {
+		t.Fatalf("APITaskCreate: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "negative values not allowed") {
+		t.Errorf("body = %s, want negative-values error", rec.Body.String())
+	}
+	if q.PendingCount() != 0 {
+		t.Errorf("task should not be enqueued, queue = %d", q.PendingCount())
+	}
+}
+
+// APITaskUpdateStatus(cancelled) on an unassigned queued task must return
+// 200 and must not panic even though h.wsHub is nil — the cancel-notify
+// codepath is only entered when AssignedDeviceID != "" AND h.wsHub != nil,
+// so an unassigned task should skip it entirely. Actual WS delivery to an
+// assigned device needs a live hub and is out of scope here (reviewed by
+// inspection instead — see task_handler.go APITaskUpdateStatus).
+func TestAPITaskUpdateStatus_CancelUnassignedTask_NoWsHubNoPanic(t *testing.T) {
+	h, q := newTestHandlerWithQueue(t)
+	task := &domain.Task{ID: "t1", Status: domain.TaskStatusQueued}
+	q.Enqueue(task)
+
+	body := `{"status":"cancelled"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/tasks/t1/status", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("t1")
+
+	if err := h.APITaskUpdateStatus(c); err != nil {
+		t.Fatalf("APITaskUpdateStatus: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+
+	var got domain.Task
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Status != domain.TaskStatusCancelled {
+		t.Errorf("status = %v, want cancelled", got.Status)
+	}
+}
+
+// A late cancel request against an already-terminal task (e.g. completed)
+// must not panic and must not report the task as cancelled: the queue's
+// terminal-state guard rejects the transition and returns the task
+// unchanged, so the handler's response should reflect the task's actual
+// (unchanged) status, not the requested one.
+func TestAPITaskUpdateStatus_CancelAlreadyCompletedTask_StaysCompleted(t *testing.T) {
+	h, q := newTestHandlerWithQueue(t)
+	task := &domain.Task{ID: "t1", Status: domain.TaskStatusQueued}
+	q.Enqueue(task)
+	q.AssignToDevice("t1", "dev1", nil)
+	q.UpdateStatus("t1", domain.TaskStatusCompleted)
+
+	body := `{"status":"cancelled"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/tasks/t1/status", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("t1")
+
+	if err := h.APITaskUpdateStatus(c); err != nil {
+		t.Fatalf("APITaskUpdateStatus: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+
+	var got domain.Task
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Status != domain.TaskStatusCompleted {
+		t.Errorf("status = %v, want completed (terminal guard should reject the cancel)", got.Status)
+	}
+}

@@ -3,6 +3,7 @@ package handler
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"log"
 	"net/http"
 	"time"
 
@@ -172,7 +173,12 @@ func (h *Handler) APITaskDetail(c echo.Context) error {
 	return c.JSON(http.StatusOK, task)
 }
 
-// APITaskUpdateStatus updates a task's status
+// APITaskUpdateStatus updates a task's status. When the requested status is
+// "cancelled" and the task is currently assigned to a device, this also
+// notifies that device over WebSocket (task.cancel) so the worker actually
+// kills the running process — see worker.py's handle_message, which already
+// handles task.cancel by terminating the child process. Without this push,
+// cancellation was a database-only flag that the worker never learned about.
 func (h *Handler) APITaskUpdateStatus(c echo.Context) error {
 	if h.taskQueue == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "task queue not available"})
@@ -185,9 +191,30 @@ func (h *Handler) APITaskUpdateStatus(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
-	task := h.taskQueue.UpdateStatus(c.Param("id"), domain.TaskStatus(req.Status))
+	requestedStatus := domain.TaskStatus(req.Status)
+	task := h.taskQueue.UpdateStatus(c.Param("id"), requestedStatus)
 	if task == nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
+	}
+
+	// task.Status == cancelled (rather than just requestedStatus ==
+	// cancelled) is the correctness check here: UpdateStatus's terminal-state
+	// guard can reject the request and return the task unchanged (e.g. a
+	// stale cancel arriving after the task already completed/failed via
+	// another path), and it signals that by returning the same task rather
+	// than an error. Gating on the actual resulting status avoids notifying
+	// a device to cancel a task that, from the server's point of view,
+	// never actually transitioned to cancelled.
+	if requestedStatus == domain.TaskStatusCancelled && task.Status == domain.TaskStatusCancelled && task.AssignedDeviceID != "" && h.wsHub != nil {
+		msg := &ws.Message{
+			Type:      ws.MsgTaskCancel,
+			DeviceID:  task.AssignedDeviceID,
+			TaskID:    task.ID,
+			Timestamp: time.Now(),
+		}
+		if err := h.wsHub.SendToDevice(task.AssignedDeviceID, msg); err != nil {
+			log.Printf("[handler] failed to send task.cancel for %s to %s: %v", task.ID, task.AssignedDeviceID, err)
+		}
 	}
 
 	return c.JSON(http.StatusOK, task)

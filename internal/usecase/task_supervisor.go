@@ -115,27 +115,29 @@ func (s *TaskSupervisor) Start(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if !bootReconciled && time.Now().After(bootDeadline) {
-				s.reconcileBoot(ctx)
+				s.safeRun("reconcileBoot", func() { s.reconcileBoot(ctx) })
 				bootReconciled = true
 			}
-			s.safeCheck(ctx)
+			s.safeRun("check", func() { s.check(ctx) })
 		}
 	}
 }
 
-// safeCheck runs check and recovers from any panic inside it, logging
-// instead of letting the panic escape and kill the process. The tick
-// goroutine in Start has no other recover, so an unguarded panic here
-// (e.g. from a scheduling edge case) would crash the whole server and,
-// on restart, replay the same poisoned task from persisted queue state —
-// a standing crash loop.
-func (s *TaskSupervisor) safeCheck(ctx context.Context) {
+// safeRun invokes fn and recovers from any panic inside it, logging instead
+// of letting the panic escape and kill the process. The tick goroutine in
+// Start has no other recover, so an unguarded panic in any of its calls
+// (e.g. from a scheduling edge case, or from reconcileBoot's one-shot pass)
+// would crash the whole server and, on restart, replay the same poisoned
+// task from persisted queue state — a standing crash loop. Both tick-loop
+// calls (reconcileBoot and check) are wrapped so neither is a single point
+// of failure for the other.
+func (s *TaskSupervisor) safeRun(name string, fn func()) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("[supervisor] tick panic recovered: %v", r)
+			log.Printf("[supervisor] tick panic recovered in %s: %v", name, r)
 		}
 	}()
-	s.check(ctx)
+	fn()
 }
 
 // reconcileBoot is a one-shot pass invoked after bootGracePeriod elapses.
