@@ -127,6 +127,18 @@ func fixtureCases() []fixtureCase {
 			Task: fixtureTask{Priority: "normal", ResourceReqs: rr(16000, 0)}, Worker: baseWorker()},
 	)
 
+	// CPU-only 워커 (GPU 인벤토리·메트릭 없음): count-only 요구는 부적격이어야 한다.
+	cpuWorker := fixtureWorker{
+		DeviceID: "cpu1", Capabilities: []string{"compute"},
+		MemoryFreeGB: 32, CPUUsage: 10, RunningJobs: 1,
+	}
+	cases = append(cases,
+		fixtureCase{Name: "fallback_count_only_cpu_worker_rejected",
+			Task: fixtureTask{Priority: "normal", ResourceReqs: rr(0, 1)}, Worker: cpuWorker},
+		fixtureCase{Name: "fallback_count_only_with_inventory",
+			Task: fixtureTask{Priority: "normal", ResourceReqs: rr(0, 1)}, Worker: baseWorker()},
+	)
+
 	for i := range cases {
 		cases[i].ExpectedScore = ScoreForTask(
 			toDomainTask(cases[i].Task), toSnapshot(cases[i].Worker))

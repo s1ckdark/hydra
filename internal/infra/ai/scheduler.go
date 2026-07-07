@@ -71,7 +71,9 @@ func PickBestWorker(task *domain.Task, workers []WorkerSnapshot) *WorkerSnapshot
 // gpuCount 0 means 1. Selection is best-fit: smallest sufficient free VRAM
 // first (tie broken by index), so large-VRAM GPUs stay available for
 // larger future tasks. Workers without per-GPU data fall back to the
-// aggregate check for single-GPU requests and are ineligible for multi-GPU.
+// aggregate check for single-GPU requests (and must report at least count
+// GPUs in inventory — a count-only request must not land on a CPU-only
+// worker) and are ineligible for multi-GPU.
 func PackGPUs(task *domain.Task, w WorkerSnapshot) ([]int, bool) {
 	r := task.ResourceReqs
 	if r == nil || (r.GPUMemoryMB == 0 && r.GPUCount == 0) {
@@ -83,6 +85,13 @@ func PackGPUs(task *domain.Task, w WorkerSnapshot) ([]int, bool) {
 	}
 	if len(w.GPUs) == 0 {
 		if count >= 2 {
+			return nil, false
+		}
+		// Without per-GPU metrics the device inventory is the only signal
+		// that a GPU exists at all: gpuMemoryMB==0 (count-only) requests
+		// would otherwise pass the aggregate check on CPU-only workers
+		// (0 > 0 is false).
+		if w.GPUCount < count {
 			return nil, false
 		}
 		if r.GPUMemoryMB > w.GPUMemoryFreeMB {

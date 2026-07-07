@@ -48,11 +48,15 @@ func TestPackGPUs(t *testing.T) {
 		{"tie_broken_by_index",
 			reqs(1000, 1), gpuWorker(GPUFree{1, 5000, 0}, GPUFree{0, 5000, 0}), []int{0}, true},
 		{"fallback_no_pergpu_single_fits",
-			reqs(16000, 0), WorkerSnapshot{GPUMemoryFreeMB: 40000}, nil, true},
+			reqs(16000, 0), WorkerSnapshot{GPUCount: 2, GPUMemoryFreeMB: 40000}, nil, true},
 		{"fallback_no_pergpu_single_no_fit",
-			reqs(50000, 1), WorkerSnapshot{GPUMemoryFreeMB: 40000}, nil, false},
+			reqs(50000, 1), WorkerSnapshot{GPUCount: 2, GPUMemoryFreeMB: 40000}, nil, false},
 		{"fallback_no_pergpu_multi_rejected",
-			reqs(1000, 2), WorkerSnapshot{GPUMemoryFreeMB: 40000}, nil, false},
+			reqs(1000, 2), WorkerSnapshot{GPUCount: 2, GPUMemoryFreeMB: 40000}, nil, false},
+		{"fallback_count_only_cpu_worker_rejected", // GPU 인벤토리 없는 워커에 count-only task 금지
+			reqs(0, 1), WorkerSnapshot{GPUCount: 0, GPUMemoryFreeMB: 0}, nil, false},
+		{"fallback_count_only_with_inventory_ok",
+			reqs(0, 1), WorkerSnapshot{GPUCount: 2, GPUMemoryFreeMB: 40000}, nil, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
