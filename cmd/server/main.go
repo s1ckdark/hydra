@@ -331,8 +331,14 @@ func main() {
 	apiWrite.POST("/devices/:id/ssh/accept-key", h.APISSHAcceptHostKey)
 	apiWrite.POST("/devices/:id/ssh/reset", h.APISSHReset)
 
-	// WebSocket endpoint
-	e.GET("/ws", h.HandleWebSocket)
+	// WebSocket endpoint — gated by IP-based authentication only (Tailscale CGNAT
+	// or localhost). The X-API-Key header is currently ignored; a middleware.Auth
+	// that would validate API keys exists in internal/web/middleware/apikey.go
+	// but is not yet wired. NOTE: this only authenticates the network path; it
+	// does not bind the authenticated identity to the device_id query param, so
+	// a caller that passes the gate can still register any device_id. Closing
+	// that identity<->device_id gap is a known remaining follow-up.
+	e.GET("/ws", h.HandleWebSocket, tailscaleAuthMiddleware)
 
 	// Task API routes
 	api.GET("/tasks", h.APITaskList)

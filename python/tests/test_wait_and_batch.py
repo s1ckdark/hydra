@@ -131,6 +131,29 @@ def test_submit_batch_and_wait_all(client):
 
 
 @responses.activate
+def test_wait_all_retries_connection_blips(client):
+    import requests as _requests
+    responses.post(
+        f"{BASE}/api/tasks/batch",
+        json={"id": "g1", "totalTasks": 1, "queued": 1, "status": "running",
+              "tasks": [{"id": "t1", "status": "queued"}]},
+        status=201)
+    responses.get(f"{BASE}/api/groups/g1", body=_requests.ConnectionError("blip"))
+    responses.get(f"{BASE}/api/groups/g1",
+                  json={"id": "g1", "totalTasks": 1, "completed": 1,
+                        "failed": 0, "running": 0, "queued": 0,
+                        "status": "completed"})
+    responses.get(f"{BASE}/api/groups/g1",
+                  json={"id": "g1", "totalTasks": 1, "completed": 1,
+                        "failed": 0, "running": 0, "queued": 0,
+                        "status": "completed",
+                        "tasks": [{"id": "t1", "status": "completed"}]})
+    group = client.submit_batch([TaskSpec.command("a")], name="exp-3")
+    snap = group.wait_all(poll_interval=0.01)
+    assert snap["status"] == "completed"
+
+
+@responses.activate
 def test_wait_all_timeout_zero_raises_promptly(client):
     responses.post(
         f"{BASE}/api/tasks/batch",

@@ -21,6 +21,14 @@ def test_taskspec_command_helper():
     assert "aiSchedule" not in j
 
 
+def test_taskspec_timeout_rounds_up_fractional_seconds():
+    # Fix C2: int() truncation silently turned a 0.5s timeout into 0
+    # (meaning "no timeout") — must ceiling instead.
+    assert TaskSpec.command("x", timeout=0.5).to_json()["timeout"] == 1
+    assert TaskSpec.command("x", timeout=0).to_json()["timeout"] == 0
+    assert TaskSpec.command("x", timeout=90).to_json()["timeout"] == 90
+
+
 def test_taskspec_resource_reqs_serialized():
     spec = TaskSpec.command(
         "train", resource_reqs=ResourceRequirements(gpu_memory_mb=8000))

@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -71,7 +72,7 @@ class TaskSpec:
             "payload": self.payload,
             "priority": self.priority,
             "requiredCapabilities": self.required_capabilities,
-            "timeout": int(self.timeout),
+            "timeout": int(math.ceil(self.timeout)),
             "maxRetries": self.max_retries,
         }
         if self.preferred_device_id:

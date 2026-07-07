@@ -270,13 +270,31 @@ func (q *TaskQueue) Get(taskID string) *Task {
 	return q.tasks[taskID]
 }
 
-// UpdateStatus updates a task's status
+// UpdateStatus updates a task's status.
+//
+// Terminal-state guard: once a task is terminal (IsTerminal), a further
+// status change is rejected (task returned unchanged, no persist) EXCEPT
+// completed -> failed. That one exception exists because the Python worker
+// reports its result first (which sets completed via SetResult) and then,
+// on a nonzero exit code, separately calls UpdateStatus("failed") to
+// override it — that sequencing must keep working. Every other transition
+// out of a terminal state (e.g. cancelled -> running, failed -> completed)
+// is rejected so a late/racy status update can't resurrect a task the
+// server already considers done.
 func (q *TaskQueue) UpdateStatus(taskID string, status TaskStatus) *Task {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	task, ok := q.tasks[taskID]
 	if !ok {
 		return nil
+	}
+	if task.IsTerminal() && status != task.Status {
+		if task.Status == TaskStatusCompleted && status == TaskStatusFailed {
+			// allowed: worker's completed -> failed override
+		} else {
+			log.Printf("[taskqueue] rejecting status change for terminal task %s: %s -> %s", taskID, task.Status, status)
+			return task
+		}
 	}
 	task.Status = status
 	now := time.Now()
@@ -290,13 +308,24 @@ func (q *TaskQueue) UpdateStatus(taskID string, status TaskStatus) *Task {
 	return task
 }
 
-// SetResult sets the task result
+// SetResult sets the task result.
+//
+// Terminal-state guard: if the task is already cancelled or failed, the
+// result is rejected (task returned unchanged, no persist, Result left
+// untouched) — a late result report from a worker must not resurrect a
+// task the server already considers cancelled or failed. Reporting a
+// result on a running/assigned task (the normal path) and re-reporting on
+// an already-completed task both remain allowed.
 func (q *TaskQueue) SetResult(taskID string, result *TaskResult) *Task {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	task, ok := q.tasks[taskID]
 	if !ok {
 		return nil
+	}
+	if task.Status == TaskStatusCancelled || task.Status == TaskStatusFailed {
+		log.Printf("[taskqueue] rejecting late result for terminal task %s (status=%s)", taskID, task.Status)
+		return task
 	}
 	task.Result = result
 	task.Status = TaskStatusCompleted

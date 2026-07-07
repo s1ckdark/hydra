@@ -18,13 +18,18 @@ import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlencode
 
 from .client import HydraClient
-from .errors import HydraError, HydraNotFoundError
+from .errors import (
+    HydraAuthError, HydraConnectionError, HydraError, HydraNotFoundError,
+    HydraServerError,
+)
 
 log = logging.getLogger("hydra_client.worker")
 
 _REPORT_RETRIES = 3
+_DEFAULT_MAX_OUTPUT_BYTES = 1_000_000
 
 
 class Worker:
@@ -33,7 +38,8 @@ class Worker:
                  max_concurrent: int = 1,
                  reconnect_max_backoff: float = 30.0,
                  api_key: str | None = None,
-                 term_grace: float = 5.0):
+                 term_grace: float = 5.0,
+                 max_output_bytes: int = _DEFAULT_MAX_OUTPUT_BYTES):
         if "://" not in server:
             raise ValueError(
                 "server URL must include http:// or https://"
@@ -44,6 +50,7 @@ class Worker:
         self.client = HydraClient(self.server, api_key=api_key)
         self.reconnect_max_backoff = reconnect_max_backoff
         self.term_grace = term_grace  # SIGTERM 후 SIGKILL 까지 유예(초)
+        self.max_output_bytes = max_output_bytes
         self._pool = ThreadPoolExecutor(max_workers=max_concurrent)
         self._procs: dict[str, subprocess.Popen] = {}
         self._procs_lock = threading.Lock()
@@ -58,12 +65,15 @@ class Worker:
 
         scheme = "wss" if self.server.startswith("https") else "ws"
         host = self.server.split("://", 1)[1]
-        url = f"{scheme}://{host}/ws?device_id={self.device_id}"
+        query = urlencode({"device_id": self.device_id})
+        url = f"{scheme}://{host}/ws?{query}"
+        headers = {"X-API-Key": self.client.api_key} if self.client.api_key else None
         backoff = 1.0
         try:
             while not self._stop.is_set():
                 try:
-                    with ws_connect(url, max_size=512 * 1024) as conn:
+                    with ws_connect(url, max_size=512 * 1024,
+                                     additional_headers=headers) as conn:
                         with self._conn_lock:
                             self._conn = conn
                         try:
@@ -98,6 +108,13 @@ class Worker:
                 conn.close()
             except Exception:  # noqa: BLE001 — best-effort, 이미 닫혔을 수도 있음
                 pass
+        # 실행 중인 subprocess 를 방치하면 run() 의 finally 에서
+        # pool.shutdown(wait=True) 가 장시간 task 에 걸려 멈출 수 있다 —
+        # 스냅샷을 떠서 각각 기존 TERM→grace→KILL 로직으로 정리한다.
+        with self._procs_lock:
+            task_ids = list(self._procs.keys())
+        for task_id in task_ids:
+            self._kill(task_id)
 
     def handle_message(self, msg: dict) -> None:
         mtype = msg.get("type")
@@ -153,19 +170,37 @@ class Worker:
             # 응답의 JSON 파싱 실패)가 여기서 잡혀 성공한 task 를 다시
             # failed 로 보고하게 된다.
             duration_ns = int((time.monotonic() - start) * 1e9)
+            stderr, err_truncated = self._cap_output(f"worker exception: {e}")
             self._report(task_id,
-                         {"stdout": "", "stderr": f"worker exception: {e}",
-                          "exitCode": -1, "timedOut": False},
+                         {"stdout": "", "stderr": stderr,
+                          "exitCode": -1, "timedOut": False,
+                          "truncated": err_truncated},
                          failed=True, duration_ns=duration_ns)
             return
 
         duration_ns = int((time.monotonic() - start) * 1e9)
         exit_code = proc.returncode
         failed = timed_out or exit_code != 0
+        stdout, out_truncated = self._cap_output(stdout)
+        stderr, err_truncated = self._cap_output(stderr)
         self._report(task_id,
                      {"stdout": stdout, "stderr": stderr,
-                      "exitCode": exit_code, "timedOut": timed_out},
+                      "exitCode": exit_code, "timedOut": timed_out,
+                      "truncated": out_truncated or err_truncated},
                      failed=failed, duration_ns=duration_ns)
+
+    def _cap_output(self, text: str) -> tuple[str, bool]:
+        """stdout/stderr 를 max_output_bytes 로 캡 — 보고 payload 만 제한한다.
+
+        communicate() 가 이미 완성된 문자열을 반환한 뒤라 자식 프로세스의
+        피크 메모리 사용량 자체를 줄이지는 못한다 (chatty task 는 여전히
+        그만큼 메모리를 쓴다) — 서버로 올라가는 보고 크기만 제한한다.
+        """
+        encoded = text.encode("utf-8", errors="surrogateescape")
+        if len(encoded) <= self.max_output_bytes:
+            return text, False
+        tail = encoded[-self.max_output_bytes:]
+        return tail.decode("utf-8", errors="replace"), True
 
     def _kill(self, task_id: str) -> None:
         with self._procs_lock:
@@ -212,13 +247,23 @@ class Worker:
                 # 서버가 재할당/삭제했을 수 있음 — 폐기
                 log.warning("report dropped: task gone from server")
                 return
-            except HydraError as e:
+            except HydraAuthError as e:
+                # 401 은 재시도로 해결되지 않는다 — 즉시 포기하고 실패를
+                # 빨리 드러낸다 (무의미한 3회 백오프로 지연시키지 않는다)
+                log.error("report dropped: auth failed: %s", e)
+                return
+            except (HydraConnectionError, HydraServerError) as e:
+                # 일시적 오류(연결 끊김/5xx)만 재시도 대상
                 if attempt == _REPORT_RETRIES - 1:
                     log.error("report failed after %d attempts: %s",
                               _REPORT_RETRIES, e)
                     return
                 time.sleep(backoff)
                 backoff = min(backoff * 2, 10.0)
+            except HydraError as e:
+                # 그 외(예: 4xx) 는 재시도로 해결되지 않는 요청 자체의 문제 — 즉시 포기
+                log.error("report dropped: non-retryable error: %s", e)
+                return
 
 
 def main() -> None:

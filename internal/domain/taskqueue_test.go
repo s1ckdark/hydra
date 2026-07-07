@@ -221,3 +221,77 @@ func TestReplay_DoesNotPersist(t *testing.T) {
 		t.Errorf("Replay should not call repo.Save; got %d", r.count())
 	}
 }
+
+// --- A1: terminal-state guards ---
+//
+// A late worker report must not resurrect a task the server already
+// considers terminal (cancelled/failed), except for the one worker
+// contract we must preserve: completed -> failed (the worker reports a
+// result first, which sets completed, then overrides with failed on a
+// nonzero exit code).
+
+func TestSetResult_CancelledTaskStaysCancelled(t *testing.T) {
+	q := NewTaskQueue()
+	task := newTask("t1", TaskPriorityNormal)
+	task.Status = TaskStatusCancelled
+	q.AttachAssigned(task)
+
+	got := q.SetResult("t1", &TaskResult{Output: map[string]interface{}{"x": 1}})
+	if got == nil {
+		t.Fatal("SetResult returned nil")
+	}
+	if got.Status != TaskStatusCancelled {
+		t.Errorf("status = %v, want cancelled", got.Status)
+	}
+	if got.Result != nil {
+		t.Errorf("Result = %+v, want nil (late result must not attach)", got.Result)
+	}
+}
+
+func TestUpdateStatus_CancelledTaskRejectsRunning(t *testing.T) {
+	q := NewTaskQueue()
+	task := newTask("t1", TaskPriorityNormal)
+	task.Status = TaskStatusCancelled
+	q.AttachAssigned(task)
+
+	got := q.UpdateStatus("t1", TaskStatusRunning)
+	if got == nil {
+		t.Fatal("UpdateStatus returned nil")
+	}
+	if got.Status != TaskStatusCancelled {
+		t.Errorf("status = %v, want cancelled (terminal guard should reject running)", got.Status)
+	}
+}
+
+func TestUpdateStatus_CompletedToFailedAllowed(t *testing.T) {
+	q := NewTaskQueue()
+	task := newTask("t1", TaskPriorityNormal)
+	task.Status = TaskStatusCompleted
+	q.AttachAssigned(task)
+
+	got := q.UpdateStatus("t1", TaskStatusFailed)
+	if got == nil {
+		t.Fatal("UpdateStatus returned nil")
+	}
+	if got.Status != TaskStatusFailed {
+		t.Errorf("status = %v, want failed (completed->failed worker contract must keep working)", got.Status)
+	}
+}
+
+func TestSetResult_FailedTaskStaysFailed(t *testing.T) {
+	q := NewTaskQueue()
+	task := newTask("t1", TaskPriorityNormal)
+	task.Status = TaskStatusFailed
+	q.AttachAssigned(task)
+
+	got := q.SetResult("t1", &TaskResult{Output: map[string]interface{}{"x": 1}})
+	if got == nil {
+		t.Fatal("SetResult returned nil")
+	}
+	if got.Status != TaskStatusFailed {
+		t.Errorf("status = %v, want failed", got.Status)
+	}
+	if got.Result != nil {
+		t.Errorf("Result = %+v, want nil (late result must not attach)", got.Result)
+	}
+}

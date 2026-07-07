@@ -28,7 +28,7 @@ from hydra_client import HydraClient
 
 client = HydraClient(
     "http://head:8080",
-    api_key=None,   # Tailscale 밖에서만 필요 (X-API-Key 헤더)
+    api_key=None,   # 예약: 향후 서버 API-key 검증이 구현되면 필요할 수 있음
     timeout=10.0,   # HTTP 요청 타임아웃 — 초 단위
 )
 
@@ -74,6 +74,9 @@ for handle in group.tasks:
 
 그룹의 terminal 상태는 Go `domain.DeriveGroupStatus` 기준으로 `completed`(전부
 성공) / `failed`(전부 실패) / `partial`(혼합)이며, `running`만 비종결이다.
+`wait_all()`도 `wait()`과 동일하게 일시적 연결 오류를 지수 백오프(최대 30초)로
+재시도하며, `timeout` 초과 시 마지막 시도가 연결 오류였으면
+`HydraConnectionError`, 아니면 `TimeoutError`를 발생시킨다.
 
 ## 조회 & 모니터링
 
@@ -163,22 +166,39 @@ python -m hydra_client.worker \
 code를 `PUT /api/tasks/:id/result`로 보고. task `timeout` 초과나 `task.cancel`
 수신 시 프로세스 그룹에 SIGTERM → 5초 유예 → SIGKILL 순으로 종료한다.
 
-### 알려진 한계: 취소
+### 취소
 
 REST `cancel_task()`/`update_task_status(..., "cancelled")`는 서버 쪽 task
-상태만 바꿀 뿐, 파이썬 워커가 이미 실행 중인 프로세스를 멈추지는 못한다 —
-서버가 `task.cancel` WS 메시지를 아직 어디로도 보내지 않기 때문이다(워커의
-`task.cancel` 처리 코드 자체는 존재하지만 아직 트리거되지 않는다). 따라서
-실행 중인 명령이 취소 이후에도 끝까지 실행되며, 완료 시 워커의 결과 보고가
-`cancelled` 상태를 다시 `completed`(또는 `failed`)로 덮어쓸 수 있다. 서버가
-`task.cancel`을 실제로 전송하도록 하는 개선은 2단계 작업으로 예정되어 있다.
+상태를 `cancelled`로 바꾸는 동시에, 해당 task 를 실행 중인 워커에게
+`task.cancel` WS 메시지를 보낸다 — 워커는 이를 받아 실행 중인 프로세스
+그룹에 SIGTERM(유예 후 SIGKILL)을 보내 실제로 중단시킨다. 또한 서버는
+이미 `cancelled`/`failed`로 종결된 task 에 대한 뒤늦은 결과 보고를
+거부하므로, 취소 이후 워커가 뒤늦게 보고하는 결과가 `cancelled` 상태를
+`completed`/`failed`로 덮어쓰는 일은 없다.
+
+단, `task.cancel` 전송은 **best-effort**다 — 대상 워커가 그 순간 WS로
+연결돼 있어야 프로세스가 즉시 중단된다. 워커가 일시적으로 끊긴 상태라면
+서버 task 는 `cancelled`로 표시되지만 실행 중인 프로세스는 계속 돌 수 있고
+(재연결 시 재송신은 아직 없음), 늦은 결과 보고는 위 가드에 의해 무시된다.
+
+### 워커 신뢰 모델
+
+파이썬 워커는 오퍼레이터가 제출한 명령을 셸로 그대로 실행한다 — task
+제출 권한이 있는 누구나 워커 프로세스 권한으로 임의 명령을 실행할 수
+있다는 뜻이다. `/ws` 접속은 현재 **Tailscale 네트워크 또는 localhost IP
+기반**으로만 게이트되며, 워커가 보내는 X-API-Key 헤더는 아직 서버에서
+검증되지 않는다(향후 과제). 또한 인증된 접속 주체를 접속 시 넘기는
+`device_id` 쿼리 파라미터에 바인딩하지는 않는다 — 인증된 누구나 임의의
+`device_id`를 자칭해 접속할 수 있다는 점도 알려진 갭으로 남아 있다.
 
 ## 단위 주의
 
 숫자 단위가 요청/응답 방향에 따라 다르므로 주의한다:
 
 - **요청 시 `timeout`** (`TaskSpec.timeout`, `submit_task(timeout=...)`): **초** 단위
-  (`float`). 서버로 보낼 때 정수 초로 변환된다.
+  (`float`). 서버로 보낼 때 정수 초로 변환되며, 초 미만 소수(예: `0.5`)는
+  올림된다(`1`) — 내림하면 `0`이 되어 "타임아웃 없음"으로 오해석될 수 있기
+  때문이다. `0`은 그대로 "타임아웃 없음"을 의미한다.
 - **응답의 `Task.timeout_ns`, `TaskResult.duration_ns`**: 필드명(JSON의
   `timeout`, `durationMs`)과 달리 실제 값은 **나노초**다. 특히 `durationMs`라는
   JSON 필드명에도 불구하고 값은 ms가 아니라 ns이므로, 초 단위로 쓰려면
