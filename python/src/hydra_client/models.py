@@ -178,6 +178,23 @@ class Device:
 
 
 @dataclass
+class GPUFree:
+    """GPU 한 장의 스케줄링 가시 상태 — 스펙 §6 per-GPU 계약."""
+
+    index: int
+    memory_free_mb: int = 0
+    utilization: float = 0.0
+
+    @classmethod
+    def from_json(cls, d: dict[str, Any]) -> "GPUFree":
+        return cls(
+            index=d.get("index", 0),
+            memory_free_mb=d.get("memoryFreeMB", 0),
+            utilization=d.get("utilization", 0.0),
+        )
+
+
+@dataclass
 class WorkerSnapshot:
     """스케줄러 점수 입력 — Go ai.WorkerSnapshot 과 1:1 (스펙 §5)."""
 
@@ -189,6 +206,7 @@ class WorkerSnapshot:
     running_jobs: int = 0
     gpu_count: int = 0
     gpu_memory_free_mb: int = 0
+    gpus: list["GPUFree"] = field(default_factory=list)
 
     @classmethod
     def from_json(cls, d: dict[str, Any]) -> "WorkerSnapshot":
@@ -201,4 +219,5 @@ class WorkerSnapshot:
             running_jobs=d.get("runningJobs", 0),
             gpu_count=d.get("gpuCount", 0),
             gpu_memory_free_mb=d.get("gpuMemoryFreeMB", 0),
+            gpus=[GPUFree.from_json(g) for g in (d.get("gpus") or [])],
         )

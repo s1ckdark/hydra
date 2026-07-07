@@ -1,7 +1,7 @@
 import pytest
 
-from hydra_client.models import TaskSpec, WorkerSnapshot
-from hydra_client.sim import INELIGIBLE, explain, pick_best_worker, score_for_task
+from hydra_client.models import GPUFree, ResourceRequirements, TaskSpec, WorkerSnapshot
+from hydra_client.sim import INELIGIBLE, explain, pack_gpus, pick_best_worker, score_for_task
 
 
 def _worker(device_id, **kw):
@@ -51,3 +51,22 @@ def test_explain_terms_reconstruct_total():
     for r in rows:
         reconstructed = (r.gpu_free_term + r.mem_term + r.cpu_term + r.queue_term) * r.priority_mult
         assert reconstructed == pytest.approx(r.total, abs=1e-9)
+
+
+def test_pack_gpus_split_vram_rejected():
+    spec = TaskSpec(resource_reqs=ResourceRequirements(gpu_memory_mb=20000))
+    w = _worker("a", gpus=[GPUFree(0, 10000, 20.0), GPUFree(1, 10000, 30.0)])
+    assert pack_gpus(spec, w) is None
+    assert score_for_task(spec, w) == INELIGIBLE
+
+
+def test_pack_gpus_best_fit_and_selected_util_scoring():
+    spec = TaskSpec(resource_reqs=ResourceRequirements(gpu_memory_mb=16000, gpu_count=2))
+    w = _worker("a", gpus=[GPUFree(0, 8000, 90.0), GPUFree(1, 24000, 30.0), GPUFree(2, 20000, 10.0)])
+    assert pack_gpus(spec, w) == [1, 2]
+    rows = [r for r in explain(spec, [w]) if r.eligible]
+    assert rows[0].selected_gpus == [1, 2]
+
+
+def test_pack_gpus_no_constraint_empty():
+    assert pack_gpus(TaskSpec(), _worker("a")) == []
