@@ -70,6 +70,27 @@ final class ClusterSSHConfigTests: XCTestCase {
         XCTAssertEqual(r?.port, 2222)
     }
 
+    func testQuotedValueWithTrailingComment() {
+        let yaml = "ssh:\n  user: \"dave\" # admin\n  private_key_path: \"~/.ssh/id_ed25519\" # main key\n"
+        let r = ClusterSSHConfig.load(from: yaml)
+        XCTAssertEqual(r?.user, "dave")
+        XCTAssertEqual(r?.privateKeyPath, NSString(string: "~/.ssh/id_ed25519").expandingTildeInPath)
+    }
+
+    func testCRLFConfigParses() {
+        let yaml = "ssh:\r\n  user: dave\r\n  private_key_path: ~/.ssh/id_rsa\r\n  port: 2200\r\n"
+        let r = ClusterSSHConfig.load(from: yaml)
+        XCTAssertEqual(r?.user, "dave")
+        XCTAssertEqual(r?.port, 2200)
+        XCTAssertEqual(r?.privateKeyPath, NSString(string: "~/.ssh/id_rsa").expandingTildeInPath)
+    }
+
+    func testHashInsideQuotedPathPreserved() {
+        let yaml = "ssh:\n  user: dave\n  private_key_path: \"/home/x/id#weird\"\n"
+        let r = ClusterSSHConfig.load(from: yaml)
+        XCTAssertEqual(r?.privateKeyPath, "/home/x/id#weird")
+    }
+
     func testConfigFileURLHonorsEnvOverride() {
         let hydraDir = ClusterSSHConfig.configDir(env: ["HYDRA_CONFIG_DIR": "/tmp/hydra-override", "NAGA_CONFIG_DIR": "/tmp/naga-override"])
         XCTAssertEqual(hydraDir, "/tmp/hydra-override")

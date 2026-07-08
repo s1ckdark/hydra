@@ -33,8 +33,12 @@ struct ClusterSSHConfig {
     }
 
     static func load(from yaml: String) -> Resolved? {
+        // Normalize CRLF/CR line endings once up front so the raw (untrimmed)
+        // header/dedent comparisons below never see a trailing `\r`.
+        let normalized = yaml.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
         // Find the top-level `ssh:` block and scan its indented children until dedent.
-        let lines = yaml.components(separatedBy: "\n")
+        let lines = normalized.components(separatedBy: "\n")
         var inSSH = false
         var user: String?
         var keyPath: String?
@@ -60,35 +64,37 @@ struct ClusterSSHConfig {
 
     private static func value(_ line: String, key: String) -> String? {
         guard line.hasPrefix("\(key):") else { return nil }
-        var v = String(line.dropFirst(key.count + 1))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        v = stripInlineComment(v)
-        v = stripQuotes(v)
-        return v
+        let raw = String(line.dropFirst(key.count + 1))
+        return parseScalar(raw)
     }
 
-    /// Strips a trailing ` # comment` when the value itself isn't quoted.
-    /// (Quoted values are stripped of quotes separately, so a `#` inside
-    /// quotes never reaches here as an unquoted value.)
-    private static func stripInlineComment(_ value: String) -> String {
-        let isQuoted = (value.hasPrefix("\"") || value.hasPrefix("'"))
-        guard !isQuoted else { return value }
-        if let range = value.range(of: " #") {
-            return String(value[value.startIndex..<range.lowerBound])
+    /// Parses a YAML scalar value, correctly handling quoted strings (whose
+    /// contents may contain `#`/spaces) and unquoted values with a trailing
+    /// inline `# comment`.
+    private static func parseScalar(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let quote = trimmed.first, quote == "\"" || quote == "'" else {
+            // Unquoted: strip a trailing inline comment (from the first
+            // " #" onward), then trim again.
+            if let range = trimmed.range(of: " #") {
+                return String(trimmed[trimmed.startIndex..<range.lowerBound])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            return trimmed
+        }
+        // Quoted: find the matching closing quote after index 0 and return
+        // only the content between the quotes; anything after the closing
+        // quote (whitespace/comment) is ignored.
+        let afterOpen = trimmed.index(after: trimmed.startIndex)
+        if let closeRange = trimmed.range(of: String(quote), range: afterOpen..<trimmed.endIndex) {
+            return String(trimmed[afterOpen..<closeRange.lowerBound])
+        }
+        // No closing quote found: fall back to treating it as unquoted.
+        if let range = trimmed.range(of: " #") {
+            return String(trimmed[trimmed.startIndex..<range.lowerBound])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        return value
-    }
-
-    /// Strips one surrounding pair of matching `"` or `'` quotes.
-    private static func stripQuotes(_ value: String) -> String {
-        guard value.count >= 2 else { return value }
-        let first = value.first!
-        let last = value.last!
-        if (first == "\"" && last == "\"") || (first == "'" && last == "'") {
-            return String(value.dropFirst().dropLast())
-        }
-        return value
+        return trimmed
     }
 
     private static func expand(_ path: String) -> String {
