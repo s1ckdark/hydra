@@ -55,6 +55,7 @@ final class TerminalSession: ObservableObject, Identifiable {
         // disconnect() and cannot be restarted.
         pumpTask?.cancel()
         statePumpTask?.cancel()
+        session.disconnect()
         session = sessionFactory()
         pendingShell = (cols, rows)
         // Resolve credentials: config.yaml → SSHKeyLocator fallback.
