@@ -205,6 +205,7 @@ struct DeviceRowView: View {
 struct DeviceDetailView: View {
     let device: Device
     @EnvironmentObject var dashboardVM: DashboardViewModel
+    @EnvironmentObject var appState: AppState
     @State private var command = ""
     @AppStorage("aiExecPolicy") private var policyRaw = ExecPolicy.ask.rawValue
     private var policy: ExecPolicy { ExecPolicy(rawValue: policyRaw) ?? .ask }
@@ -254,6 +255,17 @@ struct DeviceDetailView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
+                    #if os(macOS)
+                    if device.sshEnabled {
+                        Button {
+                            TerminalSessionStore.shared.open(device: device)
+                            appState.activeTab = .terminal
+                        } label: {
+                            Label("터미널 열기", systemImage: "apple.terminal")
+                        }
+                        .help("이 디바이스로 SSH 터미널 세션을 엽니다 — Terminal 탭에서 확인")
+                    }
+                    #endif
                     StatusBadge(isOnline: device.isOnline)
                 }
 

@@ -11,6 +11,7 @@ final class AppState: ObservableObject {
         case orchs
         case tasks
         case console
+        case terminal
         case settings
     }
 
