@@ -48,6 +48,10 @@ config.yaml
 /cluster-agent
 /server
 
+# SwiftPM build dirs for nested local packages (e.g. Packages/TerminalCore)
+Hydra/Packages/*/.build/
+Hydra/.build/
+
 # Claude/OMC
 .cache/
 .omc/
