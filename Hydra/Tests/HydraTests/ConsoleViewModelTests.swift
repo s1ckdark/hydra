@@ -1,5 +1,6 @@
 #if os(macOS)
 import XCTest
+import Combine
 @testable import Hydra
 
 @MainActor
@@ -46,6 +47,15 @@ final class ConsoleViewModelTests: XCTestCase {
         let id = vm.selectedID!
         vm.deleteSelected()
         XCTAssertFalse(vm.store.snippets.contains { $0.id == id })
+    }
+
+    func testViewModelRepublishesOnStoreChange() {
+        let vm = makeVM()
+        var fired = false
+        let c = vm.objectWillChange.sink { fired = true }
+        vm.store.add(PySnippet(name: "x", code: "y"))   // child @Published mutation
+        XCTAssertTrue(fired, "vm should re-publish when its store changes")
+        c.cancel()
     }
 }
 #endif

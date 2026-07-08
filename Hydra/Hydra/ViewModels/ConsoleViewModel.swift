@@ -1,6 +1,7 @@
 // Hydra/Hydra/ViewModels/ConsoleViewModel.swift
 #if os(macOS)
 import Foundation
+import Combine
 
 @MainActor
 final class ConsoleViewModel: ObservableObject {
@@ -11,9 +12,21 @@ final class ConsoleViewModel: ObservableObject {
     let store: PySnippetStore
     let executor: PYExecutor
 
+    private var cancellables = Set<AnyCancellable>()
+
     init(store: PySnippetStore = .shared, executor: PYExecutor? = nil) {
         self.store = store
         self.executor = executor ?? PYExecutor()
+
+        // 중첩 ObservableObject(store/executor)의 변경을 vm의 objectWillChange로 재발행
+        // (@StateObject var vm 뷰가 자식 변경에도 재렌더링되도록)
+        self.store.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        self.executor.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
         if let first = store.snippets.first { select(first.id) }
     }
 
