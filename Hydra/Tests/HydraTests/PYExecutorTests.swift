@@ -26,5 +26,35 @@ final class PYExecutorTests: XCTestCase {
         XCTAssertEqual(exec.lastExitCode, 0)
         XCTAssertTrue(exec.output.contains { $0.stream == .stdout && $0.text.contains("stream-check") })
     }
+
+    func testRun_multibyteUTF8AcrossChunkBoundaries_noDropNoMojibake() async throws {
+        let sys = URL(fileURLWithPath: "/usr/bin/python3")
+        try XCTSkipUnless(FileManager.default.isExecutableFile(atPath: sys.path),
+                          "system python3 없음 — 실행 경로 스킵")
+        let exec = PYExecutor(interpreterProvider: { sys }, pylibProvider: { nil })
+        // 한글+이모지를 1000줄 출력 — 청크 경계가 멀티바이트 시퀀스 중간에 걸릴 가능성이 높다.
+        await exec.runRaw("""
+        for i in range(1000):
+            print("한글출력-\\U0001F600-" + str(i))
+        """)
+        XCTAssertEqual(exec.lastExitCode, 0)
+        let stdoutLines = exec.output.filter { $0.stream == .stdout && !$0.text.isEmpty }
+        XCTAssertEqual(stdoutLines.count, 1000, "1000줄이 정확히 스트리밍되어야 함 (드롭/병합 없이)")
+        XCTAssertTrue(stdoutLines.allSatisfy { $0.text.contains("한글출력-😀-") },
+                      "모든 줄이 mojibake 없이 온전한 멀티바이트 문자열을 포함해야 함")
+        XCTAssertTrue(stdoutLines.contains { $0.text == "한글출력-😀-0" })
+        XCTAssertTrue(stdoutLines.contains { $0.text == "한글출력-😀-999" })
+    }
+
+    func testRun_noTrailingNewline_flushedOnTermination() async throws {
+        let sys = URL(fileURLWithPath: "/usr/bin/python3")
+        try XCTSkipUnless(FileManager.default.isExecutableFile(atPath: sys.path),
+                          "system python3 없음 — 실행 경로 스킵")
+        let exec = PYExecutor(interpreterProvider: { sys }, pylibProvider: { nil })
+        await exec.runRaw("import sys; sys.stdout.write('no-newline-tail')")
+        XCTAssertEqual(exec.lastExitCode, 0)
+        XCTAssertTrue(exec.output.contains { $0.stream == .stdout && $0.text.contains("no-newline-tail") },
+                      "개행 없이 끝난 출력도 종료 시 플러시되어야 함")
+    }
 }
 #endif
