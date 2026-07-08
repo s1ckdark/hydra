@@ -49,6 +49,8 @@ final class PYExecutor: ObservableObject {
         guard !isRunning else { return }
         output.removeAll()
         lastExitCode = nil
+        pendingStdout = Data()
+        pendingStderr = Data()
 
         guard let interpreter = interpreterProvider() else {
             output.append(ConsoleLine(text: "파이썬 런타임이 번들에 없습니다 — `make hydra-app`으로 빌드하세요.", stream: .system))
@@ -69,6 +71,10 @@ final class PYExecutor: ObservableObject {
         var env = ProcessInfo.processInfo.environment
         if let pylib = pylibProvider() {
             env["PYTHONPATH"] = pylib.path
+        } else {
+            // 번들 pylib 이 없을 때(개발/미번들 환경) 상속된 PYTHONPATH 가
+            // 서브프로세스로 새는 것을 방지한다.
+            env.removeValue(forKey: "PYTHONPATH")
         }
         env["HYDRA_SERVER"] = "http://localhost:8080"
 
@@ -97,23 +103,26 @@ final class PYExecutor: ObservableObject {
 
         self.proc = proc
         isRunning = true
-        do {
-            try proc.run()
-        } catch {
-            output.append(ConsoleLine(text: "실행 시작 실패: \(error.localizedDescription)", stream: .system))
-            isRunning = false
-            self.proc = nil
-            try? FileManager.default.removeItem(at: scriptURL)
-            return
-        }
 
-        // 종료 대기 (백그라운드), 완료 시 상태 정리
+        // terminationHandler 는 proc.run() 이전에 등록해야 한다 — 그렇지 않으면
+        // 프로세스가 매우 빨리 종료될 경우 핸들러가 nil인 채로 종료 통지가 발생해
+        // continuation 이 영원히 재개되지 않는(hang-forever) 경합이 생긴다.
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             proc.terminationHandler = { [weak self] p in
                 Task { @MainActor in
                     guard let self else { cont.resume(); return }
                     outPipe.fileHandleForReading.readabilityHandler = nil
                     errPipe.fileHandleForReading.readabilityHandler = nil
+                    // readabilityHandler 를 해제한 뒤에도 커널 파이프에 아직 남아있거나
+                    // 콜백이 아직 전달되지 않은 데이터가 있을 수 있다 — flush 전에
+                    // 동기적으로 드레인해 tail 유실(truncation)을 막는다.
+                    // readToEnd() 는 이미 EOF 이면 nil/빈 Data 를 반환하므로 안전하다.
+                    if let d = try? outPipe.fileHandleForReading.readToEnd(), !d.isEmpty {
+                        self.appendBytes(d, stream: .stdout, basename: scriptBasename, offset: preambleLineCount)
+                    }
+                    if let d = try? errPipe.fileHandleForReading.readToEnd(), !d.isEmpty {
+                        self.appendBytes(d, stream: .stderr, basename: scriptBasename, offset: preambleLineCount)
+                    }
                     // 개행 없이 끝난 마지막 조각을 플러시 (버림 방지).
                     self.flushPending(stream: .stdout, basename: scriptBasename, offset: preambleLineCount)
                     self.flushPending(stream: .stderr, basename: scriptBasename, offset: preambleLineCount)
@@ -123,6 +132,18 @@ final class PYExecutor: ObservableObject {
                     try? FileManager.default.removeItem(at: scriptURL)
                     cont.resume()
                 }
+            }
+
+            do {
+                try proc.run()
+            } catch {
+                // 스폰 자체가 실패하면 프로세스가 존재하지 않으므로 terminationHandler 는
+                // 절대 호출되지 않는다 — 여기서 직접 정리하고 continuation 을 재개한다.
+                output.append(ConsoleLine(text: "실행 시작 실패: \(error.localizedDescription)", stream: .system))
+                isRunning = false
+                self.proc = nil
+                try? FileManager.default.removeItem(at: scriptURL)
+                cont.resume()
             }
         }
     }
@@ -174,12 +195,16 @@ final class PYExecutor: ObservableObject {
     }
 
     /// SIGTERM → 3s 유예 → SIGKILL (EmbeddedServer.stop 과 동일 사상).
+    /// usleep 으로 메인 스레드를 블로킹하지 않는다 — SIGTERM 을 무시/트랩하는
+    /// 스니펫(런어웨이 케이스)에서도 UI 가 얼어붙지 않도록 유예 대기는 비동기로
+    /// 스케줄한다. 실제 상태 정리는 프로세스가 종료될 때 terminationHandler 가 한다.
     func cancel() {
         guard let proc = proc, proc.isRunning else { return }
         proc.terminate()
-        let deadline = Date().addingTimeInterval(3.0)
-        while proc.isRunning && Date() < deadline { usleep(50_000) }
-        if proc.isRunning { kill(proc.processIdentifier, SIGKILL) }
+        Task { [weak proc] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if let p = proc, p.isRunning { kill(p.processIdentifier, SIGKILL) }
+        }
     }
 
     // MARK: - Bundle lookup
