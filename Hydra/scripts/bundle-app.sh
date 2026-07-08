@@ -94,6 +94,55 @@ SERVER_BIN="$APP/Contents/Resources/hydra-server"
 (cd .. && go build -o "$SERVER_BIN" ./cmd/server)
 chmod +x "$SERVER_BIN"
 
+echo "[5b/7] bundle Python runtime + vendored hydra_client"
+# python-build-standalone (macOS arm64, install_only). PBS_TAG/PBS_FILE 는
+# releases 페이지에서 확인한 현재 유효한 값으로 설정할 것.
+PBS_TAG="${PBS_TAG:-20260623}"
+PBS_FILE="${PBS_FILE:-cpython-3.12.13+20260623-aarch64-apple-darwin-install_only.tar.gz}"
+PBS_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_TAG}/${PBS_FILE}"
+PBS_CACHE="${PBS_CACHE:-$HOME/.cache/hydra-pbs}"
+mkdir -p "$PBS_CACHE"
+PBS_TARBALL="$PBS_CACHE/$PBS_FILE"
+
+if [[ ! -f "$PBS_TARBALL" ]]; then
+    echo "  downloading $PBS_URL"
+    curl -fL --retry 3 -o "$PBS_TARBALL.part" "$PBS_URL" || { rm -f "$PBS_TARBALL.part"; echo "PBS download failed: $PBS_URL" >&2; exit 1; }
+    mv "$PBS_TARBALL.part" "$PBS_TARBALL"
+fi
+
+PY_DEST="$APP/Contents/Resources/python-runtime"
+rm -rf "$PY_DEST"
+mkdir -p "$PY_DEST"
+EXTRACT_DIR="$PBS_CACHE/extract-$$"
+trap 'rm -rf "$EXTRACT_DIR"' EXIT
+mkdir -p "$EXTRACT_DIR"
+# install_only tarball 은 최상위 'python/' 디렉터리로 전개된다 → 그 내용을 python-runtime/ 로.
+tar -xzf "$PBS_TARBALL" -C "$EXTRACT_DIR"
+# 전개 결과 python/ 하위를 python-runtime 으로 이동, bin/python3 심볼릭 정규화
+if [[ -d "$EXTRACT_DIR/python" ]]; then
+    cp -R "$EXTRACT_DIR/python/." "$PY_DEST/"
+else
+    cp -R "$EXTRACT_DIR/." "$PY_DEST/"
+fi
+rm -rf "$EXTRACT_DIR"
+trap - EXIT
+# bin/python3 이 실제 실행 가능해야 한다 (install_only 는 bin/python3.x + python3 심볼릭 제공)
+if [[ ! -x "$PY_DEST/bin/python3" ]]; then
+    # python3.x 만 있으면 python3 심볼릭 생성
+    PYBIN="$(ls "$PY_DEST"/bin/python3.* 2>/dev/null | head -1 || true)"
+    [[ -n "$PYBIN" ]] && ln -sf "$(basename "$PYBIN")" "$PY_DEST/bin/python3"
+fi
+[[ -x "$PY_DEST/bin/python3" ]] || { echo "python-runtime/bin/python3 not executable after extract" >&2; exit 1; }
+
+# 벤더링: hydra_client 소스를 Resources/pylib/ 로 복사 (repo 루트 기준 ../python/src)
+PYLIB_DEST="$APP/Contents/Resources/pylib"
+rm -rf "$PYLIB_DEST"
+mkdir -p "$PYLIB_DEST"
+cp -R "../python/src/hydra_client" "$PYLIB_DEST/hydra_client"
+# 벤더 라이브러리의 런타임 의존성(requests, websockets)은 번들 파이썬에 설치
+"$PY_DEST/bin/python3" -m pip install --quiet --target "$PYLIB_DEST" "requests>=2.31" "websockets>=12" \
+    || { echo "pip install into pylib failed" >&2; exit 1; }
+
 # touch the bundle so Launch Services re-reads it on next open
 touch "$APP"
 

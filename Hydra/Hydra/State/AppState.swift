@@ -10,6 +10,7 @@ final class AppState: ObservableObject {
         case devices
         case orchs
         case tasks
+        case console
         case settings
     }
 
