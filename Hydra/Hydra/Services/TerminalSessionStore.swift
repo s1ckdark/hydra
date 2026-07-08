@@ -21,7 +21,10 @@ final class TerminalSessionStore: ObservableObject {
             activeSessionId = existing.id       // 중복 생성 금지 — 포커스만
             return
         }
-        let s = TerminalSession(device: device, session: sessionFactory(device))
+        // LOCAL FIX (I1): pass a per-device factory (not a fixed instance) so TerminalSession
+        // can mint a fresh SSHSession on every connect()/reconnect() rather than reusing one
+        // whose AsyncStreams are already finished after a prior disconnect().
+        let s = TerminalSession(device: device, sessionFactory: { [sessionFactory] in sessionFactory(device) })
         sessions.append(s)
         activeSessionId = s.id
     }

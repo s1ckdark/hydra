@@ -17,7 +17,11 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// The view subscribes to feed bytes into SwiftTerm.
     var onOutput: ((Data) -> Void)?
 
-    private let session: SSHSession
+    /// LOCAL FIX (I1): a factory rather than a fixed instance — `SSHSession`'s AsyncStreams
+    /// are finished (permanently dead) once `disconnect()` runs, so reconnecting must build
+    /// a brand-new session rather than resuming the old one.
+    private let sessionFactory: () -> SSHSession
+    private var session: SSHSession
     private let knownHosts: KnownHostsStore
     private var pumpTask: Task<Void, Never>?
     private var statePumpTask: Task<Void, Never>?
@@ -32,12 +36,13 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// but this flag is what actually preserves the reason.
     private var isTerminalStateLocked = false
 
-    init(device: Device, session: SSHSession, knownHostsURL: URL? = nil) {
+    init(device: Device, sessionFactory: @escaping () -> SSHSession, knownHostsURL: URL? = nil) {
         self.id = device.id
         self.deviceId = device.id
         self.deviceName = device.displayName
         self.host = device.tailscaleIp
-        self.session = session
+        self.sessionFactory = sessionFactory
+        self.session = sessionFactory()
         let khURL = knownHostsURL ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".ssh/known_hosts")
         self.knownHosts = KnownHostsStore(fileURL: khURL)
@@ -45,6 +50,12 @@ final class TerminalSession: ObservableObject, Identifiable {
 
     func connect(cols: Int, rows: Int) async {
         isTerminalStateLocked = false
+        // LOCAL FIX (I1): cancel any pump tasks left over from a previous connection and
+        // mint a FRESH session — the old one's AsyncStreams are permanently finished after
+        // disconnect() and cannot be restarted.
+        pumpTask?.cancel()
+        statePumpTask?.cancel()
+        session = sessionFactory()
         pendingShell = (cols, rows)
         // Resolve credentials: config.yaml → SSHKeyLocator fallback.
         let user: String

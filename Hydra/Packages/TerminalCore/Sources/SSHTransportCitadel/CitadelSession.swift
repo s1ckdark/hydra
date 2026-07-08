@@ -1,4 +1,4 @@
-// vendored from iWorks/terminal @ 3b3545e, do not edit here
+// vendored from iWorks/terminal @ 3b3545e — LOCALLY MODIFIED (see below), re-vendor requires re-applying these patches
 import Foundation
 import SSHTransport
 import Citadel
@@ -22,9 +22,8 @@ public final class CitadelSession: SSHSession, @unchecked Sendable {
     private let stC:  AsyncStream<SSHState>.Continuation
 
     public private(set) var remoteHostKey: HostKeyFingerprint? = nil
-    // TODO: surface a real fingerprint via a custom hostKeyValidator. For
-    // MVP we accept-anything, so TOFU is best-effort (skipped) — same as the
-    // Shout path's behaviour.
+    // LOCAL PATCH (C1): populated by HostKeyCapturingValidator below (via connect()'s
+    // custom hostKeyValidator) so app-layer TOFU (HostKeyGate) has a real fingerprint.
 
     private var client: SSHClient?
     private var ptyTask: Task<Void, Never>?
@@ -59,7 +58,11 @@ public final class CitadelSession: SSHSession, @unchecked Sendable {
                 host: host,
                 port: port,
                 authenticationMethod: method,
-                hostKeyValidator: .acceptAnything(),
+                // LOCAL PATCH (C1): capture the presented host key for TOFU while still
+                // accepting every connection — enforcement stays app-layer (HostKeyGate).
+                hostKeyValidator: .custom(HostKeyCapturingValidator(onCapture: { [weak self] key in
+                    self?.storeFingerprint(from: key)
+                })),
                 reconnect: .never
             )
             stC.yield(.connected)
@@ -177,6 +180,23 @@ public final class CitadelSession: SSHSession, @unchecked Sendable {
 
     // MARK: Helpers
 
+    // LOCAL PATCH (C1): render the captured NIOSSHPublicKey into the HostKeyFingerprint
+    // the app-layer TOFU gate (HostKeyGate/KnownHostsStore) compares against. Uses NIOSSH's
+    // own `String(openSSHPublicKey:)` renderer (same wire encoding NIOSSH itself uses to
+    // write "algorithm-id base64-key" strings) rather than re-deriving the SSH wire format
+    // by hand, since NIOSSHPublicKey's own key-type prefix/serialization internals aren't
+    // public API.
+    private func storeFingerprint(from key: NIOSSHPublicKey) {
+        let rendered = String(openSSHPublicKey: key)
+        let parts = rendered.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard parts.count == 2, let keyBytes = Data(base64Encoded: String(parts[1])) else { return }
+        let digest = SHA256.hash(data: keyBytes)
+        let sha256Hex = digest.map { String(format: "%02x", $0) }.joined()
+        remoteHostKey = HostKeyFingerprint(keyType: String(parts[0]),
+                                           publicKeyBase64: String(parts[1]),
+                                           sha256Hex: sha256Hex)
+    }
+
     private static func makeKeyAuth(user: String, pem: Data,
                                     passphrase: String?) throws -> SSHAuthenticationMethod {
         let pemString = String(decoding: pem, as: UTF8.self)
@@ -191,5 +211,26 @@ public final class CitadelSession: SSHSession, @unchecked Sendable {
             return .rsa(username: user, privateKey: key)
         }
         throw SSHError.authFailed("Unsupported private key format (Ed25519/RSA only).")
+    }
+}
+
+// LOCAL PATCH (C1): NIOSSHClientServerAuthenticationDelegate that accepts every host key
+// (Citadel enforcement stays disabled by design; HostKeyGate enforces at the app layer)
+// but reports the presented key back via a closure. Uses a plain closure captured with
+// `[weak self]` at the call site rather than making CitadelSession itself the delegate,
+// so this validator does not hold a strong reference back to CitadelSession — CitadelSession
+// already strongly owns `client`, and `client`'s settings would otherwise strongly own the
+// validator, creating a CitadelSession -> SSHClient -> validator -> CitadelSession cycle.
+private final class HostKeyCapturingValidator: NIOSSHClientServerAuthenticationDelegate {
+    private let onCapture: (NIOSSHPublicKey) -> Void
+
+    init(onCapture: @escaping (NIOSSHPublicKey) -> Void) {
+        self.onCapture = onCapture
+    }
+
+    func validateHostKey(hostKey: NIOSSHPublicKey,
+                         validationCompletePromise promise: EventLoopPromise<Void>) {
+        onCapture(hostKey)
+        promise.succeed(())
     }
 }
