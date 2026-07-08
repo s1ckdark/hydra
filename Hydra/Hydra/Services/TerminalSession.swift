@@ -20,15 +20,25 @@ final class TerminalSession: ObservableObject, Identifiable {
     private let session: SSHSession
     private let knownHosts: KnownHostsStore
     private var pumpTask: Task<Void, Never>?
+    private var statePumpTask: Task<Void, Never>?
     private var pendingShell: (cols: Int, rows: Int)?
+    /// Set right before we assign an intentional terminal `.disconnected(reason:)`.
+    /// `session.disconnect()` always yields a trailing `.disconnected(reason: nil)` into
+    /// the state stream; since that value (or an in-flight `.connected`) may already be
+    /// buffered in the AsyncStream when we cancel `statePumpTask`, cancellation alone does
+    /// not reliably stop it from draining through. This flag is checked from the pump body
+    /// on the same MainActor turn it's set, so it deterministically blocks the stale value
+    /// from clobbering the reason we just set — cancelling the task is still done for cleanup,
+    /// but this flag is what actually preserves the reason.
+    private var isTerminalStateLocked = false
 
-    init(device: Device, session: SSHSession) {
+    init(device: Device, session: SSHSession, knownHostsURL: URL? = nil) {
         self.id = device.id
         self.deviceId = device.id
         self.deviceName = device.displayName
         self.host = device.tailscaleIp
         self.session = session
-        let khURL = FileManager.default.homeDirectoryForCurrentUser
+        let khURL = knownHostsURL ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".ssh/known_hosts")
         self.knownHosts = KnownHostsStore(fileURL: khURL)
     }
@@ -65,7 +75,9 @@ final class TerminalSession: ObservableObject, Identifiable {
         case .needsTrust(let sha):
             hostKeyPrompt = .needsTrust(sha256: sha)   // 뷰가 시트로 물음
         case .blocked:
+            isTerminalStateLocked = true
             state = .disconnected(reason: "호스트키 불일치 — 연결 차단")
+            statePumpTask?.cancel()
             session.disconnect()
         }
     }
@@ -80,7 +92,9 @@ final class TerminalSession: ObservableObject, Identifiable {
 
     func cancelPendingHostKey() {
         hostKeyPrompt = nil
+        isTerminalStateLocked = true
         state = .disconnected(reason: "호스트키 신뢰 취소")
+        statePumpTask?.cancel()
         session.disconnect()
     }
 
@@ -93,12 +107,19 @@ final class TerminalSession: ObservableObject, Identifiable {
 
     func send(_ data: Data) { Task { try? await session.write(data) } }
     func resize(cols: Int, rows: Int) { Task { try? await session.resize(cols: cols, rows: rows) } }
-    func close() { pumpTask?.cancel(); session.disconnect() }
+    func close() {
+        pumpTask?.cancel()
+        statePumpTask?.cancel()
+        session.disconnect()
+    }
 
     private func startStatePump() {
-        Task { [weak self] in
+        statePumpTask = Task { [weak self] in
             guard let self else { return }
-            for await st in self.session.state { self.state = st }
+            for await st in self.session.state {
+                guard !self.isTerminalStateLocked else { continue }
+                self.state = st
+            }
         }
     }
     private func startOutputPump() {
