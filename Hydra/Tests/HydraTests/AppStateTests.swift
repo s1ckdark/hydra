@@ -23,4 +23,10 @@ final class AppStateTests: XCTestCase {
         let s = AppState()
         XCTAssertFalse(s.isChatDrawerOpen)
     }
+
+    func testActiveTab_supportsConsole() {
+        let s = AppState()
+        s.activeTab = .console
+        XCTAssertEqual(s.activeTab, .console)
+    }
 }

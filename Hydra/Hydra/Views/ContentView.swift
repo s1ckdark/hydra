@@ -24,6 +24,10 @@ struct ContentView: View {
                     .tabItem { Label("Tasks", systemImage: "list.bullet.clipboard") }
                     .tag(AppState.Tab.tasks)
 
+                ConsoleView()
+                    .tabItem { Label("Console", systemImage: "terminal") }
+                    .tag(AppState.Tab.console)
+
                 SettingsView()
                     .tabItem { Label("Settings", systemImage: "gearshape") }
                     .tag(AppState.Tab.settings)
