@@ -31,17 +31,17 @@ struct SwiftTermRepresentable: NSViewRepresentable {
         init(session: TerminalSession) { self.session = session }
 
         // User typed → forward bytes to SSH. TerminalViewDelegate callbacks
-        // arrive on a nonisolated (AppKit) context, but TerminalSession is
-        // @MainActor, so hop over explicitly rather than mark the whole
-        // Coordinator @MainActor (which NSObject/AppKit delegate dispatch
-        // does not guarantee to call on).
+        // from AppKit's TerminalView arrive on the main thread, which is the
+        // same executor as @MainActor, so we synchronously assume isolation
+        // rather than hop through an unstructured Task (which offered no
+        // ordering guarantee across rapid keystrokes and could corrupt
+        // output order).
         func send(source: SwiftTerm.TerminalView, data: ArraySlice<UInt8>) {
-            let bytes = Data(data)
-            Task { @MainActor in session.send(bytes) }
+            MainActor.assumeIsolated { session.send(Data(data)) }
         }
         // Terminal resized → tell the remote PTY.
         func sizeChanged(source: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
-            Task { @MainActor in session.resize(cols: newCols, rows: newRows) }
+            MainActor.assumeIsolated { session.resize(cols: newCols, rows: newRows) }
         }
 
         // Remaining TerminalViewDelegate requirements not defaulted by

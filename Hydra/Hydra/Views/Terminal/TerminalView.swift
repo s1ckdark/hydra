@@ -28,6 +28,7 @@ struct TerminalTabView: View {
             // 활성 세션
             if let active = store.sessions.first(where: { $0.id == store.activeSessionId }) {
                 TerminalSessionPane(session: active)
+                    .id(active.id)
             } else {
                 Text("Devices 탭에서 노드의 '터미널 열기'를 누르세요.")
                     .foregroundColor(.secondary)
