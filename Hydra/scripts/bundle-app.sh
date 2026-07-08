@@ -106,26 +106,30 @@ PBS_TARBALL="$PBS_CACHE/$PBS_FILE"
 
 if [[ ! -f "$PBS_TARBALL" ]]; then
     echo "  downloading $PBS_URL"
-    curl -fL --retry 3 -o "$PBS_TARBALL" "$PBS_URL" || { echo "PBS download failed: $PBS_URL" >&2; exit 1; }
+    curl -fL --retry 3 -o "$PBS_TARBALL.part" "$PBS_URL" || { rm -f "$PBS_TARBALL.part"; echo "PBS download failed: $PBS_URL" >&2; exit 1; }
+    mv "$PBS_TARBALL.part" "$PBS_TARBALL"
 fi
 
 PY_DEST="$APP/Contents/Resources/python-runtime"
 rm -rf "$PY_DEST"
 mkdir -p "$PY_DEST"
+EXTRACT_DIR="$PBS_CACHE/extract-$$"
+trap 'rm -rf "$EXTRACT_DIR"' EXIT
+mkdir -p "$EXTRACT_DIR"
 # install_only tarball 은 최상위 'python/' 디렉터리로 전개된다 → 그 내용을 python-runtime/ 로.
-tar -xzf "$PBS_TARBALL" -C "$PBS_CACHE/extract-$$" --one-top-level 2>/dev/null || {
-    mkdir -p "$PBS_CACHE/extract-$$"; tar -xzf "$PBS_TARBALL" -C "$PBS_CACHE/extract-$$"; }
+tar -xzf "$PBS_TARBALL" -C "$EXTRACT_DIR"
 # 전개 결과 python/ 하위를 python-runtime 으로 이동, bin/python3 심볼릭 정규화
-if [[ -d "$PBS_CACHE/extract-$$/python" ]]; then
-    cp -R "$PBS_CACHE/extract-$$/python/." "$PY_DEST/"
+if [[ -d "$EXTRACT_DIR/python" ]]; then
+    cp -R "$EXTRACT_DIR/python/." "$PY_DEST/"
 else
-    cp -R "$PBS_CACHE/extract-$$/." "$PY_DEST/"
+    cp -R "$EXTRACT_DIR/." "$PY_DEST/"
 fi
-rm -rf "$PBS_CACHE/extract-$$"
+rm -rf "$EXTRACT_DIR"
+trap - EXIT
 # bin/python3 이 실제 실행 가능해야 한다 (install_only 는 bin/python3.x + python3 심볼릭 제공)
 if [[ ! -x "$PY_DEST/bin/python3" ]]; then
     # python3.x 만 있으면 python3 심볼릭 생성
-    PYBIN="$(ls "$PY_DEST"/bin/python3.* 2>/dev/null | head -1)"
+    PYBIN="$(ls "$PY_DEST"/bin/python3.* 2>/dev/null | head -1 || true)"
     [[ -n "$PYBIN" ]] && ln -sf "$(basename "$PYBIN")" "$PY_DEST/bin/python3"
 fi
 [[ -x "$PY_DEST/bin/python3" ]] || { echo "python-runtime/bin/python3 not executable after extract" >&2; exit 1; }
