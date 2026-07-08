@@ -72,5 +72,39 @@ final class TerminalSessionTests: XCTestCase {
         XCTAssertNotNil(reason)
         XCTAssertTrue(reason?.contains("차단") ?? false)
     }
+
+    func testReconnectAfterBlockedClearsLock() async {
+        let khURL = tempKnownHostsURL()
+        defer { try? FileManager.default.removeItem(at: khURL) }
+        let store = KnownHostsStore(fileURL: khURL)
+        // Pre-seed a DIFFERENT key for host "100.0.0.1" so first connect → .blocked
+        try? store.trust(KnownHostsEntry(hostPattern: "100.0.0.1", keyType: "ssh-ed25519", publicKey: "AAAADIFFERENT"))
+
+        let session = TerminalSession(device: device("gpu1"), session: FakeSSHSession(), knownHostsURL: khURL)
+        // First connect: blocked due to key mismatch (lock set to true)
+        await session.connect(cols: 80, rows: 24)
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        guard case .disconnected(let reason) = session.state else {
+            XCTFail("expected blocked state, got \(session.state)")
+            return
+        }
+        XCTAssertTrue(reason?.contains("차단") ?? false)
+
+        // Overwrite temp known_hosts to EMPTY so re-check returns .unknown (TOFU path)
+        try? "".write(to: khURL, atomically: true, encoding: .utf8)
+
+        // Second connect on SAME session: lock should be cleared and pump should run
+        await session.connect(cols: 80, rows: 24)
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        // If lock was NOT cleared, state would remain frozen at blocked.
+        // If lock WAS cleared, the pump runs and the flow reaches the .unknown TOFU gate,
+        // setting hostKeyPrompt to .needsTrust(...) — proof the lock was reset.
+        if case .needsTrust = session.hostKeyPrompt {
+            // Success: lock was cleared and fresh flow reached the TOFU path
+            return
+        }
+        XCTFail("expected hostKeyPrompt to be .needsTrust after reconnect (lock should have been cleared), got \(String(describing: session.hostKeyPrompt))")
+    }
 }
 #endif

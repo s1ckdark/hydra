@@ -44,6 +44,7 @@ final class TerminalSession: ObservableObject, Identifiable {
     }
 
     func connect(cols: Int, rows: Int) async {
+        isTerminalStateLocked = false
         pendingShell = (cols, rows)
         // Resolve credentials: config.yaml → SSHKeyLocator fallback.
         let user: String
