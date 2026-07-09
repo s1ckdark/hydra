@@ -132,11 +132,17 @@ final class TerminalSession: ObservableObject, Identifiable {
             }
         }
 
-        // 모든 키 인증 실패
+        // 모든 키 실패. NOTE: the libssh2 backend collapses TCP-refused / host-down /
+        // handshake failures into SSHError.authFailed, so this path is reached for an
+        // OFFLINE host too — not just genuine auth rejection. We therefore surface the
+        // raw reason and phrase the message to cover both ("거부 또는 도달 실패") instead of
+        // only telling the user to register keys against a host that may simply be down.
         if let m = lastAuthError { NSLog("[terminal] all offered keys rejected; last: \(m)") }
         let algos = creds.keys.map(\.algorithm).joined(separator: ", ")
+        let detail = lastAuthError.map { " (사유: \($0))" } ?? ""
         state = .disconnected(reason:
-            "제시한 키(\(algos))가 \(host)에 등록돼 있지 않습니다. ssh-copy-id로 공개키를 등록하세요.")
+            "연결 실패 — 제시한 키(\(algos))가 \(host)에서 거부되었거나 호스트에 도달하지 못했습니다\(detail). "
+            + "호스트가 온라인인지 확인하고, 키가 등록돼 있지 않다면 ssh-copy-id로 공개키를 등록하세요.")
     }
 
     /// Called by the TOFU sheet's "Trust" action.
