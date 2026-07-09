@@ -217,6 +217,7 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// Default credential resolution: config.yaml (user/port + its key first),
     /// then `~/.ssh` keys in OpenSSH preference order, deduped by absolute path.
     static func defaultCredentials() -> SSHCredentials {
+        #if os(macOS)
         let user: String
         let port: Int
         var paths: [String] = []
@@ -238,5 +239,20 @@ final class TerminalSession: ObservableObject, Identifiable {
                                algorithm: SSHKeyLocator.algorithmName(forBasename: base))
         }
         return SSHCredentials(user: user, port: port, keys: keys)
+        #else
+        // ── iOS: 임포트한 키(Keychain) + 설정 username ──
+        let pem = CredentialStore.shared.get(.sshPrivateKeyPEM)
+        let user = UserDefaults.standard.string(forKey: "sshUsername") ?? "root"
+        return makeImportedCredentials(pem: pem, user: user, port: 22)
+        #endif
+    }
+
+    /// Builds credentials from a single imported private key (iOS path). Pure and
+    /// platform-agnostic so it is unit-testable on macOS.
+    nonisolated static func makeImportedCredentials(pem: String, user: String, port: Int) -> SSHCredentials {
+        let trimmed = pem.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return SSHCredentials(user: user, port: port, keys: []) }
+        return SSHCredentials(user: user, port: port,
+                              keys: [ResolvedKey(path: "keychain", pem: Data(trimmed.utf8), algorithm: "imported")])
     }
 }
