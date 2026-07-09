@@ -26,41 +26,63 @@ enum SSHKeyLocator {
 
     private static let preferenceOrder = ["id_ed25519", "id_ecdsa", "id_rsa", "id_dsa"]
 
-    static func defaultPublicKey() throws -> Located {
-        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
-        let candidates = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil))?
+    struct KeyPair: Equatable {
+        let privatePath: String
+        let publicURL: URL
+        let algorithmName: String
+    }
+
+    private static func defaultSSHDir() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
+    }
+
+    /// All `~/.ssh` keypairs that have BOTH a `.pub` and a matching private key,
+    /// ordered like OpenSSH would offer identities: preferenceOrder first, then
+    /// any other keys by filename. Empty dir throws `.noKeysFound`.
+    static func orderedKeyPairs(in sshDir: URL = defaultSSHDir()) throws -> [KeyPair] {
+        let pubs = (try? FileManager.default.contentsOfDirectory(at: sshDir, includingPropertiesForKeys: nil))?
             .filter { $0.pathExtension == "pub" } ?? []
 
-        guard !candidates.isEmpty else { throw LocateError.noKeysFound }
+        var pairs: [KeyPair] = []
+        for pub in pubs {
+            let priv = pub.deletingPathExtension()
+            guard FileManager.default.fileExists(atPath: priv.path) else { continue }
+            let base = priv.lastPathComponent
+            pairs.append(KeyPair(privatePath: priv.path,
+                                 publicURL: pub,
+                                 algorithmName: algorithmName(forBasename: base)))
+        }
+        guard !pairs.isEmpty else { throw LocateError.noKeysFound }
 
-        let chosen = preferred(among: candidates) ?? candidates.sorted { $0.lastPathComponent < $1.lastPathComponent }[0]
+        return pairs.sorted { a, b in
+            let ra = rank(a.publicURL.deletingPathExtension().lastPathComponent)
+            let rb = rank(b.publicURL.deletingPathExtension().lastPathComponent)
+            if ra != rb { return ra < rb }
+            return a.privatePath < b.privatePath
+        }
+    }
+
+    private static func rank(_ basename: String) -> Int {
+        preferenceOrder.firstIndex(of: basename) ?? preferenceOrder.count
+    }
+
+    static func algorithmName(forBasename base: String) -> String {
+        base.hasPrefix("id_") ? String(base.dropFirst(3)) : base
+    }
+
+    static func defaultPublicKey() throws -> Located {
+        guard let first = try orderedKeyPairs().first else { throw LocateError.noKeysFound }
         do {
-            let raw = try String(contentsOf: chosen, encoding: .utf8)
-            return Located(url: chosen, contents: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+            let raw = try String(contentsOf: first.publicURL, encoding: .utf8)
+            return Located(url: first.publicURL, contents: raw.trimmingCharacters(in: .whitespacesAndNewlines))
         } catch {
             throw LocateError.readFailed(error.localizedDescription)
         }
     }
 
-    private static func preferred(among urls: [URL]) -> URL? {
-        for name in preferenceOrder {
-            if let match = urls.first(where: { $0.deletingPathExtension().lastPathComponent == name }) {
-                return match
-            }
-        }
-        return nil
-    }
-
-    /// Sibling to `defaultPublicKey()`: locates the matching private key
-    /// (same basename, `.pub` stripped) for the default public key, and
-    /// verifies the file actually exists before returning its path.
     static func defaultPrivateKeyPath() throws -> String {
-        let pub = try defaultPublicKey()
-        let privateURL = pub.url.deletingPathExtension()
-        guard FileManager.default.fileExists(atPath: privateURL.path) else {
-            throw LocateError.readFailed("개인키 파일이 없어요: \(privateURL.path)")
-        }
-        return privateURL.path
+        guard let first = try orderedKeyPairs().first else { throw LocateError.noKeysFound }
+        return first.privatePath
     }
 
     @MainActor
