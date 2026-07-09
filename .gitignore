@@ -51,6 +51,9 @@ config.yaml
 # SwiftPM build dirs for nested local packages (e.g. Packages/TerminalCore)
 Hydra/Packages/*/.build/
 Hydra/.build/
+# Nested-package lockfiles are build artifacts of standalone `swift build` runs;
+# the authoritative pins live in the committed top-level Hydra/Package.resolved.
+Hydra/Packages/*/Package.resolved
 
 # Claude/OMC
 .cache/
