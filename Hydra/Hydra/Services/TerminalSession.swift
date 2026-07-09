@@ -168,6 +168,11 @@ final class TerminalSession: ObservableObject, Identifiable {
         pumpTask?.cancel()
         statePumpTask?.cancel()
         session.disconnect()
+        // I2 hardening: a close() before the first connect() disconnects the pristine
+        // init-time session; mark it "used" so a later connect() mints a FRESH session
+        // (line 99) instead of reusing this now-dead one (finished AsyncStreams → blank
+        // terminal, the I1 bug). Idempotent for the normal post-connect close path.
+        hasAttemptedConnect = true
     }
 
     private func startStatePump() {
