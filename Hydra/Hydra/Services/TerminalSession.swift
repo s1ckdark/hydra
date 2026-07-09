@@ -3,6 +3,18 @@ import Foundation
 import SSHTransport
 import KnownHosts
 
+struct ResolvedKey: Equatable {
+    let path: String
+    let pem: Data
+    let algorithm: String
+}
+
+struct SSHCredentials {
+    let user: String
+    let port: Int
+    let keys: [ResolvedKey]   // OpenSSH-style ordered offer list
+}
+
 @MainActor
 final class TerminalSession: ObservableObject, Identifiable {
     let id: String
@@ -21,11 +33,22 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// are finished (permanently dead) once `disconnect()` runs, so reconnecting must build
     /// a brand-new session rather than resuming the old one.
     private let sessionFactory: () -> SSHSession
+    private let credentialResolver: () -> SSHCredentials
     private var session: SSHSession
     private let knownHosts: KnownHostsStore
     private var pumpTask: Task<Void, Never>?
     private var statePumpTask: Task<Void, Never>?
     private var pendingShell: (cols: Int, rows: Int)?
+    /// LOCAL FIX (I2): the init-time `session` is minted but never actually dialed —
+    /// the multi-key loop below offers each key on a session of its own via `sessionFactory()`.
+    /// Without this flag, the loop would mint a SECOND (redundant) session for the very
+    /// first key attempt and immediately disconnect the init-time one, which — because
+    /// `SSHSession.disconnect()` yields a trailing `.disconnected` event into the same
+    /// AsyncStream it's about to be reused on — would corrupt state if that same object
+    /// were ever reused afterward. So the first-ever key attempt on a fresh `TerminalSession`
+    /// reuses the pristine init-time session as-is (no redundant mint, no premature disconnect);
+    /// every attempt after that (fallback keys, or any later reconnect) always mints fresh.
+    private var hasAttemptedConnect = false
     /// Set right before we assign an intentional terminal `.disconnected(reason:)`.
     /// `session.disconnect()` always yields a trailing `.disconnected(reason: nil)` into
     /// the state stream; since that value (or an in-flight `.connected`) may already be
@@ -36,12 +59,16 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// but this flag is what actually preserves the reason.
     private var isTerminalStateLocked = false
 
-    init(device: Device, sessionFactory: @escaping () -> SSHSession, knownHostsURL: URL? = nil) {
+    init(device: Device,
+         sessionFactory: @escaping () -> SSHSession,
+         knownHostsURL: URL? = nil,
+         credentialResolver: @escaping () -> SSHCredentials = TerminalSession.defaultCredentials) {
         self.id = device.id
         self.deviceId = device.id
         self.deviceName = device.displayName
         self.host = device.tailscaleIp
         self.sessionFactory = sessionFactory
+        self.credentialResolver = credentialResolver
         self.session = sessionFactory()
         let khURL = knownHostsURL ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".ssh/known_hosts")
@@ -50,49 +77,66 @@ final class TerminalSession: ObservableObject, Identifiable {
 
     func connect(cols: Int, rows: Int) async {
         isTerminalStateLocked = false
-        // LOCAL FIX (I1): cancel any pump tasks left over from a previous connection and
-        // mint a FRESH session — the old one's AsyncStreams are permanently finished after
-        // disconnect() and cannot be restarted.
         pumpTask?.cancel()
         statePumpTask?.cancel()
-        session.disconnect()
-        session = sessionFactory()
+        // See LOCAL FIX (I2): only disconnect the current session if it was already put
+        // to use by a previous attempt — the very first attempt on a fresh instance reuses
+        // the untouched init-time session, so there is nothing to disconnect yet.
+        if hasAttemptedConnect { session.disconnect() }
         pendingShell = (cols, rows)
-        // Resolve credentials: config.yaml → SSHKeyLocator fallback.
-        let user: String
-        let keyPath: String
-        let port: Int
-        if let r = ClusterSSHConfig.load() {
-            user = r.user; keyPath = r.privateKeyPath; port = r.port
-        } else {
-            user = NSUserName()
-            keyPath = (try? SSHKeyLocator.defaultPrivateKeyPath()) ?? ""
-            port = 22
-        }
-        guard let pem = FileManager.default.contents(atPath: keyPath) else {
-            state = .disconnected(reason: "개인키를 읽을 수 없습니다: \(keyPath)")
+
+        let creds = credentialResolver()
+        guard !creds.keys.isEmpty else {
+            state = .disconnected(reason: "SSH 개인키를 찾을 수 없습니다. ~/.ssh 에 키를 만들어주세요.")
             return
         }
-        startStatePump()
-        do {
-            try await session.connect(host: host, port: port, user: user,
-                                      auth: .privateKey(pem, passphrase: nil))
-        } catch {
-            state = .disconnected(reason: (error as? SSHError).map(describe) ?? "\(error)")
-            return
+
+        state = .connecting
+        var lastAuthError: String?
+
+        // OpenSSH-style: offer each key in order until one authenticates.
+        for key in creds.keys {
+            let s: SSHSession = hasAttemptedConnect ? sessionFactory() : session
+            self.session = s
+            hasAttemptedConnect = true
+            do {
+                try await s.connect(host: host, port: creds.port, user: creds.user,
+                                    auth: .privateKey(key.pem, passphrase: nil))
+            } catch let e as SSHError {
+                if case .authFailed(let m) = e {
+                    lastAuthError = m
+                    s.disconnect()
+                    continue                      // 다음 키로 폴백
+                }
+                state = .disconnected(reason: describe(e))   // unreachable/handshake 등 즉시 실패
+                return
+            } catch {
+                state = .disconnected(reason: "\(error)")
+                return
+            }
+            // 인증 성공 세션에 대해서만 호스트키 TOFU 판정
+            switch HostKeyGate.evaluate(host: host, fingerprint: s.remoteHostKey, store: knownHosts) {
+            case .proceed:
+                startStatePump()
+                await openShellNow()
+                return
+            case .needsTrust(let sha):
+                startStatePump()
+                hostKeyPrompt = .needsTrust(sha256: sha)
+                return
+            case .blocked:
+                isTerminalStateLocked = true
+                state = .disconnected(reason: "호스트키 불일치 — 연결 차단")
+                s.disconnect()
+                return
+            }
         }
-        // Host-key TOFU gate (libssh2 transport doesn't enforce trust itself).
-        switch HostKeyGate.evaluate(host: host, fingerprint: session.remoteHostKey, store: knownHosts) {
-        case .proceed:
-            await openShellNow()
-        case .needsTrust(let sha):
-            hostKeyPrompt = .needsTrust(sha256: sha)   // 뷰가 시트로 물음
-        case .blocked:
-            isTerminalStateLocked = true
-            state = .disconnected(reason: "호스트키 불일치 — 연결 차단")
-            statePumpTask?.cancel()
-            session.disconnect()
-        }
+
+        // 모든 키 인증 실패
+        if let m = lastAuthError { NSLog("[terminal] all offered keys rejected; last: \(m)") }
+        let algos = creds.keys.map(\.algorithm).joined(separator: ", ")
+        state = .disconnected(reason:
+            "제시한 키(\(algos))가 \(host)에 등록돼 있지 않습니다. ssh-copy-id로 공개키를 등록하세요.")
     }
 
     /// Called by the TOFU sheet's "Trust" action.
@@ -150,6 +194,32 @@ final class TerminalSession: ObservableObject, Identifiable {
         case .channelFailed(let m): return "채널 실패: \(m)"
         case .disconnected: return "연결 끊김"
         }
+    }
+
+    /// Default credential resolution: config.yaml (user/port + its key first),
+    /// then `~/.ssh` keys in OpenSSH preference order, deduped by absolute path.
+    static func defaultCredentials() -> SSHCredentials {
+        let user: String
+        let port: Int
+        var paths: [String] = []
+        if let r = ClusterSSHConfig.load() {
+            user = r.user; port = r.port
+            paths.append(r.privateKeyPath)
+        } else {
+            user = NSUserName(); port = 22
+        }
+        if let pairs = try? SSHKeyLocator.orderedKeyPairs() {
+            for kp in pairs where !paths.contains(kp.privatePath) {
+                paths.append(kp.privatePath)
+            }
+        }
+        let keys: [ResolvedKey] = paths.compactMap { p in
+            guard let pem = FileManager.default.contents(atPath: p) else { return nil }
+            let base = (p as NSString).lastPathComponent
+            return ResolvedKey(path: p, pem: pem,
+                               algorithm: SSHKeyLocator.algorithmName(forBasename: base))
+        }
+        return SSHCredentials(user: user, port: port, keys: keys)
     }
 }
 #endif
