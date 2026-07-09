@@ -11,7 +11,13 @@ let package = Package(
         .library(name: "KnownHosts",           targets: ["KnownHosts"]),
     ],
     dependencies: [
-        // libssh2 (macOS backend) — 벤더링된 Shout의 소켓 의존
+        // libssh2 (macOS backend). Shout itself is vendored below (Sources/Shout +
+        // Sources/CSSH) rather than taken as a remote dependency: iWorks/terminal's
+        // working LibSSH2Session relies on a Shout patch (shell/PTY Channel API + this
+        // repo's host-key accessor) that upstream jakeheis/Shout 0.5.7 doesn't have,
+        // and terminal's copy of that patch only exists as an uncommitted edit inside
+        // its local SPM checkout (.build/checkouts/Shout) — not reproducible from a
+        // clean `swift build`. BlueSocket is Shout's own (unpatched) socket dependency.
         .package(url: "https://github.com/IBM-Swift/BlueSocket", from: "1.0.200"),
         // Citadel (pure-Swift backend) — CitadelSession의 C1 호스트키 캡처 패치가
         // NIOCore/NIOSSH/Crypto를 직접 import 하므로 명시적 직접 의존으로 선언.
@@ -29,6 +35,9 @@ let package = Package(
                 "CSSH",
                 .product(name: "Socket", package: "BlueSocket"),
             ],
+            // Shout's API takes non-Sendable closures/types (SSH, Channel aren't
+            // marked Sendable). Compile in Swift 5 mode so the strict-concurrency
+            // checker doesn't reject the bridging code.
             swiftSettings: [ .swiftLanguageMode(.v5) ]
         ),
         .target(
