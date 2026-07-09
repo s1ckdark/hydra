@@ -17,8 +17,15 @@ struct ClusterSSHConfig {
     static func configDir(env: [String: String]) -> String {
         if let d = env["HYDRA_CONFIG_DIR"], !d.isEmpty { return d }
         if let d = env["NAGA_CONFIG_DIR"], !d.isEmpty { return d }
+        #if os(macOS)
         return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".hydra").path
+        #else
+        // homeDirectoryForCurrentUser is unavailable on iOS; NSHomeDirectory()
+        // is the cross-platform equivalent (app sandbox home on iOS). Only
+        // reached when neither env override is set.
+        return (NSHomeDirectory() as NSString).appendingPathComponent(".hydra")
+        #endif
     }
 
     static func configFileURL() -> URL {

@@ -33,7 +33,13 @@ enum SSHKeyLocator {
     }
 
     private static func defaultSSHDir() -> URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
+        #if os(macOS)
+        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
+        #else
+        // homeDirectoryForCurrentUser is unavailable on iOS; NSHomeDirectory()
+        // is the cross-platform equivalent (app sandbox home on iOS).
+        return URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".ssh")
+        #endif
     }
 
     /// All `~/.ssh` keypairs that have BOTH a `.pub` and a matching private key,

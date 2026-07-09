@@ -69,8 +69,16 @@ final class TerminalSession: ObservableObject, Identifiable {
         self.sessionFactory = sessionFactory
         self.credentialResolver = credentialResolver
         self.session = sessionFactory()
-        let khURL = knownHostsURL ?? FileManager.default.homeDirectoryForCurrentUser
+        #if os(macOS)
+        let defaultKHURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".ssh/known_hosts")
+        #else
+        // homeDirectoryForCurrentUser is unavailable on iOS; NSHomeDirectory()
+        // is the cross-platform equivalent (app sandbox home on iOS).
+        let defaultKHURL = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent(".ssh/known_hosts")
+        #endif
+        let khURL = knownHostsURL ?? defaultKHURL
         self.knownHosts = KnownHostsStore(fileURL: khURL)
     }
 

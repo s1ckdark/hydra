@@ -1,0 +1,45 @@
+name: Hydra
+options:
+  bundleIdPrefix: com.hydra
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  TerminalCore:
+    path: Packages/TerminalCore
+  SwiftTerm:
+    url: https://github.com/s1ckdark/SwiftTerm
+    revision: 54b436a6231976fa64d7c3859d0b197a6ccfcb91
+targets:
+  HydraiOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: HydraiOS
+      - path: Hydra/Models
+      - path: Hydra/State
+      - path: Hydra/Services
+        excludes:
+          - "PYExecutor.swift"        # subprocess — macOS only
+          - "EmbeddedServer.swift"    # embedded hydra-server — macOS only
+          - "MetricsSampler.swift"    # host metric sampling — macOS only
+          - "CapabilityReporter.swift" # host GPU capability — macOS only
+          - "ChatContextProvider.swift" # references DashboardViewModel (ViewModels/ — B2b)
+          - "MetricsReporter.swift"    # entirely depends on MetricsSampler — macOS host metrics only
+    dependencies:
+      - package: TerminalCore
+        product: SSHTransportCitadel
+      - package: TerminalCore
+        product: SSHTransport
+      - package: TerminalCore
+        product: KnownHosts
+      - package: SwiftTerm
+        product: SwiftTerm
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hydra.ios
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGNING_ALLOWED: NO

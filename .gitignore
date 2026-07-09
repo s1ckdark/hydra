@@ -55,6 +55,9 @@ Hydra/.build/
 # the authoritative pins live in the committed top-level Hydra/Package.resolved.
 Hydra/Packages/*/Package.resolved
 
+# xcodegen output — project.yml is the source of truth
+Hydra/Hydra.xcodeproj/
+
 # Claude/OMC
 .cache/
 .omc/
