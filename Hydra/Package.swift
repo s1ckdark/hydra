@@ -30,7 +30,7 @@ let package = Package(
             ],
             // tools-version 6.0 defaults to the Swift 6 language mode; the existing
             // app sources were written for Swift 5. Keep them in Swift 5 mode so the
-            // platform bump (macOS 15, required by Citadel's withPTY) is the only change.
+            // platform bump (macOS 15, required by libssh2/SSHTransportMac) is the only change.
             swiftSettings: [ .swiftLanguageMode(.v5) ]
         ),
         .testTarget(
