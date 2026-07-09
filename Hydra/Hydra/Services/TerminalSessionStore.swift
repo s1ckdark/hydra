@@ -2,6 +2,7 @@
 import Foundation
 import SSHTransport
 import SSHTransportMac
+import SSHTransportCitadel
 
 @MainActor
 final class TerminalSessionStore: ObservableObject {
@@ -12,8 +13,18 @@ final class TerminalSessionStore: ObservableObject {
 
     private let sessionFactory: (Device) -> SSHSession
 
-    init(sessionFactory: @escaping (Device) -> SSHSession = { _ in LibSSH2Session() }) {
+    init(sessionFactory: @escaping (Device) -> SSHSession = { _ in TerminalSessionStore.defaultBackend() }) {
         self.sessionFactory = sessionFactory
+    }
+
+    /// libssh2 by default (macOS: rsa-sha2 + every key). `HYDRA_SSH_BACKEND=citadel`
+    /// selects the pure-Swift Citadel backend — used to verify the iOS path on macOS
+    /// without changing the shipped default.
+    nonisolated static func defaultBackend() -> SSHSession {
+        if ProcessInfo.processInfo.environment["HYDRA_SSH_BACKEND"]?.lowercased() == "citadel" {
+            return CitadelSession()
+        }
+        return LibSSH2Session()
     }
 
     func open(device: Device) {

@@ -22,6 +22,7 @@ let package = Package(
                 .product(name: "SwiftTerm", package: "SwiftTerm", condition: .when(platforms: [.macOS])),
                 .product(name: "SSHTransport", package: "TerminalCore", condition: .when(platforms: [.macOS])),
                 .product(name: "SSHTransportMac", package: "TerminalCore", condition: .when(platforms: [.macOS])),
+                .product(name: "SSHTransportCitadel", package: "TerminalCore", condition: .when(platforms: [.macOS])),
                 .product(name: "KnownHosts", package: "TerminalCore", condition: .when(platforms: [.macOS])),
             ],
             path: "Hydra",
