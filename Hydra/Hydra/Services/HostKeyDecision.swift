@@ -1,4 +1,3 @@
-#if os(macOS)
 import Foundation
 import SSHTransport
 import KnownHosts
@@ -30,4 +29,3 @@ enum HostKeyGate {
         }
     }
 }
-#endif

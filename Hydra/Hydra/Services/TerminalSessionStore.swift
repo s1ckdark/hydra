@@ -1,7 +1,8 @@
-#if os(macOS)
 import Foundation
 import SSHTransport
+#if os(macOS)
 import SSHTransportMac
+#endif
 import SSHTransportCitadel
 
 @MainActor
@@ -17,19 +18,23 @@ final class TerminalSessionStore: ObservableObject {
         self.sessionFactory = sessionFactory
     }
 
-    /// libssh2 by default (macOS: rsa-sha2 + every key). `HYDRA_SSH_BACKEND=citadel`
-    /// selects the pure-Swift Citadel backend — used to verify the iOS path on macOS
-    /// without changing the shipped default.
+    /// libssh2 by default on macOS (rsa-sha2 + every key); `HYDRA_SSH_BACKEND=citadel`
+    /// selects the pure-Swift Citadel backend there. iOS has no libssh2, so it always
+    /// uses Citadel.
     ///
     /// `nonisolated`: this store is `@MainActor`, but `defaultBackend()` is called from
     /// the plain (non-isolated) `sessionFactory` closure type in `init`'s default arg,
     /// and from synchronous XCTest methods. It only reads the environment and constructs
     /// a backend, touching no main-actor state — do NOT drop this annotation.
     nonisolated static func defaultBackend() -> SSHSession {
+        #if os(macOS)
         if ProcessInfo.processInfo.environment["HYDRA_SSH_BACKEND"]?.lowercased() == "citadel" {
             return CitadelSession()
         }
         return LibSSH2Session()
+        #else
+        return CitadelSession()
+        #endif
     }
 
     func open(device: Device) {
@@ -57,4 +62,3 @@ final class TerminalSessionStore: ObservableObject {
         activeSessionId = nil
     }
 }
-#endif

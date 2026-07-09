@@ -1,4 +1,3 @@
-#if os(macOS)
 import Foundation
 import SSHTransport
 import KnownHosts
@@ -233,4 +232,3 @@ final class TerminalSession: ObservableObject, Identifiable {
         return SSHCredentials(user: user, port: port, keys: keys)
     }
 }
-#endif
