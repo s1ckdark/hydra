@@ -94,7 +94,11 @@ final class TerminalSession: ObservableObject, Identifiable {
 
         let creds = credentialResolver()
         guard !creds.keys.isEmpty else {
+            #if os(macOS)
             state = .disconnected(reason: "SSH 개인키를 찾을 수 없습니다. ~/.ssh 에 키를 만들어주세요.")
+            #else
+            state = .disconnected(reason: "SSH 개인키가 없습니다. 설정 → SSH 키에서 개인키를 임포트하세요.")
+            #endif
             return
         }
 

@@ -4,7 +4,7 @@ import SwiftUI
 struct HydraiOSApp: App {
     var body: some Scene {
         WindowGroup {
-            PlaceholderView()
+            RootView()
         }
     }
 }
