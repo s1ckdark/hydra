@@ -1,0 +1,155 @@
+#if os(macOS)
+import Foundation
+import SSHTransport
+import KnownHosts
+
+@MainActor
+final class TerminalSession: ObservableObject, Identifiable {
+    let id: String
+    let deviceId: String
+    let deviceName: String
+    let host: String
+
+    @Published var state: SSHState = .idle
+    /// TOFU: set when the host key is unknown and awaiting user trust.
+    @Published var hostKeyPrompt: HostKeyDecision?
+
+    /// The view subscribes to feed bytes into SwiftTerm.
+    var onOutput: ((Data) -> Void)?
+
+    /// LOCAL FIX (I1): a factory rather than a fixed instance — `SSHSession`'s AsyncStreams
+    /// are finished (permanently dead) once `disconnect()` runs, so reconnecting must build
+    /// a brand-new session rather than resuming the old one.
+    private let sessionFactory: () -> SSHSession
+    private var session: SSHSession
+    private let knownHosts: KnownHostsStore
+    private var pumpTask: Task<Void, Never>?
+    private var statePumpTask: Task<Void, Never>?
+    private var pendingShell: (cols: Int, rows: Int)?
+    /// Set right before we assign an intentional terminal `.disconnected(reason:)`.
+    /// `session.disconnect()` always yields a trailing `.disconnected(reason: nil)` into
+    /// the state stream; since that value (or an in-flight `.connected`) may already be
+    /// buffered in the AsyncStream when we cancel `statePumpTask`, cancellation alone does
+    /// not reliably stop it from draining through. This flag is checked from the pump body
+    /// on the same MainActor turn it's set, so it deterministically blocks the stale value
+    /// from clobbering the reason we just set — cancelling the task is still done for cleanup,
+    /// but this flag is what actually preserves the reason.
+    private var isTerminalStateLocked = false
+
+    init(device: Device, sessionFactory: @escaping () -> SSHSession, knownHostsURL: URL? = nil) {
+        self.id = device.id
+        self.deviceId = device.id
+        self.deviceName = device.displayName
+        self.host = device.tailscaleIp
+        self.sessionFactory = sessionFactory
+        self.session = sessionFactory()
+        let khURL = knownHostsURL ?? FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".ssh/known_hosts")
+        self.knownHosts = KnownHostsStore(fileURL: khURL)
+    }
+
+    func connect(cols: Int, rows: Int) async {
+        isTerminalStateLocked = false
+        // LOCAL FIX (I1): cancel any pump tasks left over from a previous connection and
+        // mint a FRESH session — the old one's AsyncStreams are permanently finished after
+        // disconnect() and cannot be restarted.
+        pumpTask?.cancel()
+        statePumpTask?.cancel()
+        session.disconnect()
+        session = sessionFactory()
+        pendingShell = (cols, rows)
+        // Resolve credentials: config.yaml → SSHKeyLocator fallback.
+        let user: String
+        let keyPath: String
+        let port: Int
+        if let r = ClusterSSHConfig.load() {
+            user = r.user; keyPath = r.privateKeyPath; port = r.port
+        } else {
+            user = NSUserName()
+            keyPath = (try? SSHKeyLocator.defaultPrivateKeyPath()) ?? ""
+            port = 22
+        }
+        guard let pem = FileManager.default.contents(atPath: keyPath) else {
+            state = .disconnected(reason: "개인키를 읽을 수 없습니다: \(keyPath)")
+            return
+        }
+        startStatePump()
+        do {
+            try await session.connect(host: host, port: port, user: user,
+                                      auth: .privateKey(pem, passphrase: nil))
+        } catch {
+            state = .disconnected(reason: (error as? SSHError).map(describe) ?? "\(error)")
+            return
+        }
+        // Host-key TOFU gate (libssh2 transport doesn't enforce trust itself).
+        switch HostKeyGate.evaluate(host: host, fingerprint: session.remoteHostKey, store: knownHosts) {
+        case .proceed:
+            await openShellNow()
+        case .needsTrust(let sha):
+            hostKeyPrompt = .needsTrust(sha256: sha)   // 뷰가 시트로 물음
+        case .blocked:
+            isTerminalStateLocked = true
+            state = .disconnected(reason: "호스트키 불일치 — 연결 차단")
+            statePumpTask?.cancel()
+            session.disconnect()
+        }
+    }
+
+    /// Called by the TOFU sheet's "Trust" action.
+    func trustPendingHostKey() async {
+        guard let fp = session.remoteHostKey else { return }
+        try? knownHosts.trust(HostKeyGate.entry(host: host, fingerprint: fp))
+        hostKeyPrompt = nil
+        await openShellNow()
+    }
+
+    func cancelPendingHostKey() {
+        hostKeyPrompt = nil
+        isTerminalStateLocked = true
+        state = .disconnected(reason: "호스트키 신뢰 취소")
+        statePumpTask?.cancel()
+        session.disconnect()
+    }
+
+    private func openShellNow() async {
+        guard let s = pendingShell else { return }
+        startOutputPump()
+        do { try await session.openShell(termType: "xterm-256color", cols: s.cols, rows: s.rows) }
+        catch { state = .disconnected(reason: "셸 열기 실패: \(error)") }
+    }
+
+    func send(_ data: Data) { Task { try? await session.write(data) } }
+    func resize(cols: Int, rows: Int) { Task { try? await session.resize(cols: cols, rows: rows) } }
+    func close() {
+        pumpTask?.cancel()
+        statePumpTask?.cancel()
+        session.disconnect()
+    }
+
+    private func startStatePump() {
+        statePumpTask = Task { [weak self] in
+            guard let self else { return }
+            for await st in self.session.state {
+                guard !self.isTerminalStateLocked else { continue }
+                self.state = st
+            }
+        }
+    }
+    private func startOutputPump() {
+        pumpTask = Task { [weak self] in
+            guard let self else { return }
+            for await chunk in self.session.output { self.onOutput?(chunk) }
+        }
+    }
+
+    private func describe(_ e: SSHError) -> String {
+        switch e {
+        case .unreachable(let m): return "도달 불가: \(m)"
+        case .handshakeFailed(let m): return "핸드셰이크 실패: \(m)"
+        case .authFailed(let m): return "인증 실패: \(m)"
+        case .channelFailed(let m): return "채널 실패: \(m)"
+        case .disconnected: return "연결 끊김"
+        }
+    }
+}
+#endif

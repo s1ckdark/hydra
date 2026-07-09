@@ -29,4 +29,10 @@ final class AppStateTests: XCTestCase {
         s.activeTab = .console
         XCTAssertEqual(s.activeTab, .console)
     }
+
+    func testActiveTab_supportsTerminal() {
+        let s = AppState()
+        s.activeTab = .terminal
+        XCTAssertEqual(s.activeTab, .terminal)
+    }
 }

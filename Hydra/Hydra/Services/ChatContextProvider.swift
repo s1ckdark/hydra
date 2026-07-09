@@ -19,7 +19,7 @@ enum ChatContextProvider {
     ) -> String? {
         let body: String
         switch tab {
-        case .settings, .console:
+        case .settings, .console, .terminal:
             return nil
         case .dashboard:
             body = dashboardBody(dashboardVM)

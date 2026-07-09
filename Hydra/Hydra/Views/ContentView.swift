@@ -28,6 +28,10 @@ struct ContentView: View {
                     .tabItem { Label("Console", systemImage: "terminal") }
                     .tag(AppState.Tab.console)
 
+                TerminalTabView()
+                    .tabItem { Label("Terminal", systemImage: "apple.terminal") }
+                    .tag(AppState.Tab.terminal)
+
                 SettingsView()
                     .tabItem { Label("Settings", systemImage: "gearshape") }
                     .tag(AppState.Tab.settings)

@@ -51,6 +51,18 @@ enum SSHKeyLocator {
         return nil
     }
 
+    /// Sibling to `defaultPublicKey()`: locates the matching private key
+    /// (same basename, `.pub` stripped) for the default public key, and
+    /// verifies the file actually exists before returning its path.
+    static func defaultPrivateKeyPath() throws -> String {
+        let pub = try defaultPublicKey()
+        let privateURL = pub.url.deletingPathExtension()
+        guard FileManager.default.fileExists(atPath: privateURL.path) else {
+            throw LocateError.readFailed("개인키 파일이 없어요: \(privateURL.path)")
+        }
+        return privateURL.path
+    }
+
     @MainActor
     static func copyToClipboard(_ key: Located) {
         #if canImport(AppKit)

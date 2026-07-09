@@ -178,6 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        TerminalSessionStore.shared.closeAll()
         EmbeddedServer.shared.stop()
     }
 

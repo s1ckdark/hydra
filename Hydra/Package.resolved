@@ -1,0 +1,32 @@
+{
+  "originHash" : "218e6052cf1d7beceb2249a19f9af34451a937f894efdc7b2af330a449db04ed",
+  "pins" : [
+    {
+      "identity" : "bluesocket",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/IBM-Swift/BlueSocket",
+      "state" : {
+        "revision" : "c9894fd117457f1d006575fbfb2fdfd6f79eac03",
+        "version" : "1.0.200"
+      }
+    },
+    {
+      "identity" : "swift-argument-parser",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-argument-parser",
+      "state" : {
+        "revision" : "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+        "version" : "1.8.2"
+      }
+    },
+    {
+      "identity" : "swiftterm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/s1ckdark/SwiftTerm",
+      "state" : {
+        "revision" : "54b436a6231976fa64d7c3859d0b197a6ccfcb91"
+      }
+    }
+  ],
+  "version" : 3
+}
