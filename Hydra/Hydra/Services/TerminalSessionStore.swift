@@ -1,7 +1,7 @@
 #if os(macOS)
 import Foundation
 import SSHTransport
-import SSHTransportCitadel
+import SSHTransportMac
 
 @MainActor
 final class TerminalSessionStore: ObservableObject {
@@ -12,7 +12,7 @@ final class TerminalSessionStore: ObservableObject {
 
     private let sessionFactory: (Device) -> SSHSession
 
-    init(sessionFactory: @escaping (Device) -> SSHSession = { _ in CitadelSession() }) {
+    init(sessionFactory: @escaping (Device) -> SSHSession = { _ in LibSSH2Session() }) {
         self.sessionFactory = sessionFactory
     }
 

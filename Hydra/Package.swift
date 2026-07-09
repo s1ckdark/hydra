@@ -21,7 +21,7 @@ let package = Package(
                 // 터미널 기능은 macOS 전용 — iOS 빌드에는 링크하지 않음
                 .product(name: "SwiftTerm", package: "SwiftTerm", condition: .when(platforms: [.macOS])),
                 .product(name: "SSHTransport", package: "TerminalCore", condition: .when(platforms: [.macOS])),
-                .product(name: "SSHTransportCitadel", package: "TerminalCore", condition: .when(platforms: [.macOS])),
+                .product(name: "SSHTransportMac", package: "TerminalCore", condition: .when(platforms: [.macOS])),
                 .product(name: "KnownHosts", package: "TerminalCore", condition: .when(platforms: [.macOS])),
             ],
             path: "Hydra",

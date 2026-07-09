@@ -9,8 +9,9 @@ enum HostKeyDecision: Equatable {
     case blocked
 }
 
-/// TOFU gate: Citadel's transport uses acceptAnything, so host-key enforcement
-/// happens here at the app layer after connect() and before openShell().
+/// TOFU gate: the libssh2 transport doesn't enforce host-key trust itself, so
+/// host-key enforcement happens here at the app layer after connect() and
+/// before openShell().
 enum HostKeyGate {
     static func entry(host: String, fingerprint: HostKeyFingerprint) -> KnownHostsEntry {
         KnownHostsEntry(hostPattern: host,

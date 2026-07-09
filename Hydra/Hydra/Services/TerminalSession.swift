@@ -81,7 +81,7 @@ final class TerminalSession: ObservableObject, Identifiable {
             state = .disconnected(reason: (error as? SSHError).map(describe) ?? "\(error)")
             return
         }
-        // Host-key TOFU gate (Citadel transport already acceptAnything).
+        // Host-key TOFU gate (libssh2 transport doesn't enforce trust itself).
         switch HostKeyGate.evaluate(host: host, fingerprint: session.remoteHostKey, store: knownHosts) {
         case .proceed:
             await openShellNow()
