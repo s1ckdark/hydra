@@ -11,6 +11,8 @@ final class ScriptedSSHSession: SSHSession {
     let outcome: Outcome
     private(set) var connectCalled = false
     private(set) var openShellCalled = false
+    /// 세션 지속(tmux) 부트스트랩 주입 검증용 — write()로 들어온 바이트를 기록.
+    private(set) var written: [Data] = []
 
     let output: AsyncStream<Data>
     let state: AsyncStream<SSHState>
@@ -36,7 +38,7 @@ final class ScriptedSSHSession: SSHSession {
         openShellCalled = true
         oc.yield(Data("scripted$ ".utf8))
     }
-    func write(_ data: Data) async throws {}
+    func write(_ data: Data) async throws { written.append(data) }
     func resize(cols: Int, rows: Int) async throws {}
     func exec(_ command: String) async throws -> String { "" }
     func disconnect() { sc.yield(.disconnected(reason: nil)); oc.finish(); sc.finish() }

@@ -13,10 +13,43 @@ struct SettingsView: View {
             AISettingsTab()
                 .tabItem { Label("AI", systemImage: "brain") }
 
+            TerminalSettingsTab()
+                .tabItem { Label("Terminal", systemImage: "apple.terminal") }
+
             AppearanceSettingsTab()
                 .tabItem { Label("Appearance", systemImage: "paintbrush") }
         }
         .frame(width: 560, height: 520)
+    }
+}
+
+// MARK: - Terminal Settings
+
+private struct TerminalSettingsTab: View {
+    @AppStorage("terminalPersistViaTmux") private var persistViaTmux = false
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("tmux 세션 지속", isOn: $persistViaTmux)
+                Text("""
+                켜면 터미널을 열 때 원격 노드의 tmux 세션(`hydra`)에 자동으로 부착합니다. \
+                앱을 종료하거나 연결이 끊겨도 원격에서 실행 중이던 작업이 살아있고, \
+                다시 접속하면 그 자리 그대로 이어집니다.
+
+                • 노드에 tmux가 설치되어 있어야 합니다 — 없거나 부착에 실패하면 일반 셸로 폴백합니다.
+                • 앱에서 세션을 닫아도 원격 tmux 세션은 유지됩니다. 완전히 끝내려면 tmux 안에서 `exit`를 입력하세요 (일반 셸로 돌아옵니다).
+                • 로그인 셸이 tmux를 자동 실행하는 노드에서는 중첩될 수 있으니 끄는 것을 권장합니다.
+
+                이 설정과 무관하게, 열려 있던 세션 목록은 항상 저장되어 앱 재시작 시 자동 복원됩니다.
+                """)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("세션 지속")
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 

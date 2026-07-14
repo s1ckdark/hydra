@@ -66,6 +66,11 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.18), value: appState.isChatDrawerOpen)
         .task {
             await dashboardVM.load()
+            #if os(macOS)
+            // 지난 실행의 터미널 세션 복원은 디바이스 목록이 준비된 직후, 사용자가
+            // 다른 탭에서 새 세션을 열어 저장 목록을 덮어쓰기 전에 수행해야 한다.
+            TerminalSessionStore.shared.restoreIfNeeded(devices: dashboardVM.devices)
+            #endif
         }
     }
 }

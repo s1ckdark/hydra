@@ -58,10 +58,18 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// but this flag is what actually preserves the reason.
     private var isTerminalStateLocked = false
 
+    /// tmux 세션 지속(opt-in) 여부. 주입 가능해야 유닛 테스트에서 UserDefaults 없이
+    /// 켜고 끌 수 있다. 기본값은 설정 토글(terminalPersistViaTmux)을 읽는다.
+    private let persistenceEnabled: () -> Bool
+
     init(device: Device,
          sessionFactory: @escaping () -> SSHSession,
          knownHostsURL: URL? = nil,
-         credentialResolver: @escaping () -> SSHCredentials = TerminalSession.defaultCredentials) {
+         credentialResolver: @escaping () -> SSHCredentials = TerminalSession.defaultCredentials,
+         persistenceEnabled: @escaping () -> Bool = {
+             UserDefaults.standard.bool(forKey: "terminalPersistViaTmux")
+         }) {
+        self.persistenceEnabled = persistenceEnabled
         self.id = device.id
         self.deviceId = device.id
         self.deviceName = device.displayName
@@ -175,8 +183,22 @@ final class TerminalSession: ObservableObject, Identifiable {
     private func openShellNow() async {
         guard let s = pendingShell else { return }
         startOutputPump()
-        do { try await session.openShell(termType: "xterm-256color", cols: s.cols, rows: s.rows) }
+        do {
+            try await session.openShell(termType: "xterm-256color", cols: s.cols, rows: s.rows)
+            if persistenceEnabled() {
+                try? await session.write(Data(Self.tmuxBootstrapLine().utf8))
+            }
+        }
         catch { state = .disconnected(reason: "셸 열기 실패: \(error)") }
+    }
+
+    /// tmux 세션 지속 부트스트랩. exec() 사이드채널은 Citadel 백엔드에만 구현되어
+    /// 있어(libssh2는 "" 폴백) 프로브 대신 셸 stdin 주입으로 백엔드 무관하게 처리한다.
+    /// tmux가 있으면 `hydra` 세션에 attach-or-create하고, 없거나 attach가 실패해도
+    /// (중첩 tmux, 소켓 권한 등) 부모 셸이 살아남아 일반 셸로 폴백한다 — `exec`를
+    /// 쓰면 실패 시 채널까지 닫혀 터미널이 아예 열리지 않으므로 쓰지 않는다.
+    nonisolated static func tmuxBootstrapLine() -> String {
+        " command -v tmux >/dev/null 2>&1 && tmux new-session -A -s hydra; clear\n"
     }
 
     func send(_ data: Data) { Task { try? await session.write(data) } }

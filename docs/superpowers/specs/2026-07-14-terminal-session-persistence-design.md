@@ -23,7 +23,13 @@
   탭에서 ✕로 닫는 것(`close()`)만 목록에서 제거된다.
 - `restoreIfNeeded(devices:)`: 런치당 1회. 저장된 deviceId 중 현재 디바이스 목록에
   존재하는 것만 `open()`으로 재생성하고, 저장된 활성 세션을 복원. 목록에 없는 id는
-  버린다(디바이스 소멸). 호출 지점은 `TerminalTabView.task` — 디바이스 로드 직후.
+  버린다(디바이스 소멸). 호출 지점은 `ContentView.task`(디바이스 로드 직후) +
+  `TerminalTabView.task`(폴백) — 사용자가 다른 탭에서 새 세션을 열어 저장 목록을
+  덮기 전에 복원이 먼저 실행되어야 한다.
+- **빈 디바이스 목록 가드 (리뷰 HIGH 반영)**: 저장 목록이 있는데 디바이스 목록이
+  비어 있으면(오프라인/백엔드 미기동 런치) 진행하지 않고 래치 없이 반환 — 진행하면
+  아무것도 매칭되지 않아 저장 목록이 빈 배열로 덮여 영구 소실된다. 목록이 도착한
+  다음 호출에서 복원한다.
 - 복원된 세션은 idle 상태로 생성되고, pane이 표시될 때(활성화 시) 기존 로직대로
   lazy 연결된다. 연결 폭주 없음.
 
@@ -36,11 +42,13 @@
   대신 셸이 열린 직후 아래 한 줄을 stdin으로 주입한다:
 
   ```
-   command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s hydra || clear
+   command -v tmux >/dev/null 2>&1 && tmux new-session -A -s hydra; clear
   ```
 
-  - tmux 있으면: `exec`로 셸을 tmux에 교체, 세션명 `hydra`에 attach-or-create(`-A`).
-  - tmux 없으면: 테스트 실패 → `clear`만 실행, 일반 셸 유지 (조용한 폴백).
+  - tmux 있으면: 세션명 `hydra`에 attach-or-create(`-A`).
+  - tmux 없거나 attach 실패(중첩 tmux, 소켓 권한 등): 부모 셸이 살아남아 일반 셸로
+    폴백. `exec`는 쓰지 않는다 — 실패 시 SSH 채널까지 닫혀 터미널이 아예 열리지
+    않는다 (리뷰 MEDIUM 반영).
   - 주입 줄은 순수 함수 `TerminalSession.tmuxBootstrapLine()`으로 분리(테스트 대상).
 - `TerminalSession` init에 `persistenceEnabled: () -> Bool` 주입(기본: UserDefaults
   읽기). `openShellNow()` 성공 직후 참이면 부트스트랩 라인을 `write()`.

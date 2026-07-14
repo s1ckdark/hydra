@@ -52,6 +52,8 @@ struct TerminalTabView: View {
         .task {
             // Terminal 탭에 먼저 진입한 경우에도 노드 목록이 비어 보이지 않도록.
             if dashboardVM.devices.isEmpty { await dashboardVM.load() }
+            // ContentView가 이미 복원했으면 no-op (런치당 1회 가드).
+            store.restoreIfNeeded(devices: dashboardVM.devices)
         }
     }
 
