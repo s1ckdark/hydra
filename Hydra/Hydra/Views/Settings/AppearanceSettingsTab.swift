@@ -94,11 +94,29 @@ extension View {
 #if os(macOS)
 struct AppearanceSettingsTab: View {
     @AppStorage("appTheme") private var theme = AppTheme.system.rawValue
-    @AppStorage("appFontDesign") private var fontDesign = AppFontDesign.standard.rawValue
+    @AppStorage(AppStyle.storageKey) private var style = AppStyle.defaultStyle.rawValue
+    @AppStorage("appFontDesign") private var fontDesign: String?
     @AppStorage("appFontScale") private var fontScale = appFontScaleDefault
+    @Environment(\.theme) private var themeTokens
+
+    private var appStyle: AppStyle { AppStyle(rawValue: style) ?? .defaultStyle }
 
     var body: some View {
         Form {
+            Section {
+                Picker("Style", selection: $style) {
+                    ForEach(AppStyle.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                // 프리셋 = 폰트의 출발점: 스타일을 고르면 Font 설정을 프리셋
+                // 기본값으로 덮어쓴다. 이후 Font 피커에서 자유롭게 재변경.
+                .onChange(of: style) { _, new in
+                    fontDesign = (AppStyle(rawValue: new) ?? .defaultStyle).font.rawValue
+                }
+            } header: {
+                Text("Style")
+            }
+
             Section {
                 Picker("Theme", selection: $theme) {
                     ForEach(AppTheme.allCases) { Text($0.label).tag($0.rawValue) }
@@ -109,7 +127,10 @@ struct AppearanceSettingsTab: View {
             }
 
             Section {
-                Picker("Font", selection: $fontDesign) {
+                Picker("Font", selection: Binding(
+                    get: { fontDesign ?? appStyle.font.rawValue },
+                    set: { fontDesign = $0 }
+                )) {
                     ForEach(AppFontDesign.allCases) { Text($0.label).tag($0.rawValue) }
                 }
                 Picker("Text size", selection: $fontScale) {
@@ -133,7 +154,14 @@ struct AppearanceSettingsTab: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
                 .background(.quaternary.opacity(0.4))
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(RoundedRectangle(cornerRadius: themeTokens.controlRadius))
+                .overlay {
+                    if themeTokens.borderWidth > 0 {
+                        RoundedRectangle(cornerRadius: themeTokens.controlRadius)
+                            .strokeBorder(themeTokens.borderColor,
+                                          lineWidth: themeTokens.borderWidth)
+                    }
+                }
             } header: {
                 Text("Preview")
             }
