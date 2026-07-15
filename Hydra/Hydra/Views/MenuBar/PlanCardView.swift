@@ -4,6 +4,7 @@ import SwiftUI
 /// - full (default): per-action list with args, used in the Chat tab
 /// - compact: intent + first action label only, used in the menubar
 struct PlanCardView: View {
+    @Environment(\.theme) private var theme
     let plan: AgentPlan
     let message: String?
     let isThinking: Bool
@@ -55,7 +56,7 @@ struct PlanCardView: View {
                                 .font(.system(.caption, design: .monospaced))
                                 .padding(.horizontal, 4)
                                 .background(.quaternary)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .clipShape(RoundedRectangle(cornerRadius: theme.chipRadius))
                             Text(argsSummary(action.args))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)

@@ -145,6 +145,7 @@ struct TaskRow: View {
 // MARK: - Task Detail
 
 struct TaskDetailView: View {
+    @Environment(\.theme) private var theme
     let task: SavedTask
     @ObservedObject var store: SavedTaskStore
     let devices: [Device]
@@ -230,7 +231,7 @@ struct TaskDetailView: View {
                                     .padding(8)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .background(.quaternary)
-                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                    .clipShape(RoundedRectangle(cornerRadius: theme.controlRadius))
                             }
                         }
                     }

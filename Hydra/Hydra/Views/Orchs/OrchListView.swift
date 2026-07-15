@@ -95,6 +95,7 @@ struct OrchRowView: View {
 }
 
 struct OrchDetailView: View {
+    @Environment(\.theme) private var theme
     let orch: Orch
     @ObservedObject var vm: OrchViewModel
     @State private var command = "nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total --format=csv,noheader"
@@ -185,7 +186,7 @@ struct OrchDetailView: View {
                                         .padding(6)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .background(.quaternary)
-                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                        .clipShape(RoundedRectangle(cornerRadius: theme.controlRadius))
                                 }
                             }
                         }

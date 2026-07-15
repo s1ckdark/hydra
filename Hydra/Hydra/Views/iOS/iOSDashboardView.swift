@@ -75,6 +75,7 @@ struct iOSDashboardView: View {
 }
 
 struct StatCard: View {
+    @Environment(\.theme) private var theme
     let title: String
     let value: String
     let icon: String
@@ -95,7 +96,7 @@ struct StatCard: View {
         .frame(maxWidth: .infinity)
         .padding()
         .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: theme.cardRadius))
     }
 }
 #endif

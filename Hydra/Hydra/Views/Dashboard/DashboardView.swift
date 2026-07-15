@@ -133,6 +133,7 @@ struct DashboardView: View {
 // MARK: - Server Status Banner
 
 struct ServerStatusBanner: View {
+    @Environment(\.theme) private var theme
     let status: DashboardViewModel.ServerStatus
     let version: String
 
@@ -154,7 +155,7 @@ struct ServerStatusBanner: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(statusColor.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: theme.cardRadius))
     }
 
     private var statusColor: Color {
@@ -177,6 +178,7 @@ struct ServerStatusBanner: View {
 // MARK: - Offline Alert
 
 struct OfflineAlert: View {
+    @Environment(\.theme) private var theme
     let devices: [Device]
 
     var body: some View {
@@ -195,7 +197,7 @@ struct OfflineAlert: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Color.orange.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: theme.cardRadius))
     }
 }
 
@@ -687,6 +689,7 @@ struct ActivityRow: View {
 /// Monospace command/action output on a dark background — light green for
 /// normal output, red for errors — so AI/agent results read like a terminal.
 struct TerminalBlock: View {
+    @Environment(\.theme) private var theme
     let text: String
     var isError: Bool = false
     var lineLimit: Int? = nil
@@ -701,7 +704,7 @@ struct TerminalBlock: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(8)
             .background(Color.black.opacity(0.88))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .clipShape(RoundedRectangle(cornerRadius: theme.controlRadius))
     }
 }
 
@@ -796,6 +799,7 @@ struct DevicesOverviewSection: View {
 /// live CPU/RAM/GPU resource bars when metrics are available, and falls back
 /// to a single info line (GPU model or Tailscale IP) when they aren't yet.
 struct DashboardDeviceCard: View {
+    @Environment(\.theme) private var theme
     let device: Device
     let gpuUtil: Double?
     let metrics: DeviceMetrics?
@@ -845,9 +849,9 @@ struct DashboardDeviceCard: View {
         .padding(10)
         .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
         .background(.background)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: theme.cardRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: theme.cardRadius)
                 .stroke(.quaternary, lineWidth: 1)
         )
         .opacity(device.isOnline ? 1 : 0.5)

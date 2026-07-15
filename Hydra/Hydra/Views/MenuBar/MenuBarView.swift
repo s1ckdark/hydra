@@ -5,6 +5,7 @@ struct MenuBarView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var gpuVM = GPUMonitorViewModel()
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.theme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -48,9 +49,9 @@ struct MenuBarView: View {
                                 HStack(spacing: 6) {
                                     GeometryReader { geo in
                                         ZStack(alignment: .leading) {
-                                            RoundedRectangle(cornerRadius: 2)
+                                            RoundedRectangle(cornerRadius: theme.chipRadius)
                                                 .fill(.quaternary)
-                                            RoundedRectangle(cornerRadius: 2)
+                                            RoundedRectangle(cornerRadius: theme.chipRadius)
                                                 .fill(utilizationColor(gpu.utilizationPercent))
                                                 .frame(width: geo.size.width * gpu.utilizationPercent / 100)
                                         }

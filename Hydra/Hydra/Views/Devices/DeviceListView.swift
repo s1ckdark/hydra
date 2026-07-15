@@ -203,6 +203,7 @@ struct DeviceRowView: View {
 }
 
 struct DeviceDetailView: View {
+    @Environment(\.theme) private var theme
     let device: Device
     @EnvironmentObject var dashboardVM: DashboardViewModel
     @EnvironmentObject var appState: AppState
@@ -670,7 +671,7 @@ struct DeviceDetailView: View {
         }
         .padding(8)
         .background(.quaternary.opacity(0.4))
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: theme.controlRadius))
     }
 
     private var keyCopyStatusMessage: String {
@@ -1128,6 +1129,7 @@ extension Device: Hashable {
 /// in a card with per-row copy buttons, mirroring the Tailscale admin UI's
 /// "Tailscale addresses" panel.
 struct TailscaleAddressesCard: View {
+    @Environment(\.theme) private var theme
     let device: Device
 
     private var ipv4: String? {
@@ -1158,7 +1160,7 @@ struct TailscaleAddressesCard: View {
                 }
             }
             .background(.quaternary.opacity(0.4))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: theme.controlRadius))
         }
     }
 }
@@ -1212,6 +1214,7 @@ private struct AddressRow: View {
 /// endpoint, which shells out to `tailscale file cp` on the host. Supports
 /// both drag-drop and a "Select a File…" button.
 struct TaildropSection: View {
+    @Environment(\.theme) private var theme
     let device: Device
 
     @State private var isSending = false
@@ -1227,7 +1230,7 @@ struct TaildropSection: View {
     var body: some View {
         GroupBox("Taildrop") {
             VStack(alignment: .leading, spacing: 8) {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: theme.controlRadius)
                     .strokeBorder(
                         style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])
                     )
@@ -1235,7 +1238,7 @@ struct TaildropSection: View {
                     .frame(minHeight: 120)
                     .background(
                         (isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .clipShape(RoundedRectangle(cornerRadius: theme.controlRadius))
                     )
                     .overlay {
                         if isSending {

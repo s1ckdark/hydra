@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ConnectionView: View {
+    @Environment(\.theme) private var theme
     @StateObject private var discovery = ServerDiscovery()
     @State private var connectionState: ConnectionState = .discovering
     @State private var manualURL = UserDefaults.standard.string(forKey: "serverURL") ?? ""
@@ -51,7 +52,7 @@ struct ConnectionView: View {
                                 }
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
-                                .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 8))
+                                .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: theme.controlRadius))
                             }
                             .buttonStyle(.plain)
                         }
