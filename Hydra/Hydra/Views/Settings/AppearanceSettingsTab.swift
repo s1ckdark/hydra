@@ -68,12 +68,17 @@ func appDynamicTypeSize(forScalePercent p: Int) -> DynamicTypeSize {
 /// dynamic type, which scales the app's semantic text styles.
 struct AppearanceModifier: ViewModifier {
     @AppStorage("appTheme") private var theme = AppTheme.system.rawValue
-    @AppStorage("appFontDesign") private var fontDesign = AppFontDesign.standard.rawValue
+    @AppStorage(AppStyle.storageKey) private var style = AppStyle.defaultStyle.rawValue
+    // 옵셔널: nil = 사용자가 Font를 명시 선택한 적 없음 → 프리셋 기본 폰트 사용.
+    @AppStorage("appFontDesign") private var fontDesign: String?
     @AppStorage("appFontScale") private var fontScale = appFontScaleDefault
+
+    private var appStyle: AppStyle { AppStyle(rawValue: style) ?? .defaultStyle }
 
     func body(content: Content) -> some View {
         content
-            .fontDesign((AppFontDesign(rawValue: fontDesign) ?? .standard).design)
+            .environment(\.theme, appStyle.theme)
+            .fontDesign(resolvedFontDesign(stored: fontDesign, style: appStyle))
             .dynamicTypeSize(appDynamicTypeSize(forScalePercent: fontScale))
             .preferredColorScheme((AppTheme(rawValue: theme) ?? .system).colorScheme)
     }
