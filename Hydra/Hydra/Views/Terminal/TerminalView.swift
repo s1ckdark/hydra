@@ -1,18 +1,50 @@
 #if os(macOS)
 import SwiftUI
+import Combine
 import SSHTransport   // SSHState (세션 상태 → 목록 점 색)
+
+// MARK: - macOS 26 격리-체크 크래시 완화
+//
+// macOS 26.5.2에서 SwiftUI의 메인 액터 격리 체크(`swift_task_isCurrentExecutor`)가
+// 터미널 탭의 AppKit 이벤트/레이아웃 사이클 중 크래시한다(메인 스레드인데도 "MainActor
+// executor 아님" 판정 — legacy override로도 못 막음). 관측된 두 크래시 지점을 회피한다:
+//   1) SwiftUI `Button`(`_ButtonGesture` → assumeIsolated) → `.onTapGesture`(다른 제스처
+//      프리미티브)로 대체. 아래 `TapLabel`.
+//   2) `.task { }`(내부적으로 `Task.immediate` → executor 체크) → `.onAppear { Task { } }`
+//      (즉시-체크 없이 메인 액터에 큐잉)로 대체.
+// TOFU 프롬프트는 NSButton 기반 `.alert`를 써서 `_ButtonGesture` 경로 자체를 피한다.
+private struct TapLabel<Label: View>: View {
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+    var body: some View {
+        label()
+            .contentShape(Rectangle())
+            .onTapGesture(perform: action)
+    }
+}
 
 /// Terminal 탭 루트. Named `TerminalTabView` (not `TerminalView`) because
 /// SwiftTerm's AppKit NSView class is itself called `TerminalView` — see
 /// SwiftTermRepresentable.swift for the disambiguation note.
 struct TerminalTabView: View {
-    @EnvironmentObject var dashboardVM: DashboardViewModel
+    // dashboardVM은 관찰하지 않는다(plain let). 대시보드는 10초마다 metrics/devices를
+    // 재발행하는데, 그때마다 터미널 탭이 재렌더되면 SwiftUI 트랜잭션이 반복되고 macOS 26
+    // 격리-체크 렌더 크래시(`swift_task_isCurrentExecutor`, 시스템 크롬 HStack) 확률이
+    // 올라간다. 대신 device 목록을 @State로 들고, 터미널에 실제로 필요한 필드(id/이름/
+    // 온라인/ssh)가 바뀔 때만 갱신한다(lastSeen 등 매 폴링 churn은 무시).
+    let dashboardVM: DashboardViewModel
     @ObservedObject private var store = TerminalSessionStore.shared
     @ObservedObject private var prefs = DevicePreferences.shared
+    @State private var devices: [Device] = []
+
+    /// 사이드바가 실제로 쓰는 필드만 투영 — dedup 비교용(lastSeen/metrics 무시).
+    private static func terminalProjection(_ ds: [Device]) -> [TerminalSidebarRow.DeviceInfo] {
+        ds.map { .init(id: $0.id, name: $0.shortName, online: $0.isOnline, sshEnabled: $0.sshEnabled) }
+    }
 
     // 노드 리스트 + 열린 세션 병합 — 규칙은 TerminalSidebarModel.swift 참고.
     private var rows: [TerminalSidebarRow] {
-        let ordered = prefs.apply(to: dashboardVM.devices, id: \.id)
+        let ordered = prefs.apply(to: devices, id: \.id)
         return TerminalSidebarRow.rows(
             devices: ordered.map {
                 .init(id: $0.id, name: $0.shortName, online: $0.isOnline, sshEnabled: $0.sshEnabled)
@@ -49,11 +81,22 @@ struct TerminalTabView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .task {
-            // Terminal 탭에 먼저 진입한 경우에도 노드 목록이 비어 보이지 않도록.
-            if dashboardVM.devices.isEmpty { await dashboardVM.load() }
-            // ContentView가 이미 복원했으면 no-op (런치당 1회 가드).
-            store.restoreIfNeeded(devices: dashboardVM.devices)
+        // device 목록의 터미널-관련 투영이 바뀔 때만 로컬 스냅샷 갱신 →
+        // 10초 폴링(metrics/lastSeen churn)에는 재렌더하지 않는다.
+        .onReceive(dashboardVM.$devices) { newDevices in
+            if Self.terminalProjection(newDevices) != Self.terminalProjection(devices) {
+                devices = newDevices
+            }
+        }
+        // `.task` 대신 `.onAppear { Task { } }` — 위 완화 주석(2) 참고.
+        .onAppear {
+            // 최초 진입 시 현재 목록으로 시드(폴링 발행 전 빈 화면 방지).
+            if devices.isEmpty { devices = dashboardVM.devices }
+            Task {
+                if dashboardVM.devices.isEmpty { await dashboardVM.load() }
+                // ContentView가 이미 복원했으면 no-op (런치당 1회 가드).
+                store.restoreIfNeeded(devices: dashboardVM.devices)
+            }
         }
     }
 
@@ -93,8 +136,11 @@ private struct SidebarRowView: View {
             Text(row.name).lineLimit(1)
             Spacer()
             if row.sessionId != nil {
-                Button(action: onClose) { Image(systemName: "xmark") }
-                    .buttonStyle(.borderless)
+                // Button 대신 TapLabel — _ButtonGesture 크래시 회피(파일 상단 주석).
+                // 행 전체의 onSelect와 겹쳐도 activate()가 죽은 id를 걸러낸다.
+                TapLabel(action: onClose) {
+                    Image(systemName: "xmark").foregroundColor(.secondary).padding(2)
+                }
             }
         }
         .contentShape(Rectangle())
@@ -131,27 +177,34 @@ private struct TerminalSessionPane: View {
                 HStack {
                     Text(reason ?? "연결 끊김").foregroundColor(.red).font(.caption)
                     Spacer()
-                    Button("재연결") { Task { await session.connect(cols: 80, rows: 24) } }
+                    // Button 대신 TapLabel — _ButtonGesture 크래시 회피(파일 상단 주석).
+                    TapLabel(action: { Task { await session.connect(cols: 80, rows: 24) } }) {
+                        Text("재연결")
+                            .font(.caption).bold()
+                            .foregroundColor(.accentColor)
+                            .padding(.horizontal, 10).padding(.vertical, 3)
+                            .background(Color.accentColor.opacity(0.15), in: Capsule())
+                    }
                 }.padding(6).background(Color.red.opacity(0.08))
             }
             SwiftTermRepresentable(session: session)
-                .task { if case .idle = session.state { await session.connect(cols: 80, rows: 24) } }
+                // `.task` 대신 `.onAppear { Task { } }` — 완화 주석(2) 참고.
+                .onAppear {
+                    Task { if case .idle = session.state { await session.connect(cols: 80, rows: 24) } }
+                }
         }
-        // 호스트키 TOFU 시트
-        .sheet(isPresented: Binding(
+        // 호스트키 TOFU 프롬프트 — NSButton 기반 `.alert`(SwiftUI `.sheet`+`Button` 아님).
+        // 시트 안 Button은 macOS 26에서 `_ButtonGesture` 경로로 크래시하므로 회피한다.
+        // 세터는 정상 바인딩으로: 사용자가 Esc로 닫으면 취소로 처리(시트의 no-op set 대신).
+        .alert("새 호스트키", isPresented: Binding(
             get: { if case .needsTrust = session.hostKeyPrompt { return true } else { return false } },
-            set: { if !$0 { } })) {
+            set: { if !$0, case .needsTrust = session.hostKeyPrompt { session.cancelPendingHostKey() } }
+        )) {
+            Button("취소", role: .cancel) { session.cancelPendingHostKey() }
+            Button("신뢰") { Task { await session.trustPendingHostKey() } }
+        } message: {
             if case .needsTrust(let sha) = session.hostKeyPrompt {
-                VStack(spacing: 12) {
-                    Text("새 호스트키").font(.headline)
-                    Text("\(session.deviceName) (\(session.host))")
-                    Text("SHA256: \(sha)").font(.system(.caption, design: .monospaced))
-                    HStack {
-                        Button("취소") { session.cancelPendingHostKey() }
-                        Button("신뢰") { Task { await session.trustPendingHostKey() } }
-                            .keyboardShortcut(.defaultAction)
-                    }
-                }.padding(20).frame(width: 420)
+                Text("\(session.deviceName) (\(session.host))\nSHA256: \(sha)")
             }
         }
     }

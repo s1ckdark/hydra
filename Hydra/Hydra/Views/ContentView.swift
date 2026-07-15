@@ -79,7 +79,7 @@ struct ContentView: View {
                     .tabItem { Label("Console", systemImage: "terminal") }
                     .tag(AppState.Tab.console)
 
-                TerminalTabView()
+                TerminalTabView(dashboardVM: dashboardVM)
                     .tabItem { Label("Terminal", systemImage: "apple.terminal") }
                     .tag(AppState.Tab.terminal)
 
