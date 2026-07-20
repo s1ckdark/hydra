@@ -25,8 +25,36 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// TOFU: set when the host key is unknown and awaiting user trust.
     @Published var hostKeyPrompt: HostKeyDecision?
 
-    /// The view subscribes to feed bytes into SwiftTerm.
-    var onOutput: ((Data) -> Void)?
+    /// The view subscribes to feed bytes into SwiftTerm. Set in the
+    /// representable's makeNSView. 뷰가 아직 안 붙었을 때(onOutput == nil) 도착한
+    /// 출력은 아래 버퍼에 쌓았다가, 뷰가 붙는 순간(didSet) 한꺼번에 재생한다. 이게
+    /// 없으면 tmux 없는 서버의 "한 번만 나오는 첫 프롬프트"가 훅업 전에 도착해 버려져
+    /// 빈 화면으로 남는다(tmux는 이후 출력이 계속 나와 가려졌다).
+    var onOutput: ((Data) -> Void)? {
+        didSet {
+            guard let onOutput, !outputBuffer.isEmpty else { return }
+            let buffered = outputBuffer
+            outputBuffer = Data()
+            onOutput(buffered)
+        }
+    }
+    private var outputBuffer = Data()
+
+    /// 셸 출력이 마지막으로 도착한 시각과 "출력을 한 번이라도 봤는지" 플래그.
+    /// tmux 부트스트랩을 셸이 프롬프트에서 idle 상태가 된 뒤에 주입하려고
+    /// (openShellNow → injectBootstrapWhenReady) 출력 펌프가 매 청크마다 갱신한다.
+    private var lastOutputAt: Date = .distantPast
+    private var sawShellOutput = false
+
+    /// 뷰(SwiftTerm)가 마지막으로 요청한 터미널 크기.
+    ///
+    /// connect()는 셸을 하드코딩 80×24로 열고(뷰 레이아웃 전이라 실제 크기를 모른다),
+    /// 실제 크기는 이후 `sizeChanged`→`resize`가 채운다. 그런데 그 리사이즈가 openShell
+    /// 완료 **전**에 도착하면 `LibSSH2Session.resize`의 `guard let shell`(아직 nil)에서
+    /// 조용히 버려지고, 그 뒤로 뷰 크기가 안 바뀌면 다시 리사이즈가 오지 않아 tmux가
+    /// 80×24로 생성돼 큰 페인의 좌상단 일부(≈1/6)만 그려진다. 이를 막으려고 마지막 요청
+    /// 크기를 기억했다가 셸이 열리고 tmux exec 직전에 재적용한다(applyPendingSize).
+    private var lastRequestedSize: (cols: Int, rows: Int)?
 
     /// LOCAL FIX (I1): a factory rather than a fixed instance — `SSHSession`'s AsyncStreams
     /// are finished (permanently dead) once `disconnect()` runs, so reconnecting must build
@@ -186,23 +214,87 @@ final class TerminalSession: ObservableObject, Identifiable {
         do {
             try await session.openShell(termType: "xterm-256color", cols: s.cols, rows: s.rows)
             if persistenceEnabled() {
-                try? await session.write(Data(Self.tmuxBootstrapLine().utf8))
+                await injectBootstrapWhenReady()   // exec 직전 applyPendingSize 수행
+            } else {
+                await applyPendingSize()           // plain 셸도 실제 뷰 크기로 맞춘다
             }
+            // Plain 셸(tmux 없음/off)의 첫 프롬프트가 뷰 훅업 전에 나와도 버려지지 않게
+            // 하는 처리는 onOutput 버퍼링(위 onOutput.didSet)에서 담당한다.
         }
         catch { state = .disconnected(reason: "셸 열기 실패: \(error)") }
     }
 
+    /// tmux 부트스트랩을 "셸이 프롬프트에서 idle 상태가 된 뒤"에 주입한다.
+    ///
+    /// 왜 필요한가: `openShell()`은 PTY와 셸을 요청하고 곧바로 반환할 뿐, 원격
+    /// 로그인 셸(zsh)이 rc(.zshrc/oh-my-zsh/p10k/플러그인)를 다 실행하고 zle 라인
+    /// 에디터를 띄워 입력을 받을 준비가 됐는지는 기다리지 않는다. rc 실행이 빠른
+    /// 호스트(LAN, ~0.5s)에서는 즉시 주입해도 문제가 없지만, oh-my-zsh + 대형
+    /// fastfetch 배너 + zsh-syntax-highlighting/autosuggestions 같은 무거운 zle
+    /// 훅을 로드하느라 rc가 1~4초 걸리는 호스트(high-15/high-16/racknerd 등)에서는
+    /// 초기화 도중에 주입된 부트스트랩이 셸 시작 시퀀스와 레이스를 일으켜 tmux가
+    /// 제대로 뜨지 않거나 화면이 깨진 채로 남았다.
+    ///
+    /// 해법: 출력 펌프가 갱신하는 `lastOutputAt`를 보고, 배너·프롬프트가 다 그려진
+    /// 뒤 출력이 `quietGap` 동안 잠잠해지면(= zle 준비 완료) 주입한다. 어떤 이유로든
+    /// 안정 신호를 못 잡으면 `hardCap`에서 폴백 주입한다(느린 셸도 커버).
+    private func injectBootstrapWhenReady() async {
+        let quietGap: TimeInterval = 0.4      // 이만큼 출력이 없으면 프롬프트 안정으로 간주
+        let hardCap = Date().addingTimeInterval(8.0)   // 안정 신호 실패 시 폴백 상한
+        let poll: Duration = .milliseconds(50)
+        // 1) 첫 출력(배너/프롬프트 시작)을 기다린다 — rc가 오래 침묵할 수 있다.
+        while !sawShellOutput, Date() < hardCap {
+            try? await Task.sleep(for: poll)
+        }
+        // 2) 출력이 quietGap 동안 잠잠해질 때까지(= 배너·프롬프트 렌더 종료) 기다린다.
+        while Date() < hardCap {
+            if sawShellOutput, Date().timeIntervalSince(lastOutputAt) >= quietGap { break }
+            try? await Task.sleep(for: poll)
+        }
+        // exec tmux는 attach 시점의 PTY 크기로 창을 만든다. 프롬프트 안정까지 기다린
+        // 이 시점엔 뷰 레이아웃이 끝나 실제 크기가 lastRequestedSize에 들어와 있으므로,
+        // exec 직전에 PTY를 그 크기로 맞춰 tmux가 80×24가 아닌 실제 크기로 생성되게 한다.
+        await applyPendingSize()
+        try? await session.write(Data(Self.tmuxBootstrapLine().utf8))
+    }
+
+    /// 뷰가 마지막으로 요청한 크기를 원격 PTY에 재적용한다(없으면 무시).
+    private func applyPendingSize() async {
+        guard let sz = lastRequestedSize else { return }
+        try? await session.resize(cols: sz.cols, rows: sz.rows)
+    }
+
     /// tmux 세션 지속 부트스트랩. exec() 사이드채널은 Citadel 백엔드에만 구현되어
     /// 있어(libssh2는 "" 폴백) 프로브 대신 셸 stdin 주입으로 백엔드 무관하게 처리한다.
-    /// tmux가 있으면 `hydra` 세션에 attach-or-create하고, 없거나 attach가 실패해도
-    /// (중첩 tmux, 소켓 권한 등) 부모 셸이 살아남아 일반 셸로 폴백한다 — `exec`를
-    /// 쓰면 실패 시 채널까지 닫혀 터미널이 아예 열리지 않으므로 쓰지 않는다.
+    ///
+    /// `exec tmux …`: tmux가 있으면 로그인 셸을 tmux로 **대체**한다 — 접속하면 곧바로
+    /// tmux가 세션 그 자체가 되고, 로그인 셸이 tmux "위/아래"에 따로 남지 않는다.
+    /// (exec 없이 그냥 `tmux …`를 실행하면 로그인 셸이 부모로 남아, 사용자에겐 "루트
+    /// 셸에서 tmux를 명령으로 띄운" 모양으로 보였다.) `command -v tmux` 가드로 tmux가
+    /// 없으면 `&&`가 끊겨 exec에 도달하지 않으므로 일반 로그인 셸로 안전하게 폴백한다.
+    /// 예전엔 exec가 "실패 시 채널이 닫힌다"는 이유로 회피됐지만, 이제 주입을 프롬프트
+    /// 안정 이후로 게이팅(injectBootstrapWhenReady)해 명령이 온전히 전달되고, 가드가
+    /// tmux 부재를 커버하므로 exec의 잔여 실패 위험(tmux는 있으나 new-session 실패)은
+    /// 극히 드물다.
     nonisolated static func tmuxBootstrapLine() -> String {
-        " command -v tmux >/dev/null 2>&1 && tmux new-session -A -s hydra; clear\n"
+        // `set-option -g window-size largest`: tmux 창을 "가장 큰 클라이언트" 크기에
+        // 맞춘다. 없으면 세션이 처음 만들어진 크기(초기 80×24)에 갇혀, 실제 터미널이
+        // 더 커도 좌상단 일부(예: 1/6)에만 그려진다. `largest`면 앱이 뷰 리사이즈 시
+        // 보내는 크기를 따라 창이 100%로 커지고, 재접속 시 남은 작은 옛 클라이언트가
+        // 있어도 (가장 큰) 우리 크기가 이긴다.
+        //
+        // `latest`가 아니라 `largest`인 이유: `latest`는 tmux 3.1+에서만 유효해서
+        // 3.0a(예: Ubuntu 20.04) 서버에서는 "unknown value: latest" 에러로 부트스트랩이
+        // 깨져 화면이 빈 채로 남았다. `largest`/`smallest`/`manual`은 tmux 2.9+ 전부에서
+        // 유효하다.
+        " command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s hydra \\; set-option -g window-size largest; clear\n"
     }
 
     func send(_ data: Data) { Task { try? await session.write(data) } }
-    func resize(cols: Int, rows: Int) { Task { try? await session.resize(cols: cols, rows: rows) } }
+    func resize(cols: Int, rows: Int) {
+        lastRequestedSize = (cols, rows)   // 셸 오픈 전에 와서 버려져도 exec 직전 재적용된다
+        Task { try? await session.resize(cols: cols, rows: rows) }
+    }
     func close() {
         pumpTask?.cancel()
         statePumpTask?.cancel()
@@ -224,9 +316,22 @@ final class TerminalSession: ObservableObject, Identifiable {
         }
     }
     private func startOutputPump() {
+        outputBuffer = Data()   // 새 셸 출력 스트림 — 이전 버퍼 잔재 제거
+        lastOutputAt = .distantPast
+        sawShellOutput = false
         pumpTask = Task { [weak self] in
             guard let self else { return }
-            for await chunk in self.session.output { self.onOutput?(chunk) }
+            for await chunk in self.session.output {
+                // injectBootstrapWhenReady가 프롬프트 안정 시점을 잡도록 매 청크 갱신.
+                self.sawShellOutput = true
+                self.lastOutputAt = Date()
+                if let onOutput = self.onOutput {
+                    onOutput(chunk)
+                } else {
+                    // 뷰가 아직 안 붙음 — 버퍼링 후 onOutput.didSet에서 재생.
+                    self.outputBuffer.append(chunk)
+                }
+            }
         }
     }
 

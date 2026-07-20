@@ -170,14 +170,16 @@ final class TerminalSessionPersistenceTests: XCTestCase {
         XCTAssertTrue(scripted.written.isEmpty)
     }
 
-    func testBootstrapLineFallsBackQuietlyWithoutTmux() {
+    func testBootstrapLineExecsTmuxGuardedWithFallback() {
         let line = TerminalSession.tmuxBootstrapLine()
         XCTAssertTrue(line.contains("command -v tmux"))               // 존재 검사 선행
         XCTAssertTrue(line.contains("tmux new-session -A -s hydra"))
-        // 리뷰 MEDIUM 반영: exec를 쓰면 attach 실패(중첩 tmux 등) 시 채널까지 닫혀
-        // 터미널이 아예 열리지 않는다 — 부모 셸이 폴백으로 살아남아야 한다.
-        XCTAssertFalse(line.contains("exec"))
-        XCTAssertTrue(line.contains("; clear"))                       // 폴백 화면 정리
+        // `exec tmux …`: 로그인 셸을 tmux로 대체해 접속=tmux가 되게 한다(사용자가 요청한
+        // "루트 셸 위에서 tmux 명령 실행" 형태 제거). exec의 옛 우려(실패 시 채널 닫힘)는
+        // `command -v tmux` 가드(&& 앞)로 tmux 부재 시 exec에 도달하지 않게 하고, 주입을
+        // 프롬프트 안정 이후로 게이팅해 명령 전달을 보장하므로 안전하다.
+        XCTAssertTrue(line.contains("&& exec tmux new-session"))
+        XCTAssertTrue(line.contains("; clear"))                       // tmux 부재 폴백 시 화면 정리
         XCTAssertTrue(line.hasSuffix("\n"))
     }
 }
