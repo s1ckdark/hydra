@@ -34,6 +34,43 @@ type DeviceUseCase struct {
 	// Cleared only by an explicit empty SetCapabilities call. Lost on restart.
 	capabilityOverride map[string][]string
 	capsMu             sync.RWMutex
+
+	// fetch-failure log throttle. Tailscale outages recur on every poll
+	// (~10-15s); without throttling a single sustained outage floods the log
+	// (observed 334MB / ~500k lines over 4 days). We log the first occurrence
+	// and any change in the error, then at most once per cooldown while the
+	// same error persists. Reset on a successful fetch so a fresh outage logs
+	// immediately.
+	fetchErrMu      sync.Mutex
+	lastFetchErrMsg string
+	lastFetchErrAt  time.Time
+}
+
+// fetchFailureCooldown bounds how often an unchanged tailscale fetch failure
+// is logged.
+const fetchFailureCooldown = 5 * time.Minute
+
+// shouldLogFetchErr reports whether this fetch failure should be logged,
+// recording state to rate-limit repeats. Returns true for the first
+// occurrence, whenever the error message changes, or once the cooldown
+// elapses for an unchanged error.
+func (uc *DeviceUseCase) shouldLogFetchErr(err error) bool {
+	msg := err.Error()
+	uc.fetchErrMu.Lock()
+	defer uc.fetchErrMu.Unlock()
+	if msg != uc.lastFetchErrMsg || time.Since(uc.lastFetchErrAt) >= fetchFailureCooldown {
+		uc.lastFetchErrMsg = msg
+		uc.lastFetchErrAt = time.Now()
+		return true
+	}
+	return false
+}
+
+// noteFetchSuccess clears the throttle so the next failure logs immediately.
+func (uc *DeviceUseCase) noteFetchSuccess() {
+	uc.fetchErrMu.Lock()
+	uc.lastFetchErrMsg = ""
+	uc.fetchErrMu.Unlock()
 }
 
 // TailscaleClient interface for Tailscale API operations
@@ -175,12 +212,15 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 		// to the freshest local snapshot so dashboards stay usable. Without this
 		// the home/devices/GPU endpoints all 500 on a single upstream hiccup.
 		if fallback := uc.staleFallback(ctx); len(fallback) > 0 {
-			log.Printf("[devices] tailscale fetch failed, serving %d stale devices: %v", len(fallback), err)
+			if uc.shouldLogFetchErr(err) {
+				log.Printf("[devices] tailscale fetch failed, serving %d stale devices: %v", len(fallback), err)
+			}
 			uc.applyCapabilityOverrides(fallback)
 			return fallback, nil
 		}
 		return nil, err
 	}
+	uc.noteFetchSuccess()
 
 	// Defensive shrink detection: Tailscale has been observed returning
 	// 200-OK with a partial (sometimes empty) device list when the
@@ -379,7 +419,9 @@ func (uc *DeviceUseCase) GetDevice(ctx context.Context, nameOrID string) (*domai
 			needle := strings.ToLower(nameOrID)
 			for _, d := range fallback {
 				if d.ID == nameOrID || strings.ToLower(d.Name) == needle || strings.ToLower(d.Hostname) == needle {
-					log.Printf("[devices] tailscale single-device fetch failed, serving stale %s: %v", nameOrID, err)
+					if uc.shouldLogFetchErr(err) {
+						log.Printf("[devices] tailscale single-device fetch failed, serving stale %s: %v", nameOrID, err)
+					}
 					cp := *d
 					uc.applyCapabilityOverrides([]*domain.Device{&cp})
 					return &cp, nil
