@@ -34,9 +34,16 @@ struct Device: Codable, Identifiable {
     /// Falls back through: hostname → tailscale name → raw name.
     var shortName: String {
         let host = hostnameShort
+        let tsName = tailscaleShortName
+        // OS hostname이 tailscale MagicDNS 이름의 구분자(하이픈/언더스코어) 제거판일 때
+        // (예: HostName "high15" vs DNSName "high-15"), 사용자가 tailscale·known_hosts·
+        // 연결에서 쓰는 canonical 이름(하이픈 포함)을 우선 표기한다.
+        if !tsName.isEmpty, tsName != host,
+           Self.normalizedName(tsName) == Self.normalizedName(host) {
+            return tsName
+        }
         // If hostname is generic (localhost, iPhone, iPad, etc.), prefer the tailscale name
         if isGenericHostname(host) {
-            let tsName = tailscaleShortName
             if !tsName.isEmpty && !isGenericHostname(tsName) {
                 return tsName
             }
@@ -46,6 +53,13 @@ struct Device: Codable, Identifiable {
             }
         }
         return host
+    }
+
+    /// 대소문자·하이픈·언더스코어를 무시한 이름 비교용 정규화.
+    private static func normalizedName(_ s: String) -> String {
+        s.lowercased()
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: "_", with: "")
     }
 
     private var hostnameShort: String {
