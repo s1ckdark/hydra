@@ -21,26 +21,9 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 }
 
-enum AppFontDesign: String, CaseIterable, Identifiable {
-    case standard, rounded, serif, monospaced
-    var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .standard:   return "Default"
-        case .rounded:    return "Rounded"
-        case .serif:      return "Serif"
-        case .monospaced: return "Mono"
-        }
-    }
-    var design: Font.Design {
-        switch self {
-        case .standard:   return .default
-        case .rounded:    return .rounded
-        case .serif:      return .serif
-        case .monospaced: return .monospaced
-        }
-    }
-}
+// AppFontDesign moved to Hydra/Theme/Theme.swift — Theme.swift (shared,
+// compiled into HydraiOS too) needs it for `resolvedFontDesign`, and this
+// file (Views/Settings) is macOS-only / excluded from the iOS target.
 
 /// Global text-scale percentages. The app's text uses Dynamic Type styles,
 /// which scale app-wide via `dynamicTypeSize`. SwiftUI takes size categories

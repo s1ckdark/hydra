@@ -12,6 +12,30 @@ struct ShadowSpec: Equatable {
     var y: CGFloat
 }
 
+/// Moved here from `Views/Settings/AppearanceSettingsTab.swift` (macOS-only,
+/// excluded from the iOS target) — `resolvedFontDesign` below needs it and
+/// this file is shared between macOS and iOS.
+enum AppFontDesign: String, CaseIterable, Identifiable {
+    case standard, rounded, serif, monospaced
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .standard:   return "Default"
+        case .rounded:    return "Rounded"
+        case .serif:      return "Serif"
+        case .monospaced: return "Mono"
+        }
+    }
+    var design: Font.Design {
+        switch self {
+        case .standard:   return .default
+        case .rounded:    return .rounded
+        case .serif:      return .serif
+        case .monospaced: return .monospaced
+        }
+    }
+}
+
 struct Theme: Equatable {
     var cardRadius: CGFloat      // 카드·패널·배너
     var controlRadius: CGFloat   // 버튼·입력창·소형 패널

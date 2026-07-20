@@ -18,6 +18,8 @@ targets:
       - path: HydraiOS
       - path: Hydra/Models
       - path: Hydra/State
+      - path: Hydra/ViewModels
+      - path: Hydra/Theme
       - path: Hydra/Services
         excludes:
           - "PYExecutor.swift"        # subprocess — macOS only
