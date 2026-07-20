@@ -50,60 +50,39 @@ struct ContentView: View {
         // 다른 탭에서 새 세션을 열어 저장 목록을 덮어쓰기 전에 수행해야 한다.
         TerminalSessionStore.shared.restoreIfNeeded(devices: dashboardVM.devices)
         #endif
-        withAnimation(.easeInOut(duration: 0.25)) {
-            appState.hasCompletedInitialLoad = true
-        }
+        // 애니메이션 없이 즉시 전환. macOS 26.5.2에서 애니메이션이 유발하는 레이아웃
+        // (`NSAnimationContext`→`NSHostingView.layout`) 중 SwiftUI가 `.task`/`.onAppear`
+        // (`_AppearanceActionModifier`/`_TaskModifier`)를 실행하며 격리 체크
+        // (`swift_task_isCurrentExecutor`)가 크래시하는 OS 회귀가 있어, 콘텐츠 리빌을
+        // 애니메이션으로 감싸지 않는다.
+        appState.hasCompletedInitialLoad = true
     }
 
     private var mainContent: some View {
         HStack(spacing: 0) {
-            TabView(selection: $appState.activeTab) {
-                DashboardView()
-                    .tabItem { Label("Dashboard", systemImage: "gauge") }
-                    .tag(AppState.Tab.dashboard)
-
-                DeviceListView()
-                    .tabItem { Label("Devices", systemImage: "desktopcomputer") }
-                    .tag(AppState.Tab.devices)
-
-                OrchListView()
-                    .tabItem { Label("Orchs", systemImage: "server.rack") }
-                    .tag(AppState.Tab.orchs)
-
-                #if os(macOS)
-                TasksView()
-                    .tabItem { Label("Tasks", systemImage: "list.bullet.clipboard") }
-                    .tag(AppState.Tab.tasks)
-
-                ConsoleView()
-                    .tabItem { Label("Console", systemImage: "terminal") }
-                    .tag(AppState.Tab.console)
-
-                TerminalTabView(dashboardVM: dashboardVM)
-                    .tabItem { Label("Terminal", systemImage: "apple.terminal") }
-                    .tag(AppState.Tab.terminal)
-
-                SettingsView()
-                    .tabItem { Label("Settings", systemImage: "gearshape") }
-                    .tag(AppState.Tab.settings)
-                #endif
+            VStack(spacing: 0) {
+                customTabBar
+                Divider()
+                selectedContent
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // Drawer is otherwise only reachable via ⌘/ or the menubar.
             // Surface an in-window affordance, shown only while closed
             // (the drawer carries its own close button when open).
+            // 일반 탭 어포던스(.bordered Button은 DesignLibrary라 아래 커스텀 탭 바
+            // 주석의 크래시 경로를 타므로 .onTapGesture로 대체).
             .overlay(alignment: .topTrailing) {
                 if !appState.isChatDrawerOpen {
-                    Button {
-                        appState.isChatDrawerOpen = true
-                    } label: {
-                        Image(systemName: "bubble.left.and.bubble.right")
-                    }
-                    .buttonStyle(.bordered)
-                    .help("Open chat (⌘/)")
-                    .padding(.top, 6)
-                    .padding(.trailing, 12)
-                    .transition(.opacity)
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .padding(6)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+                        .contentShape(Rectangle())
+                        .onTapGesture { appState.isChatDrawerOpen = true }
+                        .help("Open chat (⌘/)")
+                        .padding(.top, 6)
+                        .padding(.trailing, 12)
+                        .transition(.opacity)
                 }
             }
 
@@ -111,11 +90,90 @@ struct ContentView: View {
                 DrawerResizeHandle(width: $appState.chatDrawerWidth)
                 ChatDrawerView()
                     .frame(width: appState.chatDrawerWidth)
-                    .transition(.move(edge: .trailing))
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: appState.isChatDrawerOpen)
+        // 드로어 토글 애니메이션 제거 — 애니메이션이 유발하는 레이아웃 중 격리-체크
+        // 크래시(위 런치 리빌 주석 참고)를 피하기 위해 즉시 전환한다.
     }
+
+    // MARK: - 커스텀 탭 바 (SwiftUI TabView 대체)
+    //
+    // macOS 26.5.2에서 SwiftUI `TabView`의 시스템 탭 바는 DesignLibrary로 렌더링되는데,
+    // 터미널 탭의 SwiftUI 트랜잭션(세션 상태 변화·연결 등) 중 그 HStack이 재평가되며
+    // 격리-체크(`swift_task_isCurrentExecutor`)가 크래시한다(메인 스레드인데 MainActor
+    // executor 아님 판정 — OS 회귀, legacy override로도 못 막음). 우리 일반 SwiftUI
+    // 스택/`.onTapGesture`는 그 경로를 타지 않으므로 탭 바를 직접 만들어 크래시 지점
+    // 자체를 없앤다. activeTab에 따라 활성 탭 콘텐츠만 생성한다(비활성 subtree 미생성).
+    private struct TabItem: Identifiable {
+        let tab: AppState.Tab
+        let title: String
+        let icon: String
+        var id: AppState.Tab { tab }
+    }
+
+    private var tabItems: [TabItem] {
+        var items: [TabItem] = [
+            .init(tab: .dashboard, title: "Dashboard", icon: "gauge"),
+            .init(tab: .devices, title: "Devices", icon: "desktopcomputer"),
+            .init(tab: .orchs, title: "Orchs", icon: "server.rack"),
+        ]
+        #if os(macOS)
+        items += [
+            .init(tab: .tasks, title: "Tasks", icon: "list.bullet.clipboard"),
+            .init(tab: .console, title: "Console", icon: "terminal"),
+            .init(tab: .terminal, title: "Terminal", icon: "apple.terminal"),
+            .init(tab: .settings, title: "Settings", icon: "gearshape"),
+        ]
+        #endif
+        return items
+    }
+
+    private var customTabBar: some View {
+        HStack(spacing: 4) {
+            ForEach(tabItems) { item in
+                let active = appState.activeTab == item.tab
+                HStack(spacing: 5) {
+                    Image(systemName: item.icon)
+                    Text(item.title)
+                }
+                .font(.callout)
+                .foregroundStyle(active ? Color.accentColor : Color.secondary)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(active ? Color.accentColor.opacity(0.15) : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 8))
+                .contentShape(Rectangle())
+                .onTapGesture { appState.activeTab = item.tab }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+    }
+
+    @ViewBuilder private var selectedContent: some View {
+        switch appState.activeTab {
+        case .dashboard: DashboardView()
+        case .devices: DeviceListView()
+        case .orchs: OrchListView()
+        default:
+            #if os(macOS)
+            macTabContent
+            #else
+            EmptyView()
+            #endif
+        }
+    }
+
+    #if os(macOS)
+    @ViewBuilder private var macTabContent: some View {
+        switch appState.activeTab {
+        case .tasks: TasksView()
+        case .console: ConsoleView()
+        case .terminal: TerminalTabView(dashboardVM: dashboardVM)
+        case .settings: SettingsView()
+        default: EmptyView()
+        }
+    }
+    #endif
 }
 
 /// 첫 로드가 끝날 때까지 탭 UI 대신 보여주는 런치 화면.

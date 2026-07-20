@@ -188,6 +188,10 @@ private struct TerminalSessionPane: View {
                 }.padding(6).background(Color.red.opacity(0.08))
             }
             SwiftTermRepresentable(session: session)
+                // 페인을 꽉 채운다. 없으면 SwiftTerm NSView가 고유 크기(초기 80×24
+                // 그리드)로 작아져 창을 100% 안 채운다. 채우면 SwiftTerm이 bounds에서
+                // cols/rows를 다시 계산하고 sizeChanged→session.resize로 원격 PTY까지 맞춘다.
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 // `.task` 대신 `.onAppear { Task { } }` — 완화 주석(2) 참고.
                 .onAppear {
                     Task { if case .idle = session.state { await session.connect(cols: 80, rows: 24) } }
@@ -195,10 +199,15 @@ private struct TerminalSessionPane: View {
         }
         // 호스트키 TOFU 프롬프트 — NSButton 기반 `.alert`(SwiftUI `.sheet`+`Button` 아님).
         // 시트 안 Button은 macOS 26에서 `_ButtonGesture` 경로로 크래시하므로 회피한다.
-        // 세터는 정상 바인딩으로: 사용자가 Esc로 닫으면 취소로 처리(시트의 no-op set 대신).
+        //
+        // 세터는 no-op이어야 한다. 알림은 어떤 버튼을 눌러도 dismiss되며 그때 세터가
+        // isPresented=false로 호출되는데, 여기서 cancel을 호출하면 "신뢰"를 눌러도
+        // (신뢰 Task는 async라 아직 hostKeyPrompt=.needsTrust) dismiss→cancel이 먼저 돌아
+        // 신뢰가 취소로 뒤집힌다. 취소/신뢰 버튼이 각자 상태를 처리하고, Esc는 .cancel
+        // role 버튼으로 매핑되므로 세터가 따로 취소할 필요가 없다.
         .alert("새 호스트키", isPresented: Binding(
             get: { if case .needsTrust = session.hostKeyPrompt { return true } else { return false } },
-            set: { if !$0, case .needsTrust = session.hostKeyPrompt { session.cancelPendingHostKey() } }
+            set: { _ in }
         )) {
             Button("취소", role: .cancel) { session.cancelPendingHostKey() }
             Button("신뢰") { Task { await session.trustPendingHostKey() } }
