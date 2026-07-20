@@ -36,5 +36,37 @@ final class HostKeyDecisionTests: XCTestCase {
         let (store, url) = tempStore(); defer { try? FileManager.default.removeItem(at: url) }
         XCTAssertEqual(HostKeyGate.evaluate(host: "1.1.1.1", fingerprint: nil, store: store), .blocked)
     }
+
+    // Regression: macOS OpenSSH defaults to HashKnownHosts, so already-trusted
+    // hosts live only as `|1|salt|hash` lines. The store must match those (via
+    // HMAC-SHA1) rather than re-prompting TOFU. Fixture line below was produced
+    // by `ssh-keygen -H` (independent oracle) for host 1.2.3.4 + this ed25519 key.
+    private static let hashedFixture =
+        "|1|eALMrnTseIYOdJLsp4UtMA71IBY=|boveoMSUsofP4OB9BrZKbXoA9NM= ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL1uvigprcEzMP6Iq598bdsA10rztIukB5b5Nbcq1b1B"
+    private static let hashedFixturePub = "AAAAC3NzaC1lZDI1NTE5AAAAIL1uvigprcEzMP6Iq598bdsA10rztIukB5b5Nbcq1b1B"
+
+    func testHashedKnownHostMatchesProceeds() throws {
+        let (store, url) = tempStore(); defer { try? FileManager.default.removeItem(at: url) }
+        try (Self.hashedFixture + "\n").write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(HostKeyGate.evaluate(host: "1.2.3.4",
+                                            fingerprint: fp(Self.hashedFixturePub), store: store),
+                       .proceed)
+    }
+
+    func testHashedKnownHostWrongHostNeedsTrust() throws {
+        let (store, url) = tempStore(); defer { try? FileManager.default.removeItem(at: url) }
+        try (Self.hashedFixture + "\n").write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(HostKeyGate.evaluate(host: "9.9.9.9",
+                                            fingerprint: fp(Self.hashedFixturePub), store: store),
+                       .needsTrust(sha256: "ab12"))
+    }
+
+    func testHashedKnownHostChangedKeyBlocked() throws {
+        let (store, url) = tempStore(); defer { try? FileManager.default.removeItem(at: url) }
+        try (Self.hashedFixture + "\n").write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(HostKeyGate.evaluate(host: "1.2.3.4",
+                                            fingerprint: fp("DIFFERENTKEY"), store: store),
+                       .blocked)
+    }
 }
 #endif
