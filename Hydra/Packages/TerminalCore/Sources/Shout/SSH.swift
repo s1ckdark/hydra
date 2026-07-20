@@ -250,4 +250,15 @@ public class SSH {
         return session.rawHostKey()
     }
 
+    /// LOCAL PATCH (Hydra): toggle the session's blocking mode.
+    ///
+    /// Connect/handshake/auth run in blocking mode (simpler, one-shot). The
+    /// interactive shell I/O loop instead runs non-blocking so a single serial
+    /// queue can poll reads and interleave writes/resizes — without a second
+    /// thread ever touching the (non-thread-safe) libssh2 session, which was
+    /// the source of the channel-free use-after-free crash.
+    public func setBlocking(_ blocking: Bool) {
+        session.blocking = blocking ? 1 : 0
+    }
+
 }

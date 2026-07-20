@@ -127,6 +127,21 @@ public class Channel {
         try SSHError.check(code: code, session: cSession)
     }
 
+    // LOCAL PATCH: non-blocking-safe PTY resize. When the session is in
+    // non-blocking mode (interactive shell I/O), libssh2_channel_request_pty_size_ex
+    // can return LIBSSH2_ERROR_EAGAIN; retry a bounded number of times rather
+    // than throwing. Best-effort: a dropped resize is corrected by the next one,
+    // so we never surface an error for a transient EAGAIN.
+    @discardableResult
+    public func requestPtySizeNonblocking(width: Int32, height: Int32, maxTries: Int = 256) -> Bool {
+        for _ in 0..<maxTries {
+            let code = libssh2_channel_request_pty_size_ex(cChannel, width, height, 0, 0)
+            if code == 0 { return true }
+            if code != LIBSSH2_ERROR_EAGAIN { return false }
+        }
+        return false
+    }
+
     public func close() throws {
         let code = libssh2_channel_close(cChannel)
         try SSHError.check(code: code, session: cSession)
