@@ -237,6 +237,7 @@ struct DeviceDetailView: View {
 
     @State private var keyCopyStatus: KeyCopyStatus = .idle
     @State private var keyCopyResetTask: Task<Void, Never>?
+    @State private var canGenerateKey = false
 
     enum KeyCopyStatus: Equatable {
         case idle
@@ -661,6 +662,17 @@ struct DeviceDetailView: View {
                     .lineLimit(1)
             }
             Spacer()
+            #if os(macOS)
+            if canGenerateKey {
+                Button(action: generateHostKey) {
+                    Label("키 생성", systemImage: "plus.circle")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("~/.ssh에 키가 없어요. Ed25519 키페어를 생성하고 공개키를 복사합니다.")
+            }
+            #endif
             Button(action: copyPublicKey) {
                 Label(keyCopyButtonTitle, systemImage: keyCopyButtonIcon)
                     .font(.caption)
@@ -672,7 +684,38 @@ struct DeviceDetailView: View {
         .padding(8)
         .background(.quaternary.opacity(0.4))
         .clipShape(RoundedRectangle(cornerRadius: theme.controlRadius))
+        .onAppear { refreshCanGenerateKey() }
     }
+
+    private func refreshCanGenerateKey() {
+        // noKeysFound일 때만 생성 버튼 노출 — 기존 키가 있으면 덮어쓰기 위험 차단
+        if case .some = try? SSHKeyLocator.orderedKeyPairs().first {
+            canGenerateKey = false
+        } else {
+            canGenerateKey = true
+        }
+    }
+
+    #if os(macOS)
+    private func generateHostKey() {
+        keyCopyResetTask?.cancel()
+        do {
+            let host = ProcessInfo.processInfo.hostName
+            let located = try SSHKeyGenerator.generateAndInstall(comment: "\(NSUserName())@\(host)")
+            SSHKeyLocator.copyToClipboard(located)
+            keyCopyStatus = .copied(filename: located.filename)
+            canGenerateKey = false
+        } catch {
+            keyCopyStatus = .failed(message: error.localizedDescription)
+        }
+        keyCopyResetTask = Task {
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled {
+                await MainActor.run { keyCopyStatus = .idle }
+            }
+        }
+    }
+    #endif
 
     private var keyCopyStatusMessage: String {
         switch keyCopyStatus {

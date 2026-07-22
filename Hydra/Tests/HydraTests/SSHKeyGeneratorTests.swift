@@ -52,4 +52,39 @@ final class SSHKeyGeneratorTests: XCTestCase {
         let b = SSHKeyGenerator.generate(comment: "c")
         XCTAssertNotEqual(a.publicKeyLine, b.publicKeyLine)
     }
+
+    #if os(macOS)
+    func testInstallWritesKeyPairWithPermissionsAndRefusesOverwrite() throws {
+        // NSTemporaryDirectory()는 /var/... (심볼릭 링크) 형태를 반환하지만
+        // FileManager.contentsOfDirectory는 /private/var/...로 정규화된 경로를
+        // 돌려준다. realpath로 미리 정규화해 두 경로가 문자열 레벨에서 일치하게 만든다.
+        var realBuf = [Int8](repeating: 0, count: Int(PATH_MAX))
+        realpath(NSTemporaryDirectory(), &realBuf)
+        let resolvedTmp = URL(fileURLWithPath: String(cString: realBuf))
+        let dir = resolvedTmp.appendingPathComponent("sshinstall-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // 디렉터리가 없어도 0700으로 만들어야 함
+        let located = try SSHKeyGenerator.generateAndInstall(comment: "install@test", sshDir: dir)
+        XCTAssertEqual(located.filename, "id_ed25519.pub")
+
+        let fm = FileManager.default
+        let privPath = dir.appendingPathComponent("id_ed25519").path
+        let pubPath = dir.appendingPathComponent("id_ed25519.pub").path
+        func perms(_ p: String) throws -> Int {
+            (try fm.attributesOfItem(atPath: p)[.posixPermissions] as! NSNumber).intValue
+        }
+        XCTAssertEqual(try perms(dir.path), 0o700)
+        XCTAssertEqual(try perms(privPath), 0o600)
+        XCTAssertEqual(try perms(pubPath), 0o644)
+
+        // SSHKeyLocator가 인식해야 함
+        let pairs = try SSHKeyLocator.orderedKeyPairs(in: dir)
+        XCTAssertEqual(pairs.first?.privatePath, privPath)
+        XCTAssertEqual(pairs.first?.algorithmName, "ed25519")
+
+        // 이미 존재하면 덮어쓰지 않고 실패해야 함
+        XCTAssertThrowsError(try SSHKeyGenerator.generateAndInstall(comment: "x", sshDir: dir))
+    }
+    #endif
 }

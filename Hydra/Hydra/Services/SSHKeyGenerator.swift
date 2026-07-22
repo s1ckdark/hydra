@@ -78,3 +78,55 @@ private extension String {
         return result
     }
 }
+
+#if os(macOS)
+extension SSHKeyGenerator {
+    enum InstallError: LocalizedError {
+        case alreadyExists(String)
+        case writeFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .alreadyExists(let path):
+                return "이미 키 파일이 있어요: \(path) — 덮어쓰지 않습니다."
+            case .writeFailed(let detail):
+                return "키 파일 쓰기 실패: \(detail)"
+            }
+        }
+    }
+
+    private static func defaultSSHDir() -> URL {
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ssh")
+    }
+
+    /// 새 Ed25519 키페어를 생성해 sshDir/id_ed25519(.pub)로 기록한다.
+    /// 기존 파일이 있으면 덮어쓰지 않고 실패. 반환값은 복사용 공개키.
+    @discardableResult
+    static func generateAndInstall(comment: String,
+                                   sshDir: URL = defaultSSHDir()) throws -> SSHKeyLocator.Located {
+        let fm = FileManager.default
+        let privURL = sshDir.appendingPathComponent("id_ed25519")
+        let pubURL = sshDir.appendingPathComponent("id_ed25519.pub")
+        for url in [privURL, pubURL] where fm.fileExists(atPath: url.path) {
+            throw InstallError.alreadyExists(url.path)
+        }
+
+        let key = generate(comment: comment)
+        do {
+            if !fm.fileExists(atPath: sshDir.path) {
+                try fm.createDirectory(at: sshDir, withIntermediateDirectories: true,
+                                       attributes: [.posixPermissions: 0o700])
+            }
+            try key.privateKeyOpenSSH.write(to: privURL, atomically: true, encoding: .utf8)
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: privURL.path)
+            try (key.publicKeyLine + "\n").write(to: pubURL, atomically: true, encoding: .utf8)
+            try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: pubURL.path)
+        } catch let e as InstallError {
+            throw e
+        } catch {
+            throw InstallError.writeFailed(error.localizedDescription)
+        }
+        return SSHKeyLocator.Located(url: pubURL, contents: key.publicKeyLine)
+    }
+}
+#endif
