@@ -94,7 +94,7 @@ struct KeyImportScreen: View {
     private func generateKey() {
         let device = UIDevice.current.name
         let sanitized = device.lowercased()
-            .map { $0.isLetter || $0.isNumber ? $0 : "-" }
+            .map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "-" }
             .reduce(into: "") { acc, ch in
                 if ch == "-" && acc.hasSuffix("-") { return }
                 acc.append(ch)
@@ -118,7 +118,7 @@ struct KeyImportScreen: View {
         let previous = CredentialStore.shared.get(.sshPrivateKeyPEM)
         CredentialStore.shared.set(.sshPrivateKeyPEM, value: trimmed)
         // 수동 붙여넣기로 키가 바뀌면 저장된 공개키는 더 이상 그 키의 짝이 아님
-        if trimmed != previous {
+        if trimmed != previous.trimmingCharacters(in: .whitespacesAndNewlines) {
             CredentialStore.shared.set(.sshPublicKeyOpenSSH, value: "")
             publicKey = ""
         }
