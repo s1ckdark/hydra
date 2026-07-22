@@ -124,6 +124,8 @@ extension SSHKeyGenerator {
         } catch let e as InstallError {
             throw e
         } catch {
+            // 부분 쓰기 실패 시 고아 개인키가 재시도를 막지 않도록 정리
+            try? fm.removeItem(at: privURL)
             throw InstallError.writeFailed(error.localizedDescription)
         }
         return SSHKeyLocator.Located(url: pubURL, contents: key.publicKeyLine)

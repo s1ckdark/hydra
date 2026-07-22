@@ -86,5 +86,28 @@ final class SSHKeyGeneratorTests: XCTestCase {
         // 이미 존재하면 덮어쓰지 않고 실패해야 함
         XCTAssertThrowsError(try SSHKeyGenerator.generateAndInstall(comment: "x", sshDir: dir))
     }
+
+    func testInstallRefusesWhenOnlyOneFileExists() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory
+            .appendingPathComponent("sshinstall-one-\(UUID().uuidString)")
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: dir) }
+
+        // 개인키만 존재
+        let privURL = dir.appendingPathComponent("id_ed25519")
+        try "stale".write(to: privURL, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try SSHKeyGenerator.generateAndInstall(comment: "x", sshDir: dir))
+        // 기존 파일은 건드리지 않아야 함
+        XCTAssertEqual(try String(contentsOf: privURL, encoding: .utf8), "stale")
+
+        // 공개키만 존재
+        try fm.removeItem(at: privURL)
+        let pubURL = dir.appendingPathComponent("id_ed25519.pub")
+        try "stale-pub".write(to: pubURL, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try SSHKeyGenerator.generateAndInstall(comment: "x", sshDir: dir))
+        XCTAssertEqual(try String(contentsOf: pubURL, encoding: .utf8), "stale-pub")
+        XCTAssertFalse(fm.fileExists(atPath: privURL.path), "거부 시 개인키를 생성하면 안 됨")
+    }
     #endif
 }
