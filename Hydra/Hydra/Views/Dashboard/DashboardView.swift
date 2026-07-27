@@ -258,9 +258,12 @@ struct GPUGaugeSection: View {
                                 Image(systemName: "exclamationmark.triangle")
                                     .foregroundStyle(.red)
                                     .font(.caption2)
-                                Text("error")
+                                Text(node.error ?? "error")
                                     .font(.caption2)
                                     .foregroundStyle(.red)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .help(node.error ?? "")
                             }
                         }
                     }

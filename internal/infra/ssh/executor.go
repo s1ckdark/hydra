@@ -21,6 +21,35 @@ import (
 	"github.com/s1ckdark/hydra/internal/domain"
 )
 
+// firstNonEmptyLine returns the first non-blank line of s, trimmed and
+// capped at 200 bytes.
+func firstNonEmptyLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if len(line) > 200 {
+			line = line[:200]
+		}
+		return line
+	}
+	return ""
+}
+
+// remoteCommandError builds the error for a failed remote command. nvidia-smi
+// 등 일부 도구는 실패 원인을 stdout으로 출력하므로, stderr가 비어 있으면
+// stdout 첫 줄을 원인으로 채택한다 (둘 다 비면 원래 에러 그대로).
+func remoteCommandError(err error, stdout, stderr string) error {
+	if s := strings.TrimSpace(stderr); s != "" {
+		return fmt.Errorf("command error: %s", s)
+	}
+	if line := firstNonEmptyLine(stdout); line != "" {
+		return fmt.Errorf("command error: %s (%w)", line, err)
+	}
+	return err
+}
+
 // Executor executes commands on remote machines via SSH
 type Executor struct {
 	user            string
@@ -144,10 +173,7 @@ func (e *Executor) executeTailscaleSSH(ctx context.Context, device *domain.Devic
 
 	err := cmd.Run()
 	if err != nil {
-		if stderr.Len() > 0 {
-			return "", fmt.Errorf("ssh error: %s", stderr.String())
-		}
-		return "", fmt.Errorf("ssh failed: %w", err)
+		return "", remoteCommandError(fmt.Errorf("ssh failed: %w", err), stdout.String(), stderr.String())
 	}
 
 	return stdout.String(), nil
@@ -191,10 +217,7 @@ func (e *Executor) executeRegularSSH(ctx context.Context, device *domain.Device,
 		return "", ctx.Err()
 	case err := <-done:
 		if err != nil {
-			if stderr.Len() > 0 {
-				return "", fmt.Errorf("command error: %s", strings.TrimSpace(stderr.String()))
-			}
-			return "", err
+			return "", remoteCommandError(err, stdout.String(), stderr.String())
 		}
 	}
 
