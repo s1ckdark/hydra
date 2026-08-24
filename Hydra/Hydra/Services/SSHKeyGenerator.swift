@@ -103,7 +103,13 @@ extension SSHKeyGenerator {
     /// 기존 파일이 있으면 덮어쓰지 않고 실패. 반환값은 복사용 공개키.
     @discardableResult
     static func generateAndInstall(comment: String,
-                                   sshDir: URL = defaultSSHDir()) throws -> SSHKeyLocator.Located {
+                                   sshDir: URL = defaultSSHDir(),
+                                   setPermissions: (Int, String) throws -> Void = { permissions, path in
+                                       try FileManager.default.setAttributes(
+                                           [.posixPermissions: permissions],
+                                           ofItemAtPath: path
+                                       )
+                                   }) throws -> SSHKeyLocator.Located {
         let fm = FileManager.default
         let privURL = sshDir.appendingPathComponent("id_ed25519")
         let pubURL = sshDir.appendingPathComponent("id_ed25519.pub")
@@ -118,14 +124,15 @@ extension SSHKeyGenerator {
                                        attributes: [.posixPermissions: 0o700])
             }
             try key.privateKeyOpenSSH.write(to: privURL, atomically: true, encoding: .utf8)
-            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: privURL.path)
+            try setPermissions(0o600, privURL.path)
             try (key.publicKeyLine + "\n").write(to: pubURL, atomically: true, encoding: .utf8)
-            try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: pubURL.path)
+            try setPermissions(0o644, pubURL.path)
         } catch let e as InstallError {
             throw e
         } catch {
-            // 부분 쓰기 실패 시 고아 개인키가 재시도를 막지 않도록 정리
+            // 이번 호출에서 만든 키페어를 모두 롤백해 재시도를 보장한다.
             try? fm.removeItem(at: privURL)
+            try? fm.removeItem(at: pubURL)
             throw InstallError.writeFailed(error.localizedDescription)
         }
         return SSHKeyLocator.Located(url: pubURL, contents: key.publicKeyLine)

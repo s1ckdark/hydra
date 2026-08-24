@@ -23,6 +23,16 @@ final class CredentialStore {
         case deviceUUID = "device_uuid"
         case sshPrivateKeyPEM = "ssh_private_key_pem"
         case sshPublicKeyOpenSSH = "ssh_public_key_openssh"
+
+        static func aiRoleAPIKey(for role: String) -> Key? {
+            switch role {
+            case "head": return .aiHeadAPIKey
+            case "schedule": return .aiScheduleAPIKey
+            case "capacity": return .aiCapacityAPIKey
+            case "chat": return .aiChatAPIKey
+            default: return nil
+            }
+        }
     }
 
     // MARK: - Public API

@@ -109,5 +109,28 @@ final class SSHKeyGeneratorTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: pubURL, encoding: .utf8), "stale-pub")
         XCTAssertFalse(fm.fileExists(atPath: privURL.path), "거부 시 개인키를 생성하면 안 됨")
     }
+
+    func testInstallRollsBackBothFilesWhenPublicKeyPermissionFails() throws {
+        struct PermissionFailure: Error {}
+
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory
+            .appendingPathComponent("sshinstall-rollback-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: dir) }
+
+        XCTAssertThrowsError(
+            try SSHKeyGenerator.generateAndInstall(
+                comment: "rollback@test",
+                sshDir: dir,
+                setPermissions: { permissions, path in
+                    if path.hasSuffix(".pub") { throw PermissionFailure() }
+                    try fm.setAttributes([.posixPermissions: permissions], ofItemAtPath: path)
+                }
+            )
+        )
+
+        XCTAssertFalse(fm.fileExists(atPath: dir.appendingPathComponent("id_ed25519").path))
+        XCTAssertFalse(fm.fileExists(atPath: dir.appendingPathComponent("id_ed25519.pub").path))
+    }
     #endif
 }

@@ -16,6 +16,7 @@ struct AISettingsTab: View {
     @State private var saveStatus: SaveStatus?
     @State private var showAdvanced = false
     @State private var instructionSaved = false
+    @State private var connectionTestTask: Task<Void, Never>?
 
     private let store = CredentialStore.shared
 
@@ -33,12 +34,12 @@ struct AISettingsTab: View {
     }
 
     /// Cloud providers require an API key; local providers require an endpoint URL.
-    static let cloudProviders: Set<String> = ["claude", "openai", "zai"]
-    static let localProviders: Set<String> = ["ollama", "lmstudio", "openai_compatible"]
+    static let cloudProviders = AIProviderConfig.cloudProviders
+    static let localProviders = AIProviderConfig.localProviders
 
     /// Z.AI GLM Coding Plan base URL (OpenAI-compatible). The older "/v1"
     /// base does not serve the Coding Plan.
-    static let zaiCodingEndpoint = "https://api.z.ai/api/coding/paas/v4"
+    static let zaiCodingEndpoint = AIProviderConfig.zaiCodingEndpoint
 
     /// Known model ids offered as a dropdown per cloud provider. The text
     /// field stays editable so custom / local model names still work.
@@ -51,39 +52,24 @@ struct AISettingsTab: View {
         }
     }
 
-    private var isCloudProvider: Bool { Self.cloudProviders.contains(provider) }
+    private var isCloudProvider: Bool { AIProviderConfig.isCloudProvider(provider) }
     private var needsAPIKey: Bool { Self.cloudProviders.contains(provider) }
     /// z.ai needs an API key AND a base URL (the Coding Plan endpoint), so it
     /// shows both fields; local providers need only an endpoint.
     private var needsEndpoint: Bool { Self.localProviders.contains(provider) || provider == "zai" }
-
     private func isCloudProviderID(_ id: String) -> Bool {
-        return Self.cloudProviders.contains(id)
+        AIProviderConfig.isCloudProvider(id)
     }
 
-    /// Display label combining provider id with its group hint.
-    private func label(for id: String) -> String {
-        switch id {
-        case "claude":             return "Claude (cloud)"
-        case "openai":             return "OpenAI (cloud)"
-        case "zai":                return "Z.AI (cloud)"
-        case "ollama":             return "Ollama (local)"
-        case "lmstudio":           return "LM Studio (local)"
-        case "openai_compatible":  return "OpenAI-compatible (local)"
-        default:                   return id
-        }
-    }
+    private func label(for id: String) -> String { AIProviderConfig.label(for: id) }
 
     var body: some View {
         Form {
             Section {
                 Picker("Provider", selection: $provider) {
-                    Text(label(for: "claude")).tag("claude")
-                    Text(label(for: "openai")).tag("openai")
-                    Text(label(for: "zai")).tag("zai")
-                    Text(label(for: "ollama")).tag("ollama")
-                    Text(label(for: "lmstudio")).tag("lmstudio")
-                    Text(label(for: "openai_compatible")).tag("openai_compatible")
+                    ForEach(AIProviderConfig.allProviders, id: \.self) { id in
+                        Text(label(for: id)).tag(id)
+                    }
                 }
                 .onChange(of: provider) { providerChanged() }
 
@@ -155,7 +141,7 @@ struct AISettingsTab: View {
 
             Section {
                 Button {
-                    Task { await testConnection() }
+                    connectionTestTask = Task { await testConnection() }
                 } label: {
                     HStack {
                         Image(systemName: "bolt.horizontal.circle")
@@ -246,6 +232,7 @@ struct AISettingsTab: View {
                 endpoint = Self.zaiCodingEndpoint
             }
         }
+        .onDisappear { connectionTestTask?.cancel() }
     }
 
     /// Placeholder hint for the endpoint field, per provider.
@@ -254,6 +241,8 @@ struct AISettingsTab: View {
     }
 
     private func credentialsChanged() {
+        connectionTestTask?.cancel()
+        connectionTestTask = nil
         connectionVerified = false
         testStatus = nil
         saveStatus = nil
@@ -277,38 +266,14 @@ struct AISettingsTab: View {
     private func testConnection() async {
         withAnimation { testStatus = .testing }
 
-        let urlString: String
-        var headers: [String: String] = [:]
-        switch provider {
-        case "claude":
-            urlString = "https://api.anthropic.com/v1/models"
-            headers["x-api-key"] = apiKey
-            headers["anthropic-version"] = "2023-06-01"
-        case "openai":
-            urlString = "https://api.openai.com/v1/models"
-            headers["Authorization"] = "Bearer \(apiKey)"
-        case "zai":
-            let base = endpoint.trimmingCharacters(in: .whitespaces)
-            urlString = (base.isEmpty ? Self.zaiCodingEndpoint : base) + "/models"
-            headers["Authorization"] = "Bearer \(apiKey)"
-        case "ollama":
-            urlString = endpoint.trimmingCharacters(in: .whitespaces) + "/api/tags"
-        case "lmstudio", "openai_compatible":
-            urlString = endpoint.trimmingCharacters(in: .whitespaces) + "/v1/models"
-        default:
-            withAnimation { testStatus = .error("Unknown provider: \(provider)") }
+        guard let req = AIProviderConfig.testConnectionRequest(provider: provider, apiKey: apiKey, endpoint: endpoint) else {
+            withAnimation { testStatus = .error("Invalid provider or endpoint") }
             return
         }
-
-        guard let url = URL(string: urlString) else {
-            withAnimation { testStatus = .error("Invalid endpoint URL") }
-            return
-        }
-        var req = URLRequest(url: url, timeoutInterval: 15)
-        for (k, v) in headers { req.setValue(v, forHTTPHeaderField: k) }
 
         do {
             let (_, response) = try await URLSession.shared.data(for: req)
+            guard !Task.isCancelled else { return }
             guard let http = response as? HTTPURLResponse else {
                 withAnimation { testStatus = .error("No response") }
                 return
@@ -322,6 +287,7 @@ struct AISettingsTab: View {
                 withAnimation { testStatus = .error("\(provider) returned HTTP \(http.statusCode)") }
             }
         } catch {
+            guard !Task.isCancelled else { return }
             withAnimation { testStatus = .error("Connection failed: \(error.localizedDescription)") }
         }
     }
@@ -386,6 +352,8 @@ struct AISettingsTab: View {
                 continue
             }
             let roleProvider = defaults.string(forKey: "aiRole_\(roleSlug)_provider") ?? ""
+            let roleAPIKey = CredentialStore.Key.aiRoleAPIKey(for: roleSlug)
+                .map { store.get($0) } ?? ""
             let roleEndpoint = defaults.string(forKey: "aiRole_\(roleSlug)_endpoint") ?? ""
             let roleModel    = defaults.string(forKey: "aiRole_\(roleSlug)_model")    ?? ""
             if roleProvider.isEmpty {
@@ -393,10 +361,9 @@ struct AISettingsTab: View {
             }
             var override: [String: String] = ["provider": roleProvider, "model": roleModel]
             if isCloudProviderID(roleProvider) {
-                // The endpoint slot in the Advanced UI doubles as the API key
-                // input — this is acknowledged tech debt from the prior PR. Treat
-                // its value as api_key for cloud providers.
-                override["api_key"] = roleEndpoint
+                // Legacy macOS builds stored the cloud key in the endpoint slot.
+                // Prefer Keychain and retain the old slot only as a migration fallback.
+                override["api_key"] = roleAPIKey.isEmpty ? roleEndpoint : roleAPIKey
             } else {
                 override["endpoint"] = roleEndpoint
             }
@@ -459,6 +426,9 @@ private struct RoleOverrideView: View {
     @AppStorage private var provider: String
     @AppStorage private var endpoint: String
     @AppStorage private var model: String
+    @State private var apiKey: String = ""
+
+    private let store = CredentialStore.shared
 
     init(title: String, role: String) {
         self.title = title
@@ -486,12 +456,24 @@ private struct RoleOverrideView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 220)
                 }
-                HStack {
-                    Text("Endpoint / Key")
-                    Spacer()
-                    SecureField("api key or endpoint URL", text: $endpoint)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 220)
+                if AIProviderConfig.isCloudProvider(provider) {
+                    HStack {
+                        Text("API Key")
+                        Spacer()
+                        SecureField("API key", text: $apiKey)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 220)
+                            .onChange(of: apiKey) { persistAPIKey() }
+                    }
+                }
+                if AIProviderConfig.localProviders.contains(provider) || provider == "zai" {
+                    HStack {
+                        Text("Endpoint")
+                        Spacer()
+                        TextField("endpoint URL", text: $endpoint)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(maxWidth: 220)
+                    }
                 }
                 HStack {
                     Text("Model")
@@ -510,6 +492,16 @@ private struct RoleOverrideView: View {
             }
         }
         .padding(.vertical, 4)
+        .onAppear {
+            if let key = CredentialStore.Key.aiRoleAPIKey(for: role) {
+                apiKey = store.get(key)
+            }
+        }
+    }
+
+    private func persistAPIKey() {
+        guard let key = CredentialStore.Key.aiRoleAPIKey(for: role) else { return }
+        store.set(key, value: apiKey)
     }
 }
 #endif
