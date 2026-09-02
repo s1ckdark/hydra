@@ -102,6 +102,90 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `every keystroke reaches persistence when typed faster than the state echo`() =
+        runTest {
+            // The screen owns the text buffer (see SettingsScreen), so keystrokes
+            // arrive back to back with no state round trip between them. Nothing
+            // may be dropped on the way to storage.
+            val settings = FakeSettings()
+            val vm = SettingsViewModel(settings, FakeSecureStore())
+            val target = "http://10.0.2.2:8080"
+
+            vm.state.test {
+                awaitItem()
+                advanceUntilIdle() // let the seed land first
+
+                var buffer = ""
+                target.forEach { ch ->
+                    buffer += ch
+                    vm.onServerUrlChange(buffer)
+                }
+                advanceUntilIdle()
+
+                assertEquals(target, settings.serverUrl.value)
+                assertEquals(target, expectMostRecentItem().serverUrl)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun `the ai instruction field likewise loses no keystrokes`() = runTest {
+        val settings = FakeSettings()
+        val vm = SettingsViewModel(settings, FakeSecureStore())
+        val target = "be terse"
+
+        vm.state.test {
+            awaitItem()
+            advanceUntilIdle()
+
+            var buffer = ""
+            target.forEach { ch ->
+                buffer += ch
+                vm.onAiInstructionChange(buffer)
+            }
+            advanceUntilIdle()
+
+            assertEquals(target, settings.aiInstruction.value)
+            assertEquals(target, expectMostRecentItem().aiInstruction)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `a slow seed does not land on top of what the user already typed`() = runTest {
+        val settings = FakeSettings(serverUrl = "http://saved:8080")
+        val vm = SettingsViewModel(settings, FakeSecureStore())
+
+        vm.state.test {
+            awaitItem() // initial default; the seed coroutine has not run yet
+
+            // Type before the init seed coroutine has had a chance to run.
+            vm.onServerUrlChange("http://typed:8080")
+            advanceUntilIdle()
+
+            assertEquals("http://typed:8080", expectMostRecentItem().serverUrl)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `the seeded state is what the screen restores its buffers from`() = runTest {
+        // Re-entering the tab must show what was saved, not an empty field.
+        val vm = SettingsViewModel(
+            FakeSettings(serverUrl = "http://saved:8080", aiInstruction = "saved"),
+            FakeSecureStore(),
+        )
+        vm.state.test {
+            awaitItem()
+            advanceUntilIdle()
+            val s = expectMostRecentItem()
+            assertEquals("http://saved:8080", s.serverUrl)
+            assertEquals("saved", s.aiInstruction)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun `changing the ai instruction writes through to settings`() = runTest {
         val settings = FakeSettings()
         val vm = SettingsViewModel(settings, FakeSecureStore())

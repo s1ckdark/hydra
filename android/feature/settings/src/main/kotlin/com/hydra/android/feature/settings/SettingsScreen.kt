@@ -17,7 +17,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -36,6 +40,30 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    // Each field owns its own buffer and notifies the ViewModel as a side
+    // effect. Binding a TextField's `value` straight to state makes every
+    // keystroke a round trip through the ViewModel's flow (and, before it was
+    // fixed, through DataStore) — the field then renders a value one hop
+    // behind, the next keystroke is computed from that stale text, and
+    // characters silently vanish when someone types quickly.
+    var serverUrl by rememberSaveable { mutableStateOf<String?>(null) }
+    var apiKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var aiInstruction by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // Adopt the stored values once they arrive, and never again — re-adopting
+    // would fight the user's typing.
+    LaunchedEffect(state.serverUrl) {
+        if (serverUrl == null && state.serverUrl.isNotEmpty()) serverUrl = state.serverUrl
+    }
+    LaunchedEffect(state.apiKey) {
+        if (apiKey == null && state.apiKey.isNotEmpty()) apiKey = state.apiKey
+    }
+    LaunchedEffect(state.aiInstruction) {
+        if (aiInstruction == null && state.aiInstruction.isNotEmpty()) {
+            aiInstruction = state.aiInstruction
+        }
+    }
+
     Scaffold(topBar = { TopAppBar(title = { Text("설정") }) }) { padding ->
         Column(
             Modifier
@@ -46,8 +74,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         ) {
             Text("서버", style = MaterialTheme.typography.titleSmall)
             OutlinedTextField(
-                value = state.serverUrl,
-                onValueChange = viewModel::onServerUrlChange,
+                value = serverUrl.orEmpty(),
+                onValueChange = {
+                    serverUrl = it
+                    viewModel.onServerUrlChange(it)
+                },
                 label = { Text("http://<host>:8080") },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(
@@ -57,8 +88,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 modifier = Modifier.fillMaxWidth(),
             )
             OutlinedTextField(
-                value = state.apiKey,
-                onValueChange = viewModel::onApiKeyChange,
+                value = apiKey.orEmpty(),
+                onValueChange = {
+                    apiKey = it
+                    viewModel.onApiKeyChange(it)
+                },
                 label = { Text("API 키") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
@@ -73,8 +107,11 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
 
             Text("AI", style = MaterialTheme.typography.titleSmall)
             OutlinedTextField(
-                value = state.aiInstruction,
-                onValueChange = viewModel::onAiInstructionChange,
+                value = aiInstruction.orEmpty(),
+                onValueChange = {
+                    aiInstruction = it
+                    viewModel.onAiInstructionChange(it)
+                },
                 label = { Text("AI에게 전달할 지침") },
                 minLines = 3,
                 maxLines = 8,
