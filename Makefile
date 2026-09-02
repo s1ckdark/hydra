@@ -20,7 +20,7 @@ BUILD_DIR=./build
 CMD_CLI=./cmd/clusterctl
 CMD_SERVER=./cmd/server
 
-.PHONY: all build build-cli build-server clean test lint fmt vet deps run-server help hydra-app hydra-app-run
+.PHONY: all build build-cli build-server clean test lint fmt vet deps run-server help hydra-app hydra-app-run android-build android-test
 
 # Default target
 all: deps build
@@ -133,3 +133,17 @@ help: ## Show this help
 	@echo ""
 	@echo "Targets:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
+
+## Android targets
+# Not wired into `build:` or `test:` on purpose — the Go CI must not acquire a
+# JDK/Android SDK dependency.
+
+ANDROID_JAVA_HOME=/Users/dave/.asdf/installs/java/temurin-21.0.3+9.0.LTS
+
+android-build: ## Build the Android debug APK
+	@echo "Building Android client..."
+	cd android && JAVA_HOME=$(ANDROID_JAVA_HOME) ./gradlew :app:assembleDebug
+
+android-test: ## Run Android unit tests
+	@echo "Testing Android client..."
+	cd android && JAVA_HOME=$(ANDROID_JAVA_HOME) ./gradlew testDebugUnitTest

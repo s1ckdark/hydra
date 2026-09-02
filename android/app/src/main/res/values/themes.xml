@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Compose Material3 ships no Android XML themes (those live in
+  com.google.android.material, which a Compose-only app does not depend on).
+  The real colors come from HydraTheme in :core:designsystem; this platform
+  theme only needs to be action-bar-free and follow light/dark for the
+  window background before the first frame composes.
+-->
+<resources>
+    <style name="Theme.Hydra" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
