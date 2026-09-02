@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The server address is arbitrary user input (typically a Tailscale IP over
+  plain HTTP), so the reachable hosts cannot be enumerated ahead of time and
+  network_security_config has no CIDR form. Cleartext is therefore permitted
+  globally. Revisit once the server offers HTTPS.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

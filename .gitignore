@@ -71,3 +71,11 @@ mcp-server/dist/
 Hydra/.build/
 Hydra/.swiftpm/xcode/**/xcuserdata/
 .omx/
+
+# Android client
+android/.gradle/
+android/build/
+android/**/build/
+android/local.properties
+android/build-logic/.gradle/
+android/.kotlin/
