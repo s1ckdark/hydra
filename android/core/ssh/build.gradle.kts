@@ -10,6 +10,7 @@ dependencies {
     api(project(":core:model"))
     implementation(project(":core:data"))
     implementation(libs.sshj)
+    implementation(libs.bouncycastle.prov)
     implementation(libs.slf4j.android)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

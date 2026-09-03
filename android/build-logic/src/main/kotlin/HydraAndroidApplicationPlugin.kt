@@ -27,6 +27,16 @@ class HydraAndroidApplicationPlugin : Plugin<Project> {
                 sourceCompatibility = JavaVersion.VERSION_17
                 targetCompatibility = JavaVersion.VERSION_17
             }
+            // BouncyCastle jars ship META-INF signature files that break APK
+            // packaging; sshj pulls them in transitively.
+            packaging {
+                resources {
+                    excludes += setOf(
+                        "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA",
+                        "META-INF/versions/**", "META-INF/INDEX.LIST",
+                    )
+                }
+            }
         }
         // Build runs on JDK 21, but both Java and Kotlin emit 17 bytecode.
         // Letting the Kotlin toolchain default to 21 while AGP compiles Java at
