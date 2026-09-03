@@ -19,6 +19,7 @@ data class SettingsUiState(
     val apiKey: String = "",
     val aiInstruction: String = "",
     val hideMobileDevices: Boolean = false,
+    val sshUsername: String = "",
 )
 
 @HiltViewModel
@@ -42,6 +43,7 @@ class SettingsViewModel @Inject constructor(
      */
     private val serverUrlInput = MutableStateFlow("")
     private val aiInstructionInput = MutableStateFlow("")
+    private val sshUsernameInput = MutableStateFlow("")
     private val apiKey = MutableStateFlow(secureStore.getApiKey().orEmpty())
 
     /**
@@ -56,9 +58,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val storedUrl = settings.serverUrl.first()
             val storedInstruction = settings.aiInstruction.first()
+            val storedSshUser = settings.sshUsername.first()
             if (!edited) {
                 serverUrlInput.value = storedUrl
                 aiInstructionInput.value = storedInstruction
+                sshUsernameInput.value = storedSshUser
             }
         }
     }
@@ -68,8 +72,9 @@ class SettingsViewModel @Inject constructor(
         apiKey,
         aiInstructionInput,
         settings.hideMobileDevices,
-    ) { url, key, instruction, hideMobile ->
-        SettingsUiState(url, key, instruction, hideMobile)
+        sshUsernameInput,
+    ) { url, key, instruction, hideMobile, sshUser ->
+        SettingsUiState(url, key, instruction, hideMobile, sshUser)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState())
 
     fun onServerUrlChange(value: String) {
@@ -87,6 +92,12 @@ class SettingsViewModel @Inject constructor(
         edited = true
         aiInstructionInput.value = value
         viewModelScope.launch { settings.setAiInstruction(value) }
+    }
+
+    fun onSshUsernameChange(value: String) {
+        edited = true
+        sshUsernameInput.value = value
+        viewModelScope.launch { settings.setSshUsername(value) }
     }
 
     fun onHideMobileChange(value: Boolean) {

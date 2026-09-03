@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -37,7 +38,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(
+    onOpenSshKey: () -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     // Each field owns its own buffer and notifies the ViewModel as a side
@@ -49,6 +53,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     var serverUrl by rememberSaveable { mutableStateOf<String?>(null) }
     var apiKey by rememberSaveable { mutableStateOf<String?>(null) }
     var aiInstruction by rememberSaveable { mutableStateOf<String?>(null) }
+    var sshUsername by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Adopt the stored values once they arrive, and never again — re-adopting
     // would fight the user's typing.
@@ -62,6 +67,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         if (aiInstruction == null && state.aiInstruction.isNotEmpty()) {
             aiInstruction = state.aiInstruction
         }
+    }
+    LaunchedEffect(state.sshUsername) {
+        if (sshUsername == null && state.sshUsername.isNotEmpty()) sshUsername = state.sshUsername
     }
 
     Scaffold(topBar = { TopAppBar(title = { Text("설정") }) }) { padding ->
@@ -117,6 +125,25 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 maxLines = 8,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            HorizontalDivider()
+
+            Text("SSH", style = MaterialTheme.typography.titleSmall)
+            OutlinedTextField(
+                value = sshUsername.orEmpty(),
+                onValueChange = {
+                    sshUsername = it
+                    viewModel.onSshUsernameChange(it)
+                },
+                label = { Text("username") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    capitalization = KeyboardCapitalization.None,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            TextButton(onClick = onOpenSshKey) { Text("SSH 키 관리") }
 
             HorizontalDivider()
 
