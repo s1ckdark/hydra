@@ -7,6 +7,10 @@ import org.junit.Test
 private class FakeSecureStore(private var key: String?) : SecureStore {
     override fun getApiKey() = key
     override fun setApiKey(value: String) { key = value.ifEmpty { null } }
+
+    var sshKey: String? = null
+    override fun getSshPrivateKey() = sshKey
+    override fun setSshPrivateKey(value: String) { sshKey = value.ifEmpty { null } }
 }
 
 class SettingsServerConfigProviderTest {

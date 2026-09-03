@@ -69,9 +69,11 @@ private class FakeSettings(instruction: String = "") : SettingsSource {
     override val serverUrl = MutableStateFlow("")
     override val aiInstruction = MutableStateFlow(instruction)
     override val hideMobileDevices = MutableStateFlow(false)
+    override val sshUsername = MutableStateFlow("root")
     override suspend fun setServerUrl(value: String) { serverUrl.value = value }
     override suspend fun setAiInstruction(value: String) { aiInstruction.value = value }
     override suspend fun setHideMobileDevices(value: Boolean) { hideMobileDevices.value = value }
+    override suspend fun setSshUsername(value: String) { sshUsername.value = value }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
