@@ -38,6 +38,7 @@ fun TerminalScreen(
     viewModel: TerminalViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val session by viewModel.session.collectAsStateWithLifecycle()
 
     LaunchedEffect(deviceId) { viewModel.connect(deviceId) }
 
@@ -70,16 +71,29 @@ fun TerminalScreen(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                         )
                         setTerminalViewClient(client)
+                        // Required before anything else: TerminalView creates its
+                        // renderer only inside setTextSize (TerminalView.java:515),
+                        // and updateSize() dereferences it. Without this the view
+                        // never sizes, the emulator is never created, and the shell
+                        // never opens — a black screen with no error.
+                        setTextSize(DEFAULT_TEXT_SIZE)
+                        // Termux's default color scheme is light-on-dark, and the
+                        // renderer only paints cells that have content — the rest
+                        // shows through to the view background. Without an opaque
+                        // dark background the white text lands on Compose's light
+                        // surface and is invisible.
+                        setBackgroundColor(android.graphics.Color.BLACK)
                         isFocusable = true
                         isFocusableInTouchMode = true
                         viewHolder.value = this
                     }
                 },
                 update = { view ->
-                    // The session only exists once connect() has resolved the
-                    // device; attaching is idempotent (attachSession no-ops on
-                    // the same instance).
-                    viewModel.session?.let { view.attachSession(it) }
+                    // Runs whenever `session` changes, because it is collected
+                    // state. attachSession is idempotent on the same instance,
+                    // and internally calls updateSize() — which is what creates
+                    // the emulator and lets the shell open.
+                    session?.let { view.attachSession(it) }
                 },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -116,3 +130,5 @@ fun TerminalScreen(
         )
     }
 }
+
+private const val DEFAULT_TEXT_SIZE = 28

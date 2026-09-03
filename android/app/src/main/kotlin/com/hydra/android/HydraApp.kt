@@ -3,6 +3,7 @@ package com.hydra.android
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
@@ -22,12 +23,18 @@ import com.hydra.android.feature.chat.CHAT_ROUTE
 import com.hydra.android.feature.chat.chatScreen
 import com.hydra.android.feature.dashboard.DASHBOARD_ROUTE
 import com.hydra.android.feature.dashboard.dashboardScreen
+import com.hydra.android.feature.devices.DEVICES_ROUTE
+import com.hydra.android.feature.devices.devicesScreen
+import com.hydra.android.feature.terminal.terminalRoute
+import com.hydra.android.feature.terminal.terminalScreen
 import com.hydra.android.feature.settings.SETTINGS_ROUTE
+import com.hydra.android.feature.settings.SSH_KEY_ROUTE
 import com.hydra.android.feature.settings.settingsScreen
 
 /**
- * The three v1 tabs. The iOS app has six — 디바이스(+터미널), Orchs and
- * Tasks are v2, and their routes are simply absent rather than stubbed.
+ * The four shipped tabs. The iOS app has six; Orchs and Tasks are still
+ * absent rather than stubbed. The terminal is not a tab — it is a full-screen
+ * route, matching iOS's fullScreenCover.
  */
 enum class HydraDestination(
     val route: String,
@@ -35,6 +42,7 @@ enum class HydraDestination(
     val icon: ImageVector,
 ) {
     DASHBOARD(DASHBOARD_ROUTE, "대시보드", Icons.Filled.Speed),
+    DEVICES(DEVICES_ROUTE, "디바이스", Icons.Filled.Dns),
     CHAT(CHAT_ROUTE, "Chat", Icons.AutoMirrored.Filled.Chat),
     SETTINGS(SETTINGS_ROUTE, "설정", Icons.Filled.Settings),
     ;
@@ -50,8 +58,13 @@ fun HydraApp() {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
+    // Full-screen destinations own the whole window.
+    val hideBottomBar = currentRoute?.startsWith("terminal/") == true ||
+        currentRoute == SSH_KEY_ROUTE
+
     Scaffold(
         bottomBar = {
+            if (hideBottomBar) return@Scaffold
             NavigationBar {
                 HydraDestination.entries.forEach { destination ->
                     NavigationBarItem(
@@ -83,8 +96,13 @@ fun HydraApp() {
             modifier = Modifier.padding(padding),
         ) {
             dashboardScreen()
+            devicesScreen(onSelectDevice = { id -> navController.navigate(terminalRoute(id)) })
             chatScreen()
-            settingsScreen()
+            settingsScreen(
+                onOpenSshKey = { navController.navigate(SSH_KEY_ROUTE) },
+                onBack = { navController.popBackStack() },
+            )
+            terminalScreen(onClose = { navController.popBackStack() })
         }
     }
 }

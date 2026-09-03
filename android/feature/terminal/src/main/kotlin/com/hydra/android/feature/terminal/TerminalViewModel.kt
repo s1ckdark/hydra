@@ -39,8 +39,15 @@ class TerminalViewModel @Inject constructor(
     /** Completed by [acceptHostKey] / [rejectHostKey]. */
     private var trustAnswer: CompletableDeferred<Boolean>? = null
 
-    var session: TerminalSession? = null
-        private set
+    /**
+     * Exposed as a flow, not a plain field: the screen attaches it to the
+     * vendored TerminalView from an AndroidView `update` block, and that block
+     * only runs on recomposition. A plain `var` is invisible to Compose, so the
+     * attach — and with it the emulator creation and shell open — would depend
+     * on some unrelated state change happening to recompose at the right time.
+     */
+    private val _session = MutableStateFlow<TerminalSession?>(null)
+    val session: StateFlow<TerminalSession?> = _session.asStateFlow()
 
     /**
      * Called from the transport's HostKeyVerifier, on its IO thread. Suspends
@@ -70,7 +77,7 @@ class TerminalViewModel @Inject constructor(
     }
 
     fun connect(deviceId: String) {
-        if (session != null) return
+        if (_session.value != null) return
         viewModelScope.launch {
             val device = devices.list().getOrNull()?.firstOrNull { it.id == deviceId }
             if (device == null) {
@@ -96,7 +103,7 @@ class TerminalViewModel @Inject constructor(
                 onCopyToClipboard = {},
                 onPasteFromClipboard = {},
             )
-            session = s
+            _session.value = s
 
             val host = device.tailscaleIp.ifEmpty { device.hostname }
             runCatching {
@@ -107,7 +114,7 @@ class TerminalViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        session?.close()
-        session = null
+        _session.value?.close()
+        _session.value = null
     }
 }
