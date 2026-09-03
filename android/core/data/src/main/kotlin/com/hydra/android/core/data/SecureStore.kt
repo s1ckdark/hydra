@@ -13,6 +13,8 @@ import javax.crypto.spec.GCMParameterSpec
 interface SecureStore {
     fun getApiKey(): String?
     fun setApiKey(value: String)
+    fun getSshPrivateKey(): String?
+    fun setSshPrivateKey(value: String)
 }
 
 /**
@@ -27,8 +29,16 @@ class KeystoreSecureStore(context: Context) : SecureStore {
 
     private val prefs = context.getSharedPreferences("hydra_secure", Context.MODE_PRIVATE)
 
-    override fun getApiKey(): String? {
-        val stored = prefs.getString(KEY_API, null) ?: return null
+    override fun getApiKey(): String? = decrypt(KEY_API)
+
+    override fun setApiKey(value: String) = encrypt(KEY_API, value)
+
+    override fun getSshPrivateKey(): String? = decrypt(KEY_SSH)
+
+    override fun setSshPrivateKey(value: String) = encrypt(KEY_SSH, value)
+
+    private fun decrypt(prefKey: String): String? {
+        val stored = prefs.getString(prefKey, null) ?: return null
         val parts = stored.split(':')
         if (parts.size != 2) return null
         return runCatching {
@@ -40,9 +50,9 @@ class KeystoreSecureStore(context: Context) : SecureStore {
         }.getOrNull()
     }
 
-    override fun setApiKey(value: String) {
+    private fun encrypt(prefKey: String, value: String) {
         if (value.isEmpty()) {
-            prefs.edit().remove(KEY_API).apply()
+            prefs.edit().remove(prefKey).apply()
             return
         }
         val cipher = Cipher.getInstance(TRANSFORMATION)
@@ -50,7 +60,7 @@ class KeystoreSecureStore(context: Context) : SecureStore {
         val cipherText = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
         val encoded = Base64.encodeToString(cipher.iv, Base64.NO_WRAP) + ":" +
             Base64.encodeToString(cipherText, Base64.NO_WRAP)
-        prefs.edit().putString(KEY_API, encoded).apply()
+        prefs.edit().putString(prefKey, encoded).apply()
     }
 
     private fun secretKey(): SecretKey {
@@ -77,6 +87,7 @@ class KeystoreSecureStore(context: Context) : SecureStore {
         const val ALIAS = "hydra_api_key"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val KEY_API = "server_api_key"
+        const val KEY_SSH = "ssh_private_key_pem"
         const val TAG_BITS = 128
     }
 }

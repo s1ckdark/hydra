@@ -23,6 +23,9 @@ private class FakeSecureStore : SecureStore {
     var key: String? = null
     override fun getApiKey() = key
     override fun setApiKey(value: String) { key = value.ifEmpty { null } }
+    var sshKey: String? = null
+    override fun getSshPrivateKey() = sshKey
+    override fun setSshPrivateKey(value: String) { sshKey = value.ifEmpty { null } }
 }
 
 private class FakeSettings(
@@ -33,9 +36,11 @@ private class FakeSettings(
     override val serverUrl = MutableStateFlow(serverUrl)
     override val aiInstruction = MutableStateFlow(aiInstruction)
     override val hideMobileDevices = MutableStateFlow(hideMobile)
+    override val sshUsername = MutableStateFlow("root")
     override suspend fun setServerUrl(value: String) { this.serverUrl.value = value }
     override suspend fun setAiInstruction(value: String) { this.aiInstruction.value = value }
     override suspend fun setHideMobileDevices(value: Boolean) { hideMobileDevices.value = value }
+    override suspend fun setSshUsername(value: String) { sshUsername.value = value }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)

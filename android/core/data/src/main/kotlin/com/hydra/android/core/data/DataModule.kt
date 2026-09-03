@@ -33,6 +33,11 @@ object DataModule {
 
     @Provides
     @Singleton
+    fun provideDevicesRepository(api: com.hydra.android.core.network.HydraApi): DevicesRepository =
+        ApiDevicesRepository(api)
+
+    @Provides
+    @Singleton
     fun provideServerConfigProvider(
         secureStore: SecureStore,
         settings: SettingsRepository,

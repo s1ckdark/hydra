@@ -44,9 +44,11 @@ private class FakeSettings(hideMobile: Boolean = false) : SettingsSource {
     override val serverUrl = MutableStateFlow("http://localhost:8080")
     override val aiInstruction = MutableStateFlow("")
     override val hideMobileDevices = MutableStateFlow(hideMobile)
+    override val sshUsername = MutableStateFlow("root")
     override suspend fun setServerUrl(value: String) { serverUrl.value = value }
     override suspend fun setAiInstruction(value: String) { aiInstruction.value = value }
     override suspend fun setHideMobileDevices(value: Boolean) { hideMobileDevices.value = value }
+    override suspend fun setSshUsername(value: String) { sshUsername.value = value }
 }
 
 private class RecordingRepository : DashboardRepository(api = FakeUnusedApi) {
