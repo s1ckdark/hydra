@@ -8,5 +8,5 @@ dependencyResolutionManagement {
 }
 rootProject.name = "hydra-android"
 include(":app")
-include(":core:model", ":core:network", ":core:data", ":core:designsystem")
-include(":feature:dashboard", ":feature:chat", ":feature:settings")
+include(":core:model", ":core:network", ":core:data", ":core:designsystem", ":core:ssh", ":core:terminal")
+include(":feature:dashboard", ":feature:chat", ":feature:settings", ":feature:devices", ":feature:terminal")

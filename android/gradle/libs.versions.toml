@@ -17,6 +17,8 @@ hiltNavigationCompose = "1.2.0"
 junit = "4.13.2"
 turbine = "1.2.0"
 coroutinesTest = "1.10.1"
+sshj = "0.40.0"
+slf4jAndroid = "2.0.17-0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -45,6 +47,8 @@ kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 junit = { module = "junit:junit", version.ref = "junit" }
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+sshj = { module = "com.hierynomus:sshj", version.ref = "sshj" }
+slf4j-android = { module = "uk.uuid.slf4j:slf4j-android", version.ref = "slf4jAndroid" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
