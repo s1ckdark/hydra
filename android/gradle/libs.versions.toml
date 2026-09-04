@@ -20,6 +20,9 @@ coroutinesTest = "1.10.1"
 sshj = "0.40.0"
 slf4jAndroid = "2.0.17-0"
 bouncycastle = "1.80"
+androidxTest = "1.7.0"
+androidxTestRunner = "1.7.0"
+espresso = "3.6.1"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -48,6 +51,13 @@ kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 junit = { module = "junit:junit", version.ref = "junit" }
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+# Instrumented (androidTest) — drive Compose by semantics, not coordinates.
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
+androidx-test-core = { module = "androidx.test:core", version.ref = "androidxTest" }
+espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+hilt-android-testing = { module = "com.google.dagger:hilt-android-testing", version.ref = "hilt" }
 sshj = { module = "com.hierynomus:sshj", version.ref = "sshj" }
 slf4j-android = { module = "uk.uuid.slf4j:slf4j-android", version.ref = "slf4jAndroid" }
 # sshj declares BouncyCastle at runtime scope only; we reference BouncyCastleProvider

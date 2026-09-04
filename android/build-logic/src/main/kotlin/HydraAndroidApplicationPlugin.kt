@@ -34,6 +34,7 @@ class HydraAndroidApplicationPlugin : Plugin<Project> {
                     excludes += setOf(
                         "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA",
                         "META-INF/versions/**", "META-INF/INDEX.LIST",
+                        "META-INF/LICENSE*", "META-INF/NOTICE*",
                     )
                 }
             }

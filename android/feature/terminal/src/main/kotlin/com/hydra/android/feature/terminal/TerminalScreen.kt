@@ -1,6 +1,8 @@
 package com.hydra.android.feature.terminal
 
+import android.app.Activity
 import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,12 +20,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -41,6 +46,12 @@ fun TerminalScreen(
     val session by viewModel.session.collectAsStateWithLifecycle()
 
     LaunchedEffect(deviceId) { viewModel.connect(deviceId) }
+
+    // A terminal session must outlive the screen timeout: the shell is still
+    // attached even while nobody is typing. On this hardware it also keeps the
+    // connect off the little cores — an idle screen throttles background
+    // threads hard enough to stall the SSH key exchange for tens of seconds.
+    KeepScreenOn()
 
     // Held so the view client can call back into the view it is attached to.
     val viewHolder = remember { mutableStateOf<TerminalView?>(null) }
@@ -95,7 +106,9 @@ fun TerminalScreen(
                     // the emulator and lets the shell open.
                     session?.let { view.attachSession(it) }
                 },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag(TERMINAL_VIEW_TAG),
             )
 
             state.error?.let { error ->
@@ -132,3 +145,17 @@ fun TerminalScreen(
 }
 
 private const val DEFAULT_TEXT_SIZE = 28
+
+/** Lets an instrumented test capture just the terminal surface. */
+const val TERMINAL_VIEW_TAG = "terminal-view"
+
+/** Holds the window's screen-on flag for as long as this composable is present. */
+@Composable
+private fun KeepScreenOn() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = (view.context as? Activity)?.window
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
+}
