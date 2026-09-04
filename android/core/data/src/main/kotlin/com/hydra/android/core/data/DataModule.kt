@@ -48,6 +48,11 @@ object DataModule {
 
     @Provides
     @Singleton
+    fun provideTaskRunner(api: com.hydra.android.core.network.HydraApi): TaskRunner =
+        ApiTaskRunner(api)
+
+    @Provides
+    @Singleton
     fun provideServerConfigProvider(
         secureStore: SecureStore,
         settings: SettingsRepository,
