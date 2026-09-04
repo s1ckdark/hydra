@@ -63,6 +63,20 @@ private class FakeApi(
     override suspend fun metricsSnapshot() = snapshotValue()
     override suspend fun chat(body: ChatRequest) = throw UnsupportedOperationException()
     override suspend fun execute(body: AgentExecuteRequest) = throw UnsupportedOperationException()
+    override suspend fun createOrch(body: com.hydra.android.core.model.CreateOrchRequest) =
+        throw UnsupportedOperationException()
+    override suspend fun deleteOrch(id: String, force: Boolean?) =
+        throw UnsupportedOperationException()
+    override suspend fun orchHealth(id: String) = throw UnsupportedOperationException()
+    override suspend fun orchProcesses(id: String) = throw UnsupportedOperationException()
+    override suspend fun executeOnOrch(
+        id: String,
+        body: com.hydra.android.core.model.ExecuteRequest,
+    ) = throw UnsupportedOperationException()
+    override suspend fun executeOnDevice(
+        id: String,
+        body: com.hydra.android.core.model.ExecuteRequest,
+    ) = throw UnsupportedOperationException()
 }
 
 class DashboardRepositoryTest {

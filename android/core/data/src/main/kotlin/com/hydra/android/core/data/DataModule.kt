@@ -38,6 +38,11 @@ object DataModule {
 
     @Provides
     @Singleton
+    fun provideOrchRepository(api: com.hydra.android.core.network.HydraApi): OrchRepository =
+        OrchRepository(api)
+
+    @Provides
+    @Singleton
     fun provideServerConfigProvider(
         secureStore: SecureStore,
         settings: SettingsRepository,
