@@ -43,6 +43,11 @@ object DataModule {
 
     @Provides
     @Singleton
+    fun provideSavedTaskStore(@ApplicationContext context: Context): SavedTaskStore =
+        SavedTaskStore(java.io.File(context.filesDir, "saved_tasks.json"))
+
+    @Provides
+    @Singleton
     fun provideServerConfigProvider(
         secureStore: SecureStore,
         settings: SettingsRepository,
