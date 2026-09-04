@@ -39,15 +39,24 @@ class OrchsViewModel @Inject constructor(
     /** Errors raised by an action (delete), kept separate from load errors. */
     private val actionError = MutableStateFlow<String?>(null)
 
+    /** The last rows the server confirmed, so a failed reload keeps them. */
+    private var loadedOrchs: List<Orch> = emptyList()
+
     @OptIn(ExperimentalCoroutinesApi::class)
     private val loaded: StateFlow<OrchsUiState> = reloads
         .map { }
         .onStart { emit(Unit) }
         .transformLatest {
+            // The loading state is emitted through the same flow as the result
+            // so the two are ordered. It drives the pull-to-refresh indicator,
+            // which means it has to go back up for every reload, not just the
+            // first one — and the rows stay put so the list never blinks.
+            emit(OrchsUiState(orchs = loadedOrchs, isLoading = true))
             val result = repository.list()
+            loadedOrchs = result.getOrDefault(loadedOrchs)
             emit(
                 OrchsUiState(
-                    orchs = result.getOrDefault(emptyList()),
+                    orchs = loadedOrchs,
                     isLoading = false,
                     error = result.exceptionOrNull()?.message,
                 )

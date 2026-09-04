@@ -11,11 +11,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -68,6 +70,21 @@ fun OrchsScreen(
             TopAppBar(
                 title = { Text("Orchs") },
                 actions = {
+                    // An empty LazyColumn does not drive pull-to-refresh, and
+                    // an empty list is exactly when you want to retry. The
+                    // dashboard carries the same button.
+                    if (state.isLoading) {
+                        CircularProgressIndicator(
+                            Modifier
+                                .padding(end = 16.dp)
+                                .size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        IconButton(onClick = viewModel::refresh) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "새로고침")
+                        }
+                    }
                     IconButton(onClick = onOpenCreate) {
                         Icon(Icons.Filled.Add, contentDescription = "새 Orchestration")
                     }
@@ -102,9 +119,25 @@ fun OrchsScreen(
                 }
             }
 
-            if (state.isLoading && state.orchs.isEmpty()) {
+            if (state.orchs.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                    if (state.isLoading) {
+                        CircularProgressIndicator()
+                    } else if (state.error == null) {
+                        // Without this an empty tailnet and a broken tab look
+                        // exactly alike: a blank screen.
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "실행 중인 Orchestration이 없습니다",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                "+ 로 코디네이터와 워커를 묶어 보세요",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
         }

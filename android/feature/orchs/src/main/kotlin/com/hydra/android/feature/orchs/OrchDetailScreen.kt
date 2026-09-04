@@ -28,12 +28,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hydra.android.core.designsystem.HydraCard
 import com.hydra.android.core.designsystem.HydraPurple
 import com.hydra.android.core.designsystem.StatusDot
+import com.hydra.android.core.model.WorkerProcess
 import com.hydra.android.core.model.WorkerStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -80,11 +82,7 @@ fun OrchDetailScreen(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                InfoCard(
-                    Modifier.weight(1f),
-                    "Head Node",
-                    state.health?.nodes?.firstOrNull { it.role == "head" }?.nodeId ?: "-",
-                )
+                InfoCard(Modifier.weight(1f), "Head Node", state.headNodeId ?: "-")
                 InfoCard(Modifier.weight(1f), "Workers", "${state.workers.size}")
             }
 
@@ -235,8 +233,10 @@ private fun WorkerBlock(worker: WorkerStatus) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    process.processName,
+                    processLabel(process),
                     style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(0.4f),
                 )
                 Text(
@@ -260,3 +260,11 @@ private fun WorkerBlock(worker: WorkerStatus) {
         }
     }
 }
+
+/**
+ * handler.go leaves processName empty and puts the real thing in command,
+ * which is what iOS renders too. The pid is the last resort so a row is never
+ * blank.
+ */
+internal fun processLabel(process: WorkerProcess): String =
+    process.processName.ifBlank { process.command }.ifBlank { "PID ${process.pid}" }

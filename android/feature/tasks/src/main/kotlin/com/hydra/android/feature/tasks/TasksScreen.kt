@@ -48,6 +48,9 @@ import com.hydra.android.core.designsystem.HydraGreen
 import com.hydra.android.core.designsystem.HydraOrange
 import com.hydra.android.core.model.SavedTask
 import com.hydra.android.core.model.TaskPriority
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 @Composable
 internal fun priorityTint(priority: TaskPriority): Color = when (priority) {
@@ -215,7 +218,7 @@ private fun TaskRow(
                 )
                 task.lastRunStatus?.let { status ->
                     Text(
-                        "$status · ${task.lastRunAt}",
+                        lastRunLabel(status, task.lastRunAt),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (status == "success") {
                             HydraGreen
@@ -252,4 +255,19 @@ private fun TaskRow(
             }
         }
     }
+}
+
+/**
+ * "success · 09-04 14:44". The raw Instant reads as a UTC machine
+ * timestamp, which is not what someone glancing at a task row wants.
+ */
+internal fun lastRunLabel(
+    status: String,
+    at: Instant?,
+    zone: TimeZone = TimeZone.currentSystemDefault(),
+): String {
+    val local = at?.toLocalDateTime(zone) ?: return status
+    fun pad(value: Int) = value.toString().padStart(2, '0')
+    return "$status · ${pad(local.monthNumber)}-${pad(local.dayOfMonth)} " +
+        "${pad(local.hour)}:${pad(local.minute)}"
 }

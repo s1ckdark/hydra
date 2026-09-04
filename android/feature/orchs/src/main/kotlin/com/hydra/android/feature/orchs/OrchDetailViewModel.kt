@@ -25,7 +25,15 @@ data class OrchDetailUiState(
     val isExecuting: Boolean = false,
     val executeResult: OrchExecuteResponse? = null,
     val error: String? = null,
-)
+) {
+    /**
+     * handler.go labels the head node "coordinator"; "head" is accepted only
+     * because the wire name has moved before.
+     */
+    val headNodeId: String? get() = health?.nodes
+        ?.firstOrNull { it.role == "coordinator" || it.role == "head" }
+        ?.nodeId
+}
 
 @HiltViewModel
 class OrchDetailViewModel @Inject constructor(

@@ -118,6 +118,59 @@ class OrchDetailViewModelTest {
     }
 
     @Test
+    fun `the head node is the coordinator role the server actually sends`() = runTest {
+        // Found on device: the card read "-" because the lookup asked for
+        // role "head"; handler.go labels that node "coordinator".
+        val repo = DetailFakeRepo(
+            healthResult = Result.success(
+                OrchHealth(
+                    orchId = "o1",
+                    nodes = listOf(
+                        OrchNodeStatus("d5", "coordinator", true),
+                        OrchNodeStatus("d6", "worker", true),
+                    ),
+                )
+            )
+        )
+        val v = vm(repo)
+        v.state.test {
+            awaitItem(); advanceTimeBy(100)
+            assertEquals("d5", expectMostRecentItem().headNodeId)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `the head node falls back to a head-labelled node`() = runTest {
+        val repo = DetailFakeRepo(
+            healthResult = Result.success(
+                OrchHealth(orchId = "o1", nodes = listOf(OrchNodeStatus("d7", "head", true)))
+            )
+        )
+        val v = vm(repo)
+        v.state.test {
+            awaitItem(); advanceTimeBy(100)
+            assertEquals("d7", expectMostRecentItem().headNodeId)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `the head node is null when no node claims the role`() = runTest {
+        val repo = DetailFakeRepo(
+            healthResult = Result.success(
+                OrchHealth(orchId = "o1", nodes = listOf(OrchNodeStatus("d2", "worker", true)))
+            )
+        )
+        val v = vm(repo)
+        v.state.test {
+            awaitItem(); advanceTimeBy(100)
+            assertNull(expectMostRecentItem().headNodeId)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun `execute records the result`() = runTest {
         val repo = DetailFakeRepo()
         val v = vm(repo)

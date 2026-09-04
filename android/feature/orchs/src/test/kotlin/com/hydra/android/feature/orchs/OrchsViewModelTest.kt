@@ -10,8 +10,10 @@ import com.hydra.android.core.model.Orch
 import com.hydra.android.core.network.ApiException
 import com.hydra.android.core.network.HydraApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -19,6 +21,7 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.datetime.Instant
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -54,10 +57,16 @@ internal object UnusedApi : HydraApi {
 private class FakeOrchRepo(
     private val listResult: Result<List<Orch>> = Result.success(listOf(orch("o1"), orch("o2"))),
     private val deleteResult: Result<Unit> = Result.success(Unit),
+    /** A real load suspends; tests that watch the loading state need that. */
+    private val listDelayMs: Long = 0,
 ) : OrchRepository(api = UnusedApi) {
     var listCalls = 0
     var deletedId: String? = null
-    override suspend fun list(): Result<List<Orch>> { listCalls++; return listResult }
+    override suspend fun list(): Result<List<Orch>> {
+        listCalls++
+        if (listDelayMs > 0) delay(listDelayMs)
+        return listResult
+    }
     override suspend fun delete(id: String): Result<Unit> { deletedId = id; return deleteResult }
 }
 
@@ -124,6 +133,37 @@ class OrchsViewModelTest {
             val s = expectMostRecentItem()
             assertEquals("orch is running", s.error)
             assertEquals(2, s.orchs.size)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `a refresh reports itself as loading while it runs`() = runTest {
+        // Found on device: pull-to-refresh reloaded but showed no indicator,
+        // because isLoading was only ever true before the very first load.
+        val repo = FakeOrchRepo(listDelayMs = 100)
+        val vm = OrchsViewModel(repo)
+        vm.state.test {
+            awaitItem(); advanceUntilIdle()
+            assertFalse("settled after the first load", expectMostRecentItem().isLoading)
+            vm.refresh()
+            advanceTimeBy(50)
+            assertTrue("the refresh must be visible", expectMostRecentItem().isLoading)
+            advanceUntilIdle()
+            assertFalse(expectMostRecentItem().isLoading)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `a refresh keeps the rows on screen while it runs`() = runTest {
+        val repo = FakeOrchRepo(listDelayMs = 100)
+        val vm = OrchsViewModel(repo)
+        vm.state.test {
+            awaitItem(); advanceUntilIdle()
+            vm.refresh()
+            advanceTimeBy(50)
+            assertEquals("the list must not blink empty", 2, expectMostRecentItem().orchs.size)
             cancelAndIgnoreRemainingEvents()
         }
     }
