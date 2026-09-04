@@ -3,7 +3,9 @@ package com.hydra.android
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Icon
@@ -25,6 +27,13 @@ import com.hydra.android.feature.dashboard.DASHBOARD_ROUTE
 import com.hydra.android.feature.dashboard.dashboardScreen
 import com.hydra.android.feature.devices.DEVICES_ROUTE
 import com.hydra.android.feature.devices.devicesScreen
+import com.hydra.android.feature.orchs.CREATE_ORCH_ROUTE
+import com.hydra.android.feature.orchs.ORCHS_ROUTE
+import com.hydra.android.feature.orchs.orchDetailRoute
+import com.hydra.android.feature.orchs.orchsScreens
+import com.hydra.android.feature.tasks.TASKS_ROUTE
+import com.hydra.android.feature.tasks.taskEditorRoute
+import com.hydra.android.feature.tasks.tasksScreens
 import com.hydra.android.feature.terminal.terminalRoute
 import com.hydra.android.feature.terminal.terminalScreen
 import com.hydra.android.feature.settings.SETTINGS_ROUTE
@@ -32,9 +41,9 @@ import com.hydra.android.feature.settings.SSH_KEY_ROUTE
 import com.hydra.android.feature.settings.settingsScreen
 
 /**
- * The four shipped tabs. The iOS app has six; Orchs and Tasks are still
- * absent rather than stubbed. The terminal is not a tab — it is a full-screen
- * route, matching iOS's fullScreenCover.
+ * The six tabs, in the iOS order. The terminal, the orch create/detail
+ * screens and the task editor are not tabs — they are full-screen routes,
+ * matching iOS's fullScreenCover and navigation pushes.
  */
 enum class HydraDestination(
     val route: String,
@@ -43,6 +52,8 @@ enum class HydraDestination(
 ) {
     DASHBOARD(DASHBOARD_ROUTE, "대시보드", Icons.Filled.Speed),
     DEVICES(DEVICES_ROUTE, "디바이스", Icons.Filled.Dns),
+    ORCHS(ORCHS_ROUTE, "Orchs", Icons.Filled.Hub),
+    TASKS(TASKS_ROUTE, "Tasks", Icons.AutoMirrored.Filled.ListAlt),
     CHAT(CHAT_ROUTE, "Chat", Icons.AutoMirrored.Filled.Chat),
     SETTINGS(SETTINGS_ROUTE, "설정", Icons.Filled.Settings),
     ;
@@ -60,7 +71,10 @@ fun HydraApp() {
 
     // Full-screen destinations own the whole window.
     val hideBottomBar = currentRoute?.startsWith("terminal/") == true ||
-        currentRoute == SSH_KEY_ROUTE
+        currentRoute == SSH_KEY_ROUTE ||
+        currentRoute == CREATE_ORCH_ROUTE ||
+        currentRoute?.startsWith("orchs/") == true ||
+        currentRoute?.startsWith("tasks/edit") == true
 
     Scaffold(
         bottomBar = {
@@ -97,6 +111,15 @@ fun HydraApp() {
         ) {
             dashboardScreen()
             devicesScreen(onSelectDevice = { id -> navController.navigate(terminalRoute(id)) })
+            orchsScreens(
+                onOpenDetail = { id -> navController.navigate(orchDetailRoute(id)) },
+                onOpenCreate = { navController.navigate(CREATE_ORCH_ROUTE) },
+                onBack = { navController.popBackStack() },
+            )
+            tasksScreens(
+                onOpenEditor = { id -> navController.navigate(taskEditorRoute(id)) },
+                onBack = { navController.popBackStack() },
+            )
             chatScreen()
             settingsScreen(
                 onOpenSshKey = { navController.navigate(SSH_KEY_ROUTE) },
