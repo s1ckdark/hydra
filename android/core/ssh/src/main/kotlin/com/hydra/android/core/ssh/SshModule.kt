@@ -17,4 +17,9 @@ object SshModule {
     @Singleton
     fun provideKnownHostsStore(@ApplicationContext context: Context): KnownHostsStore =
         KnownHostsStore(File(context.filesDir, "known_hosts"))
+
+    @Provides
+    @Singleton
+    fun provideSshTransportFactory(knownHosts: KnownHostsStore): SshTransportFactory =
+        SshjTransportFactory(knownHosts)
 }

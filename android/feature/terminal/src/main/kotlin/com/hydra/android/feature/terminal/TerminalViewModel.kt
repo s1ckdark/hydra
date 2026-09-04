@@ -4,11 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.hydra.android.core.data.DevicesRepository
 import com.hydra.android.core.ssh.HostKeyFingerprint
-import com.hydra.android.core.ssh.KnownHostsStore
 import com.hydra.android.core.ssh.SshAuth
 import com.hydra.android.core.ssh.SshCredentialResolver
-import com.hydra.android.core.ssh.SshjTransport
-import com.hydra.android.core.ssh.TofuHostKeyVerifier
+import com.hydra.android.core.ssh.SshTransportFactory
 import com.termux.terminal.TerminalSession
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CompletableDeferred
@@ -30,7 +28,7 @@ data class TerminalUiState(
 class TerminalViewModel @Inject constructor(
     private val devices: DevicesRepository,
     private val credentials: SshCredentialResolver,
-    private val knownHosts: KnownHostsStore,
+    private val transports: SshTransportFactory,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TerminalUiState())
@@ -91,10 +89,9 @@ class TerminalViewModel @Inject constructor(
                 return@launch
             }
 
-            val transport = SshjTransport(
-                verifierFactory = { onTrust -> TofuHostKeyVerifier(knownHosts, onTrust) },
-                onNeedsTrust = { fingerprint -> requestHostKeyTrust(fingerprint) },
-            )
+            val transport = transports.create { fingerprint ->
+                requestHostKeyTrust(fingerprint)
+            }
             val s = TerminalSession(
                 transport = transport,
                 scope = viewModelScope,

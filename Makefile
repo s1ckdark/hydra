@@ -20,7 +20,7 @@ BUILD_DIR=./build
 CMD_CLI=./cmd/clusterctl
 CMD_SERVER=./cmd/server
 
-.PHONY: all build build-cli build-server clean test lint fmt vet deps run-server help hydra-app hydra-app-run android-build android-test
+.PHONY: all build build-cli build-server clean test lint fmt vet deps run-server help hydra-app hydra-app-run android-build android-test android-instrumented-test
 
 # Default target
 all: deps build
@@ -143,6 +143,10 @@ ANDROID_JAVA_HOME=/Users/dave/.asdf/installs/java/temurin-21.0.3+9.0.LTS
 android-build: ## Build the Android debug APK
 	@echo "Building Android client..."
 	cd android && JAVA_HOME=$(ANDROID_JAVA_HOME) ./gradlew :app:assembleDebug
+
+android-instrumented-test: ## Run Android instrumented (on-device) tests — needs a running emulator or device
+	@echo "Running Android instrumented tests..."
+	cd android && JAVA_HOME=$(ANDROID_JAVA_HOME) ./gradlew connectedDebugAndroidTest
 
 android-test: ## Run Android unit tests
 	@echo "Testing Android client..."

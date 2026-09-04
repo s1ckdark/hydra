@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -95,7 +96,9 @@ fun TerminalScreen(
                     // the emulator and lets the shell open.
                     session?.let { view.attachSession(it) }
                 },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag(TERMINAL_VIEW_TAG),
             )
 
             state.error?.let { error ->
@@ -132,3 +135,6 @@ fun TerminalScreen(
 }
 
 private const val DEFAULT_TEXT_SIZE = 28
+
+/** Lets an instrumented test capture just the terminal surface. */
+const val TERMINAL_VIEW_TAG = "terminal-view"

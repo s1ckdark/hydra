@@ -5,8 +5,8 @@ import com.hydra.android.core.data.SecureStore
 import com.hydra.android.core.data.SettingsSource
 import com.hydra.android.core.model.Device
 import com.hydra.android.core.ssh.HostKeyFingerprint
-import com.hydra.android.core.ssh.KnownHostsStore
 import com.hydra.android.core.ssh.SshCredentialResolver
+import com.hydra.android.core.ssh.SshTransportFactory
 import com.hydra.android.core.ssh.SshError
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -24,16 +24,10 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
-import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TerminalViewModelTest {
-
-    @get:Rule
-    val temp = TemporaryFolder()
 
     private val dispatcher = StandardTestDispatcher()
 
@@ -72,7 +66,7 @@ class TerminalViewModelTest {
         return TerminalViewModel(
             devices = devices,
             credentials = SshCredentialResolver(secureStore, settings),
-            knownHosts = KnownHostsStore(File(temp.root, "known_hosts")),
+            transports = SshTransportFactory { throw UnsupportedOperationException() },
         )
     }
 
