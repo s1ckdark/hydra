@@ -15,6 +15,8 @@ dependencies {
     implementation(project(":feature:settings"))
     implementation(project(":feature:devices"))
     implementation(project(":feature:terminal"))
+    implementation(project(":feature:orchs"))
+    implementation(project(":feature:tasks"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)

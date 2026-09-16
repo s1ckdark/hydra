@@ -246,6 +246,8 @@ func Load() (*Config, error) {
 	viper.BindEnv("ssh.private_key_path", "HYDRA_SSH_KEY", "NAGA_SSH_KEY")
 	viper.BindEnv("database.dsn", "HYDRA_DATABASE_DSN", "NAGA_DATABASE_DSN")
 	viper.BindEnv("server.api_key", "HYDRA_API_KEY", "NAGA_API_KEY")
+	viper.BindEnv("server.host", "HYDRA_SERVER_HOST", "NAGA_SERVER_HOST")
+	viper.BindEnv("server.port", "HYDRA_SERVER_PORT", "NAGA_SERVER_PORT")
 
 	// Try to read config file
 	if err := viper.ReadInConfig(); err != nil {

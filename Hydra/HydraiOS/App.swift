@@ -8,8 +8,19 @@ struct HydraiOSApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .hydraAppearancePreferences()
+                .defaultAppStorage(appearanceDefaults)
                 .environmentObject(dashboardVM)
                 .environmentObject(appState)
         }
+    }
+
+    private var appearanceDefaults: UserDefaults {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--settings-ui-test") {
+            return SettingsUITestFixture.preferenceStore
+        }
+        #endif
+        return .standard
     }
 }

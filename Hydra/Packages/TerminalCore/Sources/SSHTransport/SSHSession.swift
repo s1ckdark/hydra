@@ -1,4 +1,4 @@
-// vendored from iWorks/terminal @ 3b3545e, do not edit here
+// vendored from iWorks/terminal @ 3b3545e — LOCALLY MODIFIED: direct exec and Sendable host fingerprints
 import Foundation
 
 public enum SSHState: Equatable {
@@ -40,15 +40,23 @@ public protocol SSHSession: AnyObject {
     /// for silent environment probes (uname, /etc/os-release, $SHELL).
     /// Implementations that don't support exec (e.g. Fake) may return "".
     func exec(_ command: String) async throws -> String
+
+    /// Execute an already quoted command without an additional login-shell
+    /// wrapper. Only stdout is returned; registration uses this for its exact
+    /// completion marker rather than mixing shell diagnostics into the result.
+    func execDirect(_ command: String) async throws -> String
 }
 
 public extension SSHSession {
     /// Default opt-out: transports that haven't wired a side-channel return
     /// an empty string. Probe call sites must treat "" as "unknown env".
     func exec(_ command: String) async throws -> String { "" }
+
+    /// Keeps lightweight test transports compatible with the command channel.
+    func execDirect(_ command: String) async throws -> String { try await exec(command) }
 }
 
-public struct HostKeyFingerprint: Equatable {
+public struct HostKeyFingerprint: Equatable, Sendable {
     public let keyType: String       // e.g. "ssh-ed25519"
     public let publicKeyBase64: String
     public let sha256Hex: String

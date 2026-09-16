@@ -45,8 +45,12 @@ type SSHDiagnosis struct {
 }
 
 func knownHostsPath() string {
-	if p := os.Getenv("CLUSTERCTL_SSH_KNOWN_HOSTS"); p != "" {
-		return p
+	// Canonical HYDRA_ prefix first; the legacy CLUSTERCTL_ name is still
+	// honored so existing shells and systemd units keep working.
+	for _, env := range []string{"HYDRA_SSH_KNOWN_HOSTS", "CLUSTERCTL_SSH_KNOWN_HOSTS"} {
+		if p := os.Getenv(env); p != "" {
+			return p
+		}
 	}
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, ".ssh", "known_hosts")

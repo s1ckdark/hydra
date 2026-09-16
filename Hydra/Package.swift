@@ -11,7 +11,7 @@ let package = Package(
         .executable(name: "Hydra", targets: ["Hydra"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/s1ckdark/SwiftTerm", revision: "54b436a6231976fa64d7c3859d0b197a6ccfcb91"),
+        .package(path: "Packages/SwiftTerm"),
         .package(path: "Packages/TerminalCore"),
     ],
     targets: [

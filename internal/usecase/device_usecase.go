@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -18,14 +19,16 @@ type GPUChecker interface {
 
 // DeviceUseCase handles device-related business logic
 type DeviceUseCase struct {
-	repos         *repository.Repositories
-	tailscale     TailscaleClient
-	sshCollector  MetricsCollector
-	gpuChecker    GPUChecker
-	cacheTTL      time.Duration
-	cachedDevices []*domain.Device
-	cacheTime     time.Time
-	cacheMu       sync.RWMutex
+	repos           *repository.Repositories
+	tailscale       TailscaleClient
+	sshCollector    MetricsCollector
+	gpuChecker      GPUChecker
+	cacheTTL        time.Duration
+	cachedDevices   []*domain.Device
+	cacheTime       time.Time
+	cacheMu         sync.RWMutex
+	refreshMu       sync.Mutex
+	cacheGeneration uint64
 
 	// capabilityOverride records capabilities reported by clients
 	// (Hydra GUI, wstub, future workers) via APIRegisterCapabilities.
@@ -78,6 +81,12 @@ type TailscaleClient interface {
 	ListDevices(ctx context.Context) ([]*domain.Device, error)
 	GetDevice(ctx context.Context, nameOrID string) (*domain.Device, error)
 	GetDeviceByID(ctx context.Context, id string) (*domain.Device, error)
+}
+
+// freshTailscaleClient bypasses adapter-level caches when available. The REST
+// adapter has no cache and can use ListDevices directly.
+type freshTailscaleClient interface {
+	ListDevicesFresh(ctx context.Context) ([]*domain.Device, error)
 }
 
 // MetricsCollector interface for collecting metrics from devices
@@ -194,6 +203,16 @@ func uniqueHostCount(devices []*domain.Device) int {
 
 // ListDevices returns all devices, using cache if available
 func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]*domain.Device, error) {
+	return uc.listDevices(ctx, forceRefresh, false)
+}
+
+// RefreshTailscaleDevices fetches inventory directly and reports failures rather
+// than claiming a stale snapshot was refreshed. It does not start SSH probes.
+func (uc *DeviceUseCase) RefreshTailscaleDevices(ctx context.Context) ([]*domain.Device, error) {
+	return uc.listDevices(ctx, true, true)
+}
+
+func (uc *DeviceUseCase) listDevices(ctx context.Context, forceRefresh, strict bool) ([]*domain.Device, error) {
 	if !forceRefresh {
 		uc.cacheMu.RLock()
 		if time.Since(uc.cacheTime) < uc.cacheTTL && len(uc.cachedDevices) > 0 {
@@ -205,9 +224,26 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 		uc.cacheMu.RUnlock()
 	}
 
+	// Serialize fetch commits and late GPU callbacks so older work cannot
+	// overwrite a manually refreshed inventory or resurrect stale DB records.
+	uc.refreshMu.Lock()
+	defer uc.refreshMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	// Fetch from Tailscale API
-	devices, err := uc.tailscale.ListDevices(ctx)
+	var devices []*domain.Device
+	var err error
+	if fresh, ok := uc.tailscale.(freshTailscaleClient); forceRefresh && ok {
+		devices, err = fresh.ListDevicesFresh(ctx)
+	} else {
+		devices, err = uc.tailscale.ListDevices(ctx)
+	}
 	if err != nil {
+		if strict {
+			return nil, fmt.Errorf("refresh Tailscale inventory: %w", err)
+		}
 		// Tailscale unreachable (token expired, network blip, etc.) — fall back
 		// to the freshest local snapshot so dashboards stay usable. Without this
 		// the home/devices/GPU endpoints all 500 on a single upstream hiccup.
@@ -218,6 +254,9 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 			uc.applyCapabilityOverrides(fallback)
 			return fallback, nil
 		}
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	uc.noteFetchSuccess()
@@ -247,7 +286,13 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 	// without false positives.
 	freshHosts := uniqueHostCount(devices)
 	prevHosts := uniqueHostCount(prevCache)
+	if strict && prevHosts > 0 && freshHosts == 0 {
+		return nil, fmt.Errorf("empty Tailscale inventory: expected %d known hosts", prevHosts)
+	}
 	if prevHosts >= 4 && freshHosts*4 < prevHosts*3 {
+		if strict {
+			return nil, fmt.Errorf("incomplete Tailscale inventory: received %d of %d known hosts", freshHosts, prevHosts)
+		}
 		log.Printf("[devices] tailscale returned only %d of %d known hosts — keeping stale set", freshHosts, prevHosts)
 		uc.cacheMu.Lock()
 		uc.cachedDevices = prevCache
@@ -266,6 +311,8 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 	uc.cacheMu.Lock()
 	uc.cachedDevices = devices
 	uc.cacheTime = time.Now()
+	uc.cacheGeneration++
+	generation := uc.cacheGeneration
 	uc.cacheMu.Unlock()
 
 	// Save to repository for persistence
@@ -292,8 +339,7 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 	}
 
 	// Check GPU on candidates in the background (non-blocking)
-	// Check GPU on candidates in the background (non-blocking)
-	if uc.gpuChecker != nil {
+	if !strict && uc.gpuChecker != nil {
 		cloned := make([]*domain.Device, len(devices))
 		for i, d := range devices {
 			copy := *d
@@ -304,19 +350,31 @@ func (uc *DeviceUseCase) ListDevices(ctx context.Context, forceRefresh bool) ([]
 			defer cancel()
 			uc.probeGPU(bgCtx, devs)
 
-			// Update cache and DB with GPU results
-			uc.cacheMu.Lock()
-			uc.cachedDevices = devs
-			uc.cacheMu.Unlock()
-
-			if uc.repos != nil && uc.repos.Devices != nil {
-				_ = uc.repos.Devices.SaveMany(bgCtx, devs)
-			}
+			uc.saveGPUResults(bgCtx, devs, generation)
 		}(cloned)
 	}
 
 	uc.applyCapabilityOverrides(devices)
 	return devices, nil
+}
+
+// saveGPUResults accepts only the inventory generation that started the probe.
+// refreshMu also protects persistence: a stale probe cannot race SaveMany with
+// a newer inventory commit after passing the generation check.
+func (uc *DeviceUseCase) saveGPUResults(ctx context.Context, devices []*domain.Device, generation uint64) bool {
+	uc.refreshMu.Lock()
+	defer uc.refreshMu.Unlock()
+	uc.cacheMu.Lock()
+	if uc.cacheGeneration != generation {
+		uc.cacheMu.Unlock()
+		return false
+	}
+	uc.cachedDevices = devices
+	uc.cacheMu.Unlock()
+	if uc.repos != nil && uc.repos.Devices != nil {
+		_ = uc.repos.Devices.SaveMany(ctx, devices)
+	}
+	return true
 }
 
 // staleFallback returns the freshest device list available from local sources

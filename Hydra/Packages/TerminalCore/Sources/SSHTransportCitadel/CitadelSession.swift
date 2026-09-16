@@ -3,8 +3,19 @@ import Foundation
 import SSHTransport
 import Citadel
 import NIOCore
+import NIOPosix
 import NIOSSH
 import Crypto
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
+
+/// Called during key exchange, before the server can receive credentials.
+/// Throw to reject the presented host key. Approval must not be inferred from
+/// a fingerprint captured after authentication has already completed.
+public typealias SSHHostKeyVerifier = @Sendable (HostKeyFingerprint) async throws -> Void
 
 /// Pure-Swift SSH session backed by Citadel (NIO + NIOSSH). Works on iOS,
 /// macCatalyst, and macOS. Replaces the Shout-based LibSSH2Session for
@@ -21,17 +32,23 @@ public final class CitadelSession: SSHSession, @unchecked Sendable {
     private let outC: AsyncStream<Data>.Continuation
     private let stC:  AsyncStream<SSHState>.Continuation
 
-    public private(set) var remoteHostKey: HostKeyFingerprint? = nil
-    // LOCAL PATCH (C1): populated by HostKeyCapturingValidator below (via connect()'s
-    // custom hostKeyValidator) so app-layer TOFU (HostKeyGate) has a real fingerprint.
+    public var remoteHostKey: HostKeyFingerprint? {
+        connectionLock.withLock { capturedHostKey }
+    }
 
+    private let connectionLock = NSLock()
+    private let hostKeyVerifier: SSHHostKeyVerifier?
+    private var capturedHostKey: HostKeyFingerprint?
+    private var connectionAttempt: UUID?
+    private var hostKeyValidation: HostKeyCapturingValidator?
     private var client: SSHClient?
     private var ptyTask: Task<Void, Never>?
     private var writeC: AsyncStream<Data>.Continuation?
     private var resizeC: AsyncStream<(Int, Int)>.Continuation?
     private var closeC: AsyncStream<Void>.Continuation?
 
-    public init() {
+    public init(hostKeyVerifier: SSHHostKeyVerifier? = nil) {
+        self.hostKeyVerifier = hostKeyVerifier
         var oc: AsyncStream<Data>.Continuation!
         output = AsyncStream { oc = $0 }
         outC = oc
@@ -44,6 +61,12 @@ public final class CitadelSession: SSHSession, @unchecked Sendable {
 
     public func connect(host: String, port: Int, user: String,
                         auth: SSHAuth) async throws {
+        // Legacy key-auth sessions keep their app-layer TOFU behavior. Password
+        // authentication, however, must never start without a pre-auth verifier.
+        if case .password = auth, hostKeyVerifier == nil {
+            throw SSHError.handshakeFailed("Password authentication requires a host-key verifier.")
+        }
+        try Task.checkCancellation()
         stC.yield(.connecting)
         let method: SSHAuthenticationMethod
         switch auth {
@@ -53,27 +76,77 @@ public final class CitadelSession: SSHSession, @unchecked Sendable {
             method = try Self.makeKeyAuth(user: user, pem: pem, passphrase: passphrase)
         }
 
+        let attempt = UUID()
+        let validator = HostKeyCapturingValidator(onCapture: { [weak self] fingerprint in
+            guard let self else { return }
+            self.connectionLock.withLock {
+                guard self.connectionAttempt == attempt else { return }
+                self.capturedHostKey = fingerprint
+            }
+        }, verifier: hostKeyVerifier)
+        let previous = connectionLock.withLock { () -> (HostKeyCapturingValidator?, SSHClient?) in
+            let previous = (hostKeyValidation, client)
+            connectionAttempt = attempt
+            capturedHostKey = nil
+            hostKeyValidation = validator
+            client = nil
+            return previous
+        }
+        previous.0?.cancelPendingValidation()
+        if let previousClient = previous.1 {
+            Task { try? await previousClient.close() }
+        }
+
         do {
-            client = try await SSHClient.connect(
-                host: host,
-                port: port,
-                authenticationMethod: method,
-                // LOCAL PATCH (C1): capture the presented host key for TOFU while still
-                // accepting every connection — enforcement stays app-layer (HostKeyGate).
-                hostKeyValidator: .custom(HostKeyCapturingValidator(onCapture: { [weak self] key in
-                    self?.storeFingerprint(from: key)
-                })),
-                reconnect: .never
-            )
+            let connectedClient = try await withTaskCancellationHandler {
+                try Task.checkCancellation()
+                return try await SSHClient.connect(
+                    host: host,
+                    port: port,
+                    authenticationMethod: method,
+                    hostKeyValidator: .custom(validator),
+                    reconnect: .never
+                )
+            } onCancel: {
+                validator.cancelPendingValidation()
+            }
+            // Citadel's connect future does not propagate Swift task cancellation.
+            // A late completion after disconnect/replacement must be closed, never
+            // installed as the current client's authenticated connection.
+            // Do not acquire the validation lock while holding connectionLock:
+            // a same-loop host-validation completion may synchronously reenter
+            // disconnect through an SSH callback.
+            let validationCancelled = validator.isCancelled
+            let accepted = connectionLock.withLock { () -> Bool in
+                guard connectionAttempt == attempt, !Task.isCancelled, !validationCancelled else {
+                    return false
+                }
+                client = connectedClient
+                return true
+            }
+            guard accepted else {
+                try? await connectedClient.close()
+                throw CancellationError()
+            }
             stC.yield(.connected)
         } catch {
-            stC.yield(.disconnected(reason: error.localizedDescription))
-            throw SSHError.authFailed(error.localizedDescription)
+            let verificationError = validator.failure
+            let wasCancelled = Task.isCancelled || validator.isCancelled || error is CancellationError
+            validator.cancelPendingValidation()
+            // Host-key rejection and cancellation are authoritative. Only
+            // generic transport failures are classified; never display raw
+            // Citadel/NIO diagnostics or collapse network errors into auth.
+            let reportedError: Error = verificationError
+                ?? (wasCancelled ? CancellationError() : Self.classify(error: error))
+            if connectionLock.withLock({ connectionAttempt == attempt }) {
+                stC.yield(.disconnected(reason: reportedError is CancellationError ? nil : reportedError.localizedDescription))
+            }
+            throw reportedError
         }
     }
 
     public func openShell(termType: String, cols: Int, rows: Int) async throws {
-        guard let client = client else {
+        guard let client = connectionLock.withLock({ client }) else {
             throw SSHError.channelFailed("not connected")
         }
 
@@ -154,7 +227,7 @@ public final class CitadelSession: SSHSession, @unchecked Sendable {
     }
 
     public func exec(_ command: String) async throws -> String {
-        guard let client = client else {
+        guard let client = connectionLock.withLock({ client }) else {
             throw SSHError.channelFailed("not connected")
         }
         // Side-channel exec: bytes do NOT flow through `output` (no PTY).
@@ -168,33 +241,167 @@ public final class CitadelSession: SSHSession, @unchecked Sendable {
         return String(decoding: buf.readableBytesView, as: UTF8.self)
     }
 
+    public func execDirect(_ command: String) async throws -> String {
+        guard let client = connectionLock.withLock({ client }) else {
+            throw SSHError.channelFailed("not connected")
+        }
+        try Task.checkCancellation()
+        do {
+            let buf = try await client.executeCommand(
+                command, maxResponseSize: 16 * 1024, mergeStreams: false, inShell: false
+            )
+            try Task.checkCancellation()
+            return String(decoding: buf.readableBytesView, as: UTF8.self)
+        } catch {
+            if Task.isCancelled || error is CancellationError { throw CancellationError() }
+            throw Self.classify(error: error)
+        }
+    }
+
     public func disconnect() {
+        let previous = connectionLock.withLock { () -> (HostKeyCapturingValidator?, SSHClient?) in
+            connectionAttempt = nil
+            let previous = (hostKeyValidation, client)
+            hostKeyValidation = nil
+            client = nil
+            return previous
+        }
+        previous.0?.cancelPendingValidation()
         closeC?.finish()
         writeC?.finish()
         resizeC?.finish()
-        Task { [client] in try? await client?.close() }
-        client = nil
+        Task { try? await previous.1?.close() }
         outC.finish()
         stC.finish()
     }
 
     // MARK: Helpers
 
-    // LOCAL PATCH (C1): render the captured NIOSSHPublicKey into the HostKeyFingerprint
-    // the app-layer TOFU gate (HostKeyGate/KnownHostsStore) compares against. Uses NIOSSH's
-    // own `String(openSSHPublicKey:)` renderer (same wire encoding NIOSSH itself uses to
-    // write "algorithm-id base64-key" strings) rather than re-deriving the SSH wire format
-    // by hand, since NIOSSHPublicKey's own key-type prefix/serialization internals aren't
-    // public API.
-    private func storeFingerprint(from key: NIOSSHPublicKey) {
-        let rendered = String(openSSHPublicKey: key)
-        let parts = rendered.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
-        guard parts.count == 2, let keyBytes = Data(base64Encoded: String(parts[1])) else { return }
-        let digest = SHA256.hash(data: keyBytes)
-        let sha256Hex = digest.map { String(format: "%02x", $0) }.joined()
-        remoteHostKey = HostKeyFingerprint(keyType: String(parts[0]),
-                                           publicKeyBase64: String(parts[1]),
-                                           sha256Hex: sha256Hex)
+    /// Classifies only concrete error types/codes, never localized strings.
+    /// The depth bound also prevents malformed NSError underlying-error chains
+    /// from trapping or recursing indefinitely.
+    static func classify(error: Error, depth: Int = 0) -> SSHFailure {
+        guard depth < 8 else { return .unknown }
+        if let failure = error as? SSHFailure { return failure }
+        if let command = error as? SSHClient.CommandFailed { return .commandFailed(exitStatus: command.exitCode) }
+        if error is AuthenticationFailed { return .authenticationRejected }
+        if let clientError = error as? SSHClientError {
+            switch clientError {
+            case .allAuthenticationOptionsFailed: return .authenticationRejected
+            case .unsupportedPasswordAuthentication: return .passwordAuthenticationUnsupported
+            case .unsupportedPrivateKeyAuthentication: return .privateKeyAuthenticationUnsupported
+            case .channelCreationFailed: return .channelUnavailable
+            case .unsupportedHostBasedAuthentication: return .unknown
+            }
+        }
+        if let connection = error as? NIOConnectionError {
+            // A failed DNS family must not obscure a real connection failure
+            // against an address resolved by the other family.
+            for attempt in connection.connectionErrors {
+                let cause = classify(error: attempt.error, depth: depth + 1)
+                if cause != .unknown { return cause }
+            }
+            if connection.connectionErrors.isEmpty,
+               connection.dnsAError != nil || connection.dnsAAAAError != nil {
+                return .nameResolutionFailed
+            }
+            return .unknown
+        }
+        if error is SocketAddressError.UnknownHost { return .nameResolutionFailed }
+        if let address = error as? SocketAddressError {
+            switch address {
+            case .unknown, .failedToParseIPString: return .nameResolutionFailed
+            default: return .unknown
+            }
+        }
+        if let io = error as? IOError { return classifyPOSIX(code: Int(io.errnoCode)) }
+        if let channel = error as? ChannelError {
+            switch channel {
+            case .connectTimeout: return .timedOut
+            case .ioOnClosedChannel, .alreadyClosed, .outputClosed, .inputClosed, .eof: return .connectionLost
+            case .writeHostUnreachable: return .networkUnavailable
+            default: return .unknown
+            }
+        }
+        if let ssh = error as? NIOSSHError {
+            switch ssh.type {
+            case .tcpShutdown, .creatingChannelAfterClosure: return .connectionLost
+            case .invalidUserAuthSignature: return .authenticationRejected
+            case .channelSetupRejected: return .channelUnavailable
+            case .keyExchangeNegotiationFailure, .unsupportedVersion,
+                 .invalidHostKeyForKeyExchange, .unknownPublicKey, .unknownSignature,
+                 .invalidExchangeHashSignature, .weakSharedSecret,
+                 .invalidDomainParametersForKey:
+                return .handshakeFailed
+            // Packet/protocol errors can arise after authentication, too.
+            // Their types alone do not establish a failed handshake.
+            default: return .unknown
+            }
+        }
+        if let citadel = error as? CitadelError {
+            switch citadel {
+            case .commandOutputTooLarge: return .commandOutputTooLarge
+            case .unauthorized: return .authenticationRejected
+            case .channelCreationFailed, .channelFailure: return .channelUnavailable
+            default: return .handshakeFailed
+            }
+        }
+        if let legacy = error as? SSHError {
+            switch legacy {
+            // Older transports also use authFailed for network failures and
+            // unreadable local keys, so it is not proof of server rejection.
+            case .authFailed: return .unknown
+            case .handshakeFailed: return .handshakeFailed
+            case .unreachable: return .networkUnavailable
+            case .disconnected: return .connectionLost
+            case .channelFailed: return .unknown
+            }
+        }
+        let nsError = error as NSError
+        var knownCause: SSHFailure = .unknown
+        if nsError.domain == NSPOSIXErrorDomain {
+            knownCause = classifyPOSIX(code: nsError.code)
+        } else if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorCannotFindHost, NSURLErrorDNSLookupFailed: knownCause = .nameResolutionFailed
+            case NSURLErrorTimedOut: knownCause = .timedOut
+            case NSURLErrorCannotConnectToHost, NSURLErrorNotConnectedToInternet: knownCause = .networkUnavailable
+            case NSURLErrorNetworkConnectionLost: knownCause = .connectionLost
+            case NSURLErrorUserAuthenticationRequired: knownCause = .authenticationRejected
+            case NSURLErrorSecureConnectionFailed: knownCause = .handshakeFailed
+            default: break
+            }
+        }
+        if knownCause != .unknown { return knownCause }
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
+            return classify(error: underlying, depth: depth + 1)
+        }
+        return .unknown
+    }
+
+    private static func classifyPOSIX(code: Int) -> SSHFailure {
+        switch code {
+        case Int(ECONNREFUSED): return .connectionRefused
+        case Int(ETIMEDOUT): return .timedOut
+        case Int(ENETUNREACH), Int(EHOSTUNREACH), Int(ENETDOWN), Int(EHOSTDOWN): return .networkUnavailable
+        case Int(ECONNRESET), Int(ECONNABORTED), Int(EPIPE), Int(ENOTCONN): return .connectionLost
+        default: return .unknown
+        }
+    }
+
+    /// Derive the public component from parsed private material, not the
+    /// unauthenticated public-key header of an OpenSSH private-key container.
+    /// Returns only `algorithm base64`, with no comment or private material.
+    public static func publicKeyLine(fromPrivateKey pem: Data,
+                                     passphrase: String? = nil) throws -> String {
+        let passData = passphrase?.data(using: .utf8)
+        if let key = try? Curve25519.Signing.PrivateKey(sshEd25519: pem, decryptionKey: passData) {
+            return String(openSSHPublicKey: NIOSSHPrivateKey(ed25519Key: key).publicKey)
+        }
+        if let key = try? Insecure.RSA.PrivateKey(sshRsa: pem, decryptionKey: passData) {
+            return String(openSSHPublicKey: NIOSSHPrivateKey(custom: key).publicKey)
+        }
+        throw SSHError.authFailed("Unsupported or unreadable private key (Ed25519/RSA only).")
     }
 
     private static func makeKeyAuth(user: String, pem: Data,
@@ -214,23 +421,107 @@ public final class CitadelSession: SSHSession, @unchecked Sendable {
     }
 }
 
-// LOCAL PATCH (C1): NIOSSHClientServerAuthenticationDelegate that accepts every host key
-// (Citadel enforcement stays disabled by design; HostKeyGate enforces at the app layer)
-// but reports the presented key back via a closure. Uses a plain closure captured with
-// `[weak self]` at the call site rather than making CitadelSession itself the delegate,
-// so this validator does not hold a strong reference back to CitadelSession — CitadelSession
-// already strongly owns `client`, and `client`'s settings would otherwise strongly own the
-// validator, creating a CitadelSession -> SSHClient -> validator -> CitadelSession cycle.
-private final class HostKeyCapturingValidator: NIOSSHClientServerAuthenticationDelegate {
-    private let onCapture: (NIOSSHPublicKey) -> Void
+// Internal for focused handshake-promise tests. The delegate has no strong
+// reference to CitadelSession. Pending promises are resolved exactly once,
+// including when a user cancels while an async trust prompt is still awaiting.
+final class HostKeyCapturingValidator: NIOSSHClientServerAuthenticationDelegate, @unchecked Sendable {
+    private struct Pending {
+        let promise: EventLoopPromise<Void>
+        var task: Task<Void, Never>?
+    }
 
-    init(onCapture: @escaping (NIOSSHPublicKey) -> Void) {
+    private let onCapture: @Sendable (HostKeyFingerprint) -> Void
+    private let verifier: SSHHostKeyVerifier?
+    // Completion runs on the promise event loop while this lock is held. NIO
+    // may synchronously invoke a callback that cancels this validator, so the
+    // lock must allow same-thread reentry while excluding concurrent cancel.
+    private let lock = NSRecursiveLock()
+    private var pending: [UUID: Pending] = [:]
+    private var cancelled = false
+    private var validationFailure: Error?
+
+    var isCancelled: Bool { lock.withLock { cancelled } }
+    var failure: Error? { lock.withLock { validationFailure } }
+
+    init(onCapture: @escaping @Sendable (HostKeyFingerprint) -> Void,
+         verifier: SSHHostKeyVerifier?) {
         self.onCapture = onCapture
+        self.verifier = verifier
     }
 
     func validateHostKey(hostKey: NIOSSHPublicKey,
                          validationCompletePromise promise: EventLoopPromise<Void>) {
-        onCapture(hostKey)
-        promise.succeed(())
+        let rendered = String(openSSHPublicKey: hostKey)
+        let parts = rendered.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard parts.count == 2, let keyBytes = Data(base64Encoded: String(parts[1])) else {
+            promise.fail(SSHError.handshakeFailed("Could not read the server host key."))
+            return
+        }
+        let fingerprint = HostKeyFingerprint(
+            keyType: String(parts[0]), publicKeyBase64: String(parts[1]),
+            sha256Hex: SHA256.hash(data: keyBytes).map { String(format: "%02x", $0) }.joined()
+        )
+        let id = UUID()
+        let registered = lock.withLock { () -> Bool in
+            guard !cancelled else { return false }
+            pending[id] = Pending(promise: promise, task: nil)
+            return true
+        }
+        guard registered else {
+            promise.fail(CancellationError())
+            return
+        }
+        onCapture(fingerprint)
+        guard let verifier else {
+            complete(id: id, result: .success(()))
+            return
+        }
+        lock.withLock {
+            guard pending[id] != nil, !cancelled else { return }
+            // Register the task before cancellation can remove the pending
+            // promise. The task's initial lock read also waits for this setup
+            // to finish before the verifier can display a trust prompt.
+            pending[id]?.task = Task {
+                do {
+                    try Task.checkCancellation()
+                    guard !self.isCancelled else { throw CancellationError() }
+                    try await verifier(fingerprint)
+                    try Task.checkCancellation()
+                    self.complete(id: id, result: .success(()))
+                } catch {
+                    self.complete(id: id, result: .failure(error))
+                }
+            }
+        }
+    }
+
+    func cancelPendingValidation() {
+        let abandoned = lock.withLock { () -> [Pending] in
+            cancelled = true
+            if validationFailure == nil { validationFailure = CancellationError() }
+            let abandoned = Array(pending.values)
+            pending.removeAll()
+            return abandoned
+        }
+        for validation in abandoned {
+            validation.task?.cancel()
+            validation.promise.fail(CancellationError())
+        }
+    }
+
+    private func complete(id: UUID, result: Result<Void, Error>) {
+        guard let eventLoop = lock.withLock({ pending[id]?.promise.futureResult.eventLoop }) else {
+            return
+        }
+        eventLoop.execute {
+            self.lock.withLock {
+                guard let validation = self.pending.removeValue(forKey: id) else { return }
+                if case .failure(let error) = result { self.validationFailure = error }
+                // Removing pending and actually resolving on its event loop
+                // are one critical section: cancel cannot return in between
+                // and then allow a still-pending promise to succeed afterward.
+                validation.promise.completeWith(result)
+            }
+        }
     }
 }

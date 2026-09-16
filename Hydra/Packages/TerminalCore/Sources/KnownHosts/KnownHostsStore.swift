@@ -9,10 +9,13 @@ public enum KnownHostsCheck: Equatable {
 }
 
 public final class KnownHostsStore {
+    private static let accessLock = NSLock()
     private let fileURL: URL
+    private let legacyFileURL: URL?
 
-    public init(fileURL: URL) {
+    public init(fileURL: URL, legacyFileURL: URL? = nil) {
         self.fileURL = fileURL
+        self.legacyFileURL = legacyFileURL
     }
 
     // LOCAL PATCH (I3): match on (hostPattern, keyType) together, not hostPattern alone —
@@ -22,6 +25,8 @@ public final class KnownHostsStore {
     // still compare equal. No entry for that (host, keyType) pair → .unknown (→ TOFU),
     // never a false .mismatch just because the first stored entry is a different key type.
     public func check(_ entry: KnownHostsEntry) throws -> KnownHostsCheck {
+        Self.accessLock.lock()
+        defer { Self.accessLock.unlock() }
         let entries = try readAll()
         let sameHostAndType = entries.filter {
             $0.keyType == entry.keyType && Self.hostMatches(pattern: $0.hostPattern, host: entry.hostPattern)
@@ -73,31 +78,77 @@ public final class KnownHostsStore {
     }
 
     public func trust(_ entry: KnownHostsEntry) throws {
+        Self.accessLock.lock()
+        defer { Self.accessLock.unlock() }
+        // Preserve any prior pins before writing to a newly selected location.
+        // Read errors must never be treated as an empty trust store.
+        _ = try contents()
+        try createParent()
         let line = KnownHostsParser.format(entry) + "\n"
         if FileManager.default.fileExists(atPath: fileURL.path) {
-            let handle = try FileHandle(forWritingTo: fileURL)
+            // Reading the final byte requires a read/write descriptor.
+            // forWritingTo + readData raises an Objective-C exception.
+            let handle = try FileHandle(forUpdating: fileURL)
+            defer { try? handle.close() }
             let endOffset = try handle.seekToEnd()
             // LOCAL PATCH (I2): if the file already has content but doesn't end in a
             // newline, prefix one before appending — otherwise our entry concatenates onto
             // the real known_hosts' last line, corrupting an entry OpenSSH also reads.
             if endOffset > 0 {
                 try handle.seek(toOffset: endOffset - 1)
-                let lastByte = handle.readData(ofLength: 1)
+                let lastByte = try handle.read(upToCount: 1)
                 try handle.seekToEnd()
                 if lastByte != Data([0x0A]) {
                     try handle.write(contentsOf: Data([0x0A]))
                 }
             }
             try handle.write(contentsOf: Data(line.utf8))
-            try handle.close()
         } else {
-            try Data(line.utf8).write(to: fileURL)
+            try Data(line.utf8).write(to: fileURL, options: .atomic)
         }
     }
 
     private func readAll() throws -> [KnownHostsEntry] {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
-        let body = try String(contentsOf: fileURL, encoding: .utf8)
+        guard let data = try contents() else { return [] }
+        guard let body = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
         return body.components(separatedBy: "\n").compactMap(KnownHostsParser.parseLine)
+    }
+
+    private func createParent() throws {
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    }
+
+    /// The new file is authoritative after a successful atomic migration. The
+    /// old file is retained for recovery, never merged back over later changes.
+    /// Calls are serialized within the app so two store instances cannot race
+    /// migration against the first newly trusted host.
+    private func contents() throws -> Data? {
+        if let current = try Self.readIfPresent(fileURL) { return current }
+        guard let legacyFileURL, legacyFileURL != fileURL,
+              let legacy = try Self.readIfPresent(legacyFileURL) else { return nil }
+        try createParent()
+        try legacy.write(to: fileURL, options: .atomic)
+        return legacy
+    }
+
+    private static func readIfPresent(_ url: URL) throws -> Data? {
+        let data: Data
+        do { data = try Data(contentsOf: url) }
+        catch {
+            let error = error as NSError
+            // Only a genuinely absent file is a fresh trust store. Permission,
+            // protection, invalid encoding and I/O errors remain failures.
+            if error.domain == NSCocoaErrorDomain,
+               [NSFileNoSuchFileError, NSFileReadNoSuchFileError].contains(error.code) { return nil }
+            if error.domain == NSPOSIXErrorDomain, error.code == 2 { return nil }
+            throw error
+        }
+        guard String(data: data, encoding: .utf8) != nil else {
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
+        return data
     }
 }

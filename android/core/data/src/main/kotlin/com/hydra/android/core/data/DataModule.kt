@@ -38,6 +38,21 @@ object DataModule {
 
     @Provides
     @Singleton
+    fun provideOrchRepository(api: com.hydra.android.core.network.HydraApi): OrchRepository =
+        OrchRepository(api)
+
+    @Provides
+    @Singleton
+    fun provideSavedTaskStore(@ApplicationContext context: Context): SavedTaskStore =
+        SavedTaskStore(java.io.File(context.filesDir, "saved_tasks.json"))
+
+    @Provides
+    @Singleton
+    fun provideTaskRunner(api: com.hydra.android.core.network.HydraApi): TaskRunner =
+        ApiTaskRunner(api)
+
+    @Provides
+    @Singleton
     fun provideServerConfigProvider(
         secureStore: SecureStore,
         settings: SettingsRepository,

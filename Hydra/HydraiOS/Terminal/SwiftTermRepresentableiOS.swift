@@ -9,18 +9,30 @@ struct SwiftTermRepresentableiOS: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(session: session) }
 
-    func makeUIView(context: Context) -> SwiftTerm.TerminalView {
-        let view = SwiftTerm.TerminalView(frame: CGRect(x: 0, y: 0, width: 640, height: 400))
+    func makeUIView(context: Context) -> NativeTerminalInputView {
+        let container = NativeTerminalInputView(frame: .zero)
+        let view = container.terminal
         view.terminalDelegate = context.coordinator
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--terminal-recovery-ui-test") {
+            // An infinite cursor animation prevents XCTest from reaching UI idle.
+            // Only the isolated navigation fixture uses a steady cursor.
+            view.getTerminal().setCursorStyle(.steadyBlock)
+        }
+        #endif
         // Feed session output into the terminal.
         session.onOutput = { [weak view] data in
             guard let view else { return }
             view.feed(byteArray: [UInt8](data)[...])
         }
-        return view
+        return container
     }
 
-    func updateUIView(_ uiView: SwiftTerm.TerminalView, context: Context) {}
+    func updateUIView(_ uiView: NativeTerminalInputView, context: Context) {}
+
+    static func dismantleUIView(_ uiView: NativeTerminalInputView, coordinator: Coordinator) {
+        uiView.close()
+    }
 
     final class Coordinator: NSObject, TerminalViewDelegate {
         let session: TerminalSession

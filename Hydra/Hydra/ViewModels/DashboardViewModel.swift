@@ -60,6 +60,9 @@ class DashboardViewModel: ObservableObject {
     @Published var serverStatus: ServerStatus = .unknown
     @Published var serverVersion: String = ""
     @Published var lastRefresh: Date?
+    @Published private(set) var isRefreshingDevices = false
+    @Published private(set) var lastDeviceRefresh: Date?
+    @Published private(set) var deviceRefreshError: String?
 
     // Quick command
     @Published var quickCommand = ""
@@ -126,6 +129,79 @@ class DashboardViewModel: ObservableObject {
 
     private let api = APIClient.shared
     private var pollTask: Task<Void, Never>?
+    private let deviceInventoryLoader: () async throws -> [Device]
+    private let deviceInventorySource: () -> String
+    private var deviceInventoryGeneration: UInt64 = 0
+    private var deviceRefreshID: UUID?
+
+    init(deviceInventoryLoader: @escaping () async throws -> [Device] = {
+        let configured = UserDefaults.standard.string(forKey: "serverURL") ?? APIClient.defaultServerURL
+        guard let url = URL(string: configured), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else {
+            throw APIError.invalidServerURL
+        }
+        // Read the latest setting without writing a captured old URL back over
+        // a newer edit while the actor call is waiting to run.
+        await APIClient.shared.reloadBaseURL()
+        return try await APIClient.shared.refreshTailscaleDevices()
+    }, deviceInventorySource: @escaping () -> String = {
+        UserDefaults.standard.string(forKey: "serverURL") ?? APIClient.defaultServerURL
+    }) {
+        self.deviceInventoryLoader = deviceInventoryLoader
+        self.deviceInventorySource = deviceInventorySource
+    }
+
+    /// One shared list backs Settings, Devices and Dashboard. A late poll from
+    /// before a manual refresh cannot overwrite its fresh inventory.
+    func refreshDeviceInventory() async {
+        guard deviceRefreshID == nil else { return }
+        let id = UUID()
+        let source = deviceInventorySource()
+        deviceRefreshID = id
+        deviceInventoryGeneration &+= 1
+        isRefreshingDevices = true
+        deviceRefreshError = nil
+        defer {
+            if deviceRefreshID == id { deviceRefreshID = nil; isRefreshingDevices = false }
+        }
+        do {
+            let fresh = try await deviceInventoryLoader()
+            guard deviceRefreshID == id, deviceInventorySource() == source, !Task.isCancelled else { return }
+            deviceInventoryGeneration &+= 1
+            devices = fresh
+            lastDeviceRefresh = Date()
+        } catch {
+            guard deviceRefreshID == id, deviceInventorySource() == source, !Task.isCancelled else { return }
+            deviceRefreshError = Self.inventoryRefreshMessage(error)
+        }
+    }
+
+    func invalidateDeviceInventory() {
+        deviceInventoryGeneration &+= 1
+        deviceRefreshID = nil
+        isRefreshingDevices = false
+        lastDeviceRefresh = nil
+        deviceRefreshError = nil
+        devices = []
+    }
+
+    private static func inventoryRefreshMessage(_ error: Error) -> String {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .tailscaleRefreshUnsupported, .invalidServerURL: return apiError.localizedDescription
+            case .server(let status, _):
+                if status == 401 || status == 403 {
+                    return "기기 정보를 조회할 권한이 없습니다. 서버 API 키와 접근 권한을 확인해 주세요."
+                }
+                if status == 503 {
+                    return "서버가 최신 Tailscale 기기 정보를 가져오지 못했습니다. 서버의 Tailscale 연결 상태를 확인해 주세요."
+                }
+            }
+        }
+        if (error as? URLError)?.code == .timedOut {
+            return "기기 정보 업데이트 요청 시간이 초과되었습니다. 서버와 VPN 연결을 확인해 주세요."
+        }
+        return "기기 정보를 업데이트하지 못했습니다. 기존 목록을 유지합니다."
+    }
 
     /// Loads the current dashboard state. Pass `force: true` for a user-
     /// initiated refresh — the server then bypasses its Tailscale cache,
@@ -133,6 +209,7 @@ class DashboardViewModel: ObservableObject {
     /// responding. The default `false` is used by the background poller
     /// so the lighter cached path runs every tick.
     func load(force: Bool = false) async {
+        let inventoryGeneration = deviceInventoryGeneration
         isLoading = true
         error = nil
         await checkServerHealth()
@@ -145,7 +222,8 @@ class DashboardViewModel: ObservableObject {
             let hideMobile = UserDefaults.standard.bool(forKey: "hideMobileDevices")
             async let d = api.listDevices(refresh: force, includeMobile: !hideMobile)
             async let c = api.listOrchs()
-            devices = try await d
+            let loadedDevices = try await d
+            if inventoryGeneration == deviceInventoryGeneration { devices = loadedDevices }
             orchs = try await c
         } catch {
             self.error = error.localizedDescription

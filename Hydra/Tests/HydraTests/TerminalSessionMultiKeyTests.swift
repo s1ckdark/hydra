@@ -89,5 +89,67 @@ final class TerminalSessionMultiKeyTests: XCTestCase {
         }
         XCTAssertTrue(r?.contains("도달 불가") ?? false)
     }
+
+    func testTypedAuthenticationRejectionFallsBackToNextKey() async throws {
+        let kh = tempKH(); defer { try? FileManager.default.removeItem(at: kh) }
+        try KnownHostsStore(fileURL: kh).trust(
+            KnownHostsEntry(hostPattern: "100.0.0.1", keyType: "ssh-ed25519", publicKey: "AAAAFAKE"))
+        var minted = 0
+        let accepted = ScriptedSSHSession(.succeed(fakeFp))
+        let session = TerminalSession(device: device(), sessionFactory: {
+            minted += 1
+            return minted == 1 ? TypedFailureSSHSession(.authenticationRejected) : accepted
+        }, knownHostsURL: kh, credentialResolver: { self.creds(["ed25519", "rsa"]) })
+
+        await session.connect(cols: 80, rows: 24)
+
+        XCTAssertEqual(minted, 2)
+        XCTAssertTrue(accepted.openShellCalled)
+    }
+
+    func testTypedNetworkFailureStopsWithoutTryingAnotherKey() async {
+        let kh = tempKH(); defer { try? FileManager.default.removeItem(at: kh) }
+        var minted = 0
+        let session = TerminalSession(device: device(), sessionFactory: {
+            minted += 1
+            return TypedFailureSSHSession(.connectionRefused)
+        }, knownHostsURL: kh, credentialResolver: { self.creds(["ed25519", "rsa"]) })
+
+        await session.connect(cols: 80, rows: 24)
+
+        XCTAssertEqual(minted, 1)
+        XCTAssertEqual(session.state, .disconnected(reason: SSHFailure.connectionRefused.localizedDescription))
+    }
+
+    func testAllTypedAuthenticationRejectionsDoNotClaimNetworkFailure() async {
+        let kh = tempKH(); defer { try? FileManager.default.removeItem(at: kh) }
+        var minted = 0
+        let session = TerminalSession(device: device(), sessionFactory: {
+            minted += 1
+            return TypedFailureSSHSession(.authenticationRejected)
+        }, knownHostsURL: kh, credentialResolver: { self.creds(["ed25519", "rsa"]) })
+
+        await session.connect(cols: 80, rows: 24)
+
+        XCTAssertEqual(minted, 2)
+        guard case .disconnected(let reason) = session.state else { return XCTFail("Expected authentication rejection") }
+        XCTAssertTrue(reason?.contains("ed25519, rsa") == true)
+        XCTAssertTrue(reason?.contains("공개키") == true)
+        XCTAssertFalse(reason?.contains("도달") == true)
+        XCTAssertFalse(reason?.contains("온라인") == true)
+    }
+}
+
+private final class TypedFailureSSHSession: SSHSession {
+    let failure: SSHFailure
+    let output = AsyncStream<Data> { $0.finish() }
+    let state = AsyncStream<SSHState> { $0.finish() }
+    var remoteHostKey: HostKeyFingerprint? { nil }
+    init(_ failure: SSHFailure) { self.failure = failure }
+    func connect(host: String, port: Int, user: String, auth: SSHAuth) async throws { throw failure }
+    func openShell(termType: String, cols: Int, rows: Int) async throws {}
+    func write(_ data: Data) async throws {}
+    func resize(cols: Int, rows: Int) async throws {}
+    func disconnect() {}
 }
 #endif

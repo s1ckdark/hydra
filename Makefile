@@ -116,15 +116,58 @@ hydra-app-run: hydra-app ## Build and launch the Hydra .app
 
 ## Docker targets
 
-docker-build: ## Build Docker image
-	@echo "Building Docker image..."
-	docker build -t hydra:$(VERSION) .
+# 배포 대상 노드가 모두 x86_64 이므로 기본 플랫폼을 고정한다.
+# 맥(arm64)에서 빌드해도 대상에서 그대로 실행되도록 하기 위함 — 덮어쓰려면 PLATFORM=linux/arm64
+PLATFORM ?= linux/amd64
 
-docker-run: ## Run Docker container
-	docker run -it --rm \
+docker-build: ## Build Docker image (기본 linux/amd64)
+	@echo "Building Docker image for $(PLATFORM)..."
+	docker build --platform $(PLATFORM) --build-arg VERSION=$(VERSION) -t hydra:$(VERSION) .
+
+# tailscaled 소켓 경로는 배포판마다 다르다 (Synology 등). 필요하면 덮어쓴다.
+TS_SOCKET_DIR ?= /var/run/tailscale
+
+# --network host 라 호스트 포트를 그대로 쓴다. 이미 점유된 포트가 있으면 바꿀 것.
+# (예: racknerd 는 127.0.0.1:8080 을 crowdsec 이 쓰고 있어 SERVER_PORT=8081 필요)
+SERVER_PORT ?= 8080
+
+# 컨테이너에는 USER 환경변수가 없어 config 의 기본 SSH 사용자(os.Getenv("USER"))가
+# 빈 문자열이 된다. 호스트 사용자명을 명시적으로 넘긴다.
+SSH_USER ?= $(shell id -un)
+
+# 기본값은 config 의 ~/.ssh/id_rsa 지만, 최신 OpenSSH 가 ssh-rsa 서명을 기본 거부하는
+# 배포판이 있어 ed25519 를 명시한다. 컨테이너 안 경로 기준.
+SSH_KEY ?= /root/.ssh/id_ed25519
+
+# ~/.ssh 는 읽기 전용으로 붙인다 — 컨테이너가 호스트 개인키를 건드리지 못하게.
+# 대신 known_hosts 는 쓰기가 필요하므로 HYDRA_SSH_KNOWN_HOSTS 로 ~/.hydra 안으로 돌린다.
+# 주의: 이 컨테이너는 root 로 호스트 netns 와 tailscaled 소켓을 공유한다.
+# 소켓에 닿으면 호스트의 tailnet 정체성을 바꿀 수 있으므로(up/down/set) 신뢰 수준은
+# 사실상 호스트 root 와 같다. 신뢰하는 이미지만 여기서 실행할 것.
+docker-run: ## Run Docker container (Linux 호스트 전용 — 상시 데몬)
+	@test "$$(uname -s)" = "Linux" || { echo "ERROR: --network host 는 Linux 호스트에서만 동작합니다 (Docker Desktop for Mac 불가)"; exit 1; }
+	@test -S "$(TS_SOCKET_DIR)/tailscaled.sock" || { echo "ERROR: $(TS_SOCKET_DIR)/tailscaled.sock 없음 — tailscaled 가 떠 있는지, TS_SOCKET_DIR 이 맞는지 확인하세요"; exit 1; }
+	@ss -lnt 2>/dev/null | grep -q ":$(SERVER_PORT) " && { echo "ERROR: 포트 $(SERVER_PORT) 이미 사용 중 — SERVER_PORT=<다른포트> 로 지정하세요"; exit 1; } || true
+	docker rm -f hydra 2>/dev/null || true
+	docker run -d --name hydra --restart unless-stopped \
+		--network host \
+		--security-opt no-new-privileges \
+		-e HYDRA_SERVER_HOST=0.0.0.0 \
+		-e HYDRA_SERVER_PORT=$(SERVER_PORT) \
+		-e HYDRA_SSH_KNOWN_HOSTS=/root/.hydra/known_hosts \
+		-e HYDRA_SSH_USER=$(SSH_USER) \
+		-e HYDRA_SSH_KEY=$(SSH_KEY) \
+		-v $(TS_SOCKET_DIR):/var/run/tailscale \
 		-v ~/.hydra:/root/.hydra \
-		-p 8080:8080 \
+		-v ~/.ssh:/root/.ssh:ro \
 		hydra:$(VERSION)
+	@echo "started. logs: make docker-logs"
+
+docker-logs: ## Tail hydra container logs
+	docker logs -f hydra
+
+docker-stop: ## Stop and remove the hydra container
+	docker rm -f hydra
 
 ## Help
 

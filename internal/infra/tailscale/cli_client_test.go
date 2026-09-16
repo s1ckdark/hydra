@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -35,6 +36,92 @@ func loadFixture(t *testing.T) []*domain.Device {
 		devices = append(devices, peerToDevice(&p, userNames))
 	}
 	return devices
+}
+
+func TestCLIClientFreshBypassesRecentCache(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "tailscale")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' '{\"BackendState\":\"Running\",\"Self\":{\"ID\":\"intlmac\",\"HostName\":\"intlmac\"}}'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	c := &CLIClient{binary: script, cacheTTL: time.Hour, cachedAt: time.Now(), cached: []*domain.Device{{ID: "old"}}}
+	devices, err := c.ListDevices(context.Background())
+	if err != nil || len(devices) != 1 || devices[0].ID != "old" {
+		t.Fatalf("normal cache read = %v %v", devices, err)
+	}
+	devices, err = c.ListDevicesFresh(context.Background())
+	if err != nil || len(devices) != 1 || devices[0].ID != "intlmac" {
+		t.Fatalf("fresh read = %v %v", devices, err)
+	}
+	devices, err = c.ListDevices(context.Background())
+	if err != nil || len(devices) != 1 || devices[0].ID != "intlmac" {
+		t.Fatalf("new cache read = %v %v", devices, err)
+	}
+}
+
+func TestCLIClientFreshFailureDoesNotClaimCachedSuccess(t *testing.T) {
+	c := &CLIClient{binary: filepath.Join(t.TempDir(), "missing-tailscale"), cacheTTL: time.Hour, cachedAt: time.Now(), cached: []*domain.Device{{ID: "old"}}}
+	if devices, err := c.ListDevicesFresh(context.Background()); err == nil || devices != nil {
+		t.Fatalf("failed refresh returned stale success: %v %v", devices, err)
+	}
+	if len(c.cached) != 1 || c.cached[0].ID != "old" {
+		t.Fatal("failed refresh discarded good cache")
+	}
+}
+
+func TestCLIClientFreshRejectsStoppedDaemon(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "tailscale")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' '{\"BackendState\":\"Stopped\",\"Self\":{\"ID\":\"old\"}}'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	c := &CLIClient{binary: script, cacheTTL: time.Hour}
+	if devices, err := c.ListDevicesFresh(context.Background()); err == nil || devices != nil {
+		t.Fatalf("stopped daemon claimed fresh: %v %v", devices, err)
+	}
+}
+
+func TestCLIClientFetchForcesBackgroundCLIMode(t *testing.T) {
+	for _, inherited := range []string{"", "0", "1"} {
+		for _, fresh := range []bool{false, true} {
+			name := "cached-fetch/inherited=" + inherited
+			if fresh {
+				name = "fresh-fetch/inherited=" + inherited
+			}
+			t.Run(name, func(t *testing.T) {
+				t.Setenv("TAILSCALE_BE_CLI", inherited)
+				t.Setenv("HYDRA_TEST_PASSTHROUGH", "keep-other-environment")
+				script := filepath.Join(t.TempDir(), "tailscale")
+				// The bundled macOS app can emit a GUI launch error with exit
+				// status zero unless its explicit CLI environment flag is set.
+				body := `#!/bin/sh
+if [ "$TAILSCALE_BE_CLI" != "1" ]; then
+    printf '%s\n' 'The Tailscale GUI failed to start'
+    exit 0
+fi
+if [ "$HYDRA_TEST_PASSTHROUGH" != "keep-other-environment" ]; then
+    exit 2
+fi
+printf '%s\n' '{"BackendState":"Running","Self":{"ID":"intlmac","HostName":"intlmac"}}'
+`
+				if err := os.WriteFile(script, []byte(body), 0700); err != nil {
+					t.Fatal(err)
+				}
+				c := &CLIClient{binary: script, cacheTTL: time.Hour}
+				var devices []*domain.Device
+				var err error
+				if fresh {
+					devices, err = c.ListDevicesFresh(context.Background())
+				} else {
+					devices, err = c.ListDevices(context.Background())
+				}
+				if err != nil || len(devices) != 1 || devices[0].ID != "intlmac" {
+					t.Fatalf("background CLI mode not enforced: %v %v", devices, err)
+				}
+				if os.Getenv("TAILSCALE_BE_CLI") != inherited {
+					t.Fatal("fetch changed the parent process environment")
+				}
+			})
+		}
+	}
 }
 
 func findDevice(devices []*domain.Device, id string) *domain.Device {

@@ -3,7 +3,32 @@ import SwiftUI
 struct RootView: View {
     @State private var selected: Device?
 
+    @ViewBuilder
     var body: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--terminal-recovery-ui-test") {
+            TerminalKeyRecoveryUITestFixture()
+        } else if ProcessInfo.processInfo.arguments.contains("--settings-ui-test") {
+            SettingsUITestFixture()
+        } else if ProcessInfo.processInfo.arguments.contains("--ssh-trust-storage-probe") {
+            NavigationStack { SSHTrustStorageDiagnosticScreen() }
+        } else if ProcessInfo.processInfo.arguments.contains("--ssh-registration-ui-test") {
+            NavigationStack {
+                SSHKeyRegistrationScreen(model: .uiTestFixture())
+            }
+        } else if ProcessInfo.processInfo.arguments.contains("--clean-keyboard-comparison") {
+            CleanKeyboardComparisonScreen()
+        } else if ProcessInfo.processInfo.arguments.contains("--terminal-input-ui-test") {
+            TerminalInputHarnessScreen()
+        } else {
+            mainTabs
+        }
+        #else
+        mainTabs
+        #endif
+    }
+
+    private var mainTabs: some View {
         TabView {
             DashboardScreen()
                 .tabItem { Label("대시보드", systemImage: "gauge") }
