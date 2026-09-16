@@ -38,9 +38,10 @@ func resolveTailscaleBinary() (string, error) {
 
 // cliStatusResponse is the top-level shape of `tailscale status --json`.
 type cliStatusResponse struct {
-	Self cliPeer                    `json:"Self"`
-	Peer map[string]cliPeer         `json:"Peer"`
-	User map[string]cliUser         `json:"User"`
+	BackendState string             `json:"BackendState"`
+	Self         cliPeer            `json:"Self"`
+	Peer         map[string]cliPeer `json:"Peer"`
+	User         map[string]cliUser `json:"User"`
 }
 
 // cliPeer represents a single node (Self or a Peer entry).
@@ -74,10 +75,10 @@ var zeroTime = time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC)
 type CLIClient struct {
 	binary string
 
-	mu         sync.Mutex
-	cached     []*domain.Device
-	cachedAt   time.Time
-	cacheTTL   time.Duration
+	mu       sync.Mutex
+	cached   []*domain.Device
+	cachedAt time.Time
+	cacheTTL time.Duration
 }
 
 // NewCLIClient resolves the Tailscale binary and returns a ready CLIClient, or
@@ -98,10 +99,19 @@ func NewCLIClient() (*CLIClient, error) {
 // cacheTTL to reduce exec overhead when multiple handlers call ListDevices
 // within the same request cycle.
 func (c *CLIClient) ListDevices(ctx context.Context) ([]*domain.Device, error) {
+	return c.listDevices(ctx, false)
+}
+
+// ListDevicesFresh bypasses the short CLI cache for an explicit inventory refresh.
+func (c *CLIClient) ListDevicesFresh(ctx context.Context) ([]*domain.Device, error) {
+	return c.listDevices(ctx, true)
+}
+
+func (c *CLIClient) listDevices(ctx context.Context, forceRefresh bool) ([]*domain.Device, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if time.Since(c.cachedAt) < c.cacheTTL && len(c.cached) > 0 {
+	if !forceRefresh && time.Since(c.cachedAt) < c.cacheTTL && len(c.cached) > 0 {
 		return c.cached, nil
 	}
 
@@ -163,7 +173,12 @@ func (c *CLIClient) fetch(ctx context.Context) ([]*domain.Device, error) {
 	execCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	out, err := exec.CommandContext(execCtx, c.binary, "status", "--json").Output()
+	cmd := exec.CommandContext(execCtx, c.binary, "status", "--json")
+	// The bundled macOS executable otherwise tries to launch its GUI when
+	// invoked by a background server. The last value overrides an inherited 0
+	// without changing this process's environment or dropping unrelated values.
+	cmd.Env = append(os.Environ(), "TAILSCALE_BE_CLI=1")
+	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("tailscale status --json: %w", err)
 	}
@@ -171,6 +186,9 @@ func (c *CLIClient) fetch(ctx context.Context) ([]*domain.Device, error) {
 	var data cliStatusResponse
 	if err := json.Unmarshal(out, &data); err != nil {
 		return nil, fmt.Errorf("parse tailscale status: %w", err)
+	}
+	if data.BackendState != "" && data.BackendState != "Running" {
+		return nil, fmt.Errorf("tailscale is not running: %s", data.BackendState)
 	}
 
 	// Build a userID → LoginName lookup table.

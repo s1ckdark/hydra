@@ -1017,19 +1017,32 @@ func (h *Handler) APIDeviceList(c echo.Context) error {
 	}
 
 	forceRefresh := c.QueryParam("refresh") == "true"
-	// On an explicit user refresh, synchronously re-probe :22 and re-
-	// collect SSH metrics so the response reflects "right now". We
-	// deliberately do NOT pass refresh=true to ListDevices — Tailscale's
-	// upstream API has been seen returning partial/empty snapshots
-	// while still 200-OK, which would otherwise overwrite a healthy
-	// cache with a near-empty one. Status freshness comes from the
-	// metric promotion below, not from re-fetching Tailscale.
+	tailscaleRefresh := c.QueryParam("refresh") == "tailscale"
+	// The legacy refresh also probes metrics. The dedicated inventory refresh
+	// bypasses both Tailscale caches without starting SSH work.
 	if forceRefresh && h.monitorUC != nil {
 		h.monitorUC.RefreshAll(ctx)
 	}
-	devices, err := h.deviceUC.ListDevices(ctx, false)
+	var devices []*domain.Device
+	var err error
+	if tailscaleRefresh {
+		devices, err = h.deviceUC.RefreshTailscaleDevices(ctx)
+	} else {
+		devices, err = h.deviceUC.ListDevices(ctx, forceRefresh)
+	}
 	if err != nil {
+		if tailscaleRefresh {
+			log.Printf("[devices] manual Tailscale refresh failed: %v", err)
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{
+				"error": "failed to refresh Tailscale devices",
+				"code":  "tailscale_refresh_failed",
+			})
+		}
 		return internalError(c, "failed to list devices", err)
+	}
+	if tailscaleRefresh {
+		c.Response().Header().Set("X-Hydra-Tailscale-Refresh", "fresh")
+		c.Response().Header().Set("Cache-Control", "no-store")
 	}
 
 	// Decorate with metric freshness: when the Tailscale API auth is broken
