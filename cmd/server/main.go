@@ -251,11 +251,14 @@ func main() {
 	e.GET("/htmx/gpu-monitor", h.HTMXGPUMonitor)
 	e.GET("/orchs", h.OrchList)
 	e.GET("/orchs/new", h.OrchNew)
-	e.POST("/orchs", h.OrchCreate)
+	// Mutating HTMX routes carry the same network gate as their /api twins.
+	// Without it, POST /orchs/:id/execute is unauthenticated remote command
+	// execution on whatever interface the server happens to be bound to.
+	e.POST("/orchs", h.OrchCreate, tailscaleAuthMiddleware)
 	e.GET("/orchs/:id", h.OrchDetail)
 	e.GET("/orchs/:id/execute", h.OrchExecutePage)
-	e.POST("/orchs/:id/execute", h.OrchExecuteTask)
-	e.DELETE("/orchs/:id", h.OrchDelete)
+	e.POST("/orchs/:id/execute", h.OrchExecuteTask, tailscaleAuthMiddleware)
+	e.DELETE("/orchs/:id", h.OrchDelete, tailscaleAuthMiddleware)
 
 	// API routes — read-only (no auth required)
 	api := e.Group("/api")
@@ -343,14 +346,14 @@ func main() {
 	// Task API routes
 	api.GET("/tasks", h.APITaskList)
 	api.GET("/tasks/:id", h.APITaskDetail)
-	api.POST("/tasks", h.APITaskCreate)
-	api.PUT("/tasks/:id/status", h.APITaskUpdateStatus)
-	api.PUT("/tasks/:id/result", h.APITaskSetResult)
+	apiWrite.POST("/tasks", h.APITaskCreate)
+	apiWrite.PUT("/tasks/:id/status", h.APITaskUpdateStatus)
+	apiWrite.PUT("/tasks/:id/result", h.APITaskSetResult)
 	api.GET("/groups/:id", h.APIGetGroup)
 	apiWrite.POST("/tasks/batch", h.APITaskBatchCreate)
 
 	// Capability routes
-	api.POST("/devices/:id/capabilities", h.APIRegisterCapabilities)
+	apiWrite.POST("/devices/:id/capabilities", h.APIRegisterCapabilities)
 	api.GET("/devices/:id/capabilities", h.APIGetCapabilities)
 
 	// Device match route — resolves hostname/IP → Tailscale device ID.

@@ -458,12 +458,9 @@ func sameAlgorithmKnown(keyErr *knownhosts.KeyError, presented ssh.PublicKey) bo
 }
 
 func (e *Executor) getHostKeyCallback() (ssh.HostKeyCallback, error) {
-	home, _ := os.UserHomeDir()
-	knownHostsPath := filepath.Join(home, ".ssh", "known_hosts")
-
-	if file := os.Getenv("CLUSTERCTL_SSH_KNOWN_HOSTS"); file != "" {
-		knownHostsPath = file
-	}
+	// Must agree with recovery.go's writer. Resolving the path in two places
+	// let verification read one file while host-key acceptance wrote another.
+	knownHostsPath := knownHostsPath()
 
 	// Ensure known_hosts file exists
 	if _, err := os.Stat(knownHostsPath); os.IsNotExist(err) {
