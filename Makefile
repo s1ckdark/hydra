@@ -131,6 +131,14 @@ TS_SOCKET_DIR ?= /var/run/tailscale
 # (예: racknerd 는 127.0.0.1:8080 을 crowdsec 이 쓰고 있어 SERVER_PORT=8081 필요)
 SERVER_PORT ?= 8080
 
+# tailnet 인터페이스에만 바인딩한다. 0.0.0.0 으로 열면 공인 IP 를 가진 호스트에서
+# 방화벽에만 기대게 되는데, 그건 앱 밖에 있는 보장이라 배포처마다 달라진다.
+# tailscale 이 없으면 루프백으로 떨어뜨린다 — 조용히 전체 공개되는 것보다 낫다.
+SERVER_HOST ?= $(shell tailscale ip -4 2>/dev/null | head -1 || true)
+ifeq ($(strip $(SERVER_HOST)),)
+SERVER_HOST := 127.0.0.1
+endif
+
 # 컨테이너에는 USER 환경변수가 없어 config 의 기본 SSH 사용자(os.Getenv("USER"))가
 # 빈 문자열이 된다. 호스트 사용자명을 명시적으로 넘긴다.
 SSH_USER ?= $(shell id -un)
@@ -152,7 +160,7 @@ docker-run: ## Run Docker container (Linux 호스트 전용 — 상시 데몬)
 	docker run -d --name hydra --restart unless-stopped \
 		--network host \
 		--security-opt no-new-privileges \
-		-e HYDRA_SERVER_HOST=0.0.0.0 \
+		-e HYDRA_SERVER_HOST=$(SERVER_HOST) \
 		-e HYDRA_SERVER_PORT=$(SERVER_PORT) \
 		-e HYDRA_SSH_KNOWN_HOSTS=/root/.hydra/known_hosts \
 		-e HYDRA_SSH_USER=$(SSH_USER) \
