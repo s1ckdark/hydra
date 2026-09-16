@@ -6,6 +6,7 @@ enum HostKeyDecision: Equatable {
     case proceed
     case needsTrust(sha256: String)
     case blocked
+    case storageUnavailable
 }
 
 /// TOFU gate: the libssh2 transport doesn't enforce host-key trust itself, so
@@ -21,7 +22,9 @@ enum HostKeyGate {
     static func evaluate(host: String, fingerprint: HostKeyFingerprint?, store: KnownHostsStore) -> HostKeyDecision {
         guard let fp = fingerprint else { return .blocked }
         let e = entry(host: host, fingerprint: fp)
-        let check = (try? store.check(e)) ?? .unknown
+        let check: KnownHostsCheck
+        do { check = try store.check(e) }
+        catch { return .storageUnavailable }
         switch check {
         case .match:    return .proceed
         case .unknown:  return .needsTrust(sha256: fp.sha256Hex)

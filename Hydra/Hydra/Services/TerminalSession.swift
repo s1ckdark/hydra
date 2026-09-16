@@ -22,6 +22,8 @@ final class TerminalSession: ObservableObject, Identifiable {
     let host: String
 
     @Published var state: SSHState = .idle
+    /// Public endpoint/account used by the latest attempt, never credential material.
+    @Published private(set) var connectionTarget: SSHKeyRegistrationTarget?
     /// TOFU: set when the host key is unknown and awaiting user trust.
     @Published var hostKeyPrompt: HostKeyDecision?
 
@@ -62,6 +64,12 @@ final class TerminalSession: ObservableObject, Identifiable {
     private let sessionFactory: () -> SSHSession
     private let credentialResolver: () -> SSHCredentials
     private var session: SSHSession
+    /// UIKit can send committed text and Return as separate synchronous calls. A
+    /// task per chunk can enter the async transport out of order, so one worker
+    /// drains a FIFO bound to the backend that was current when it was created.
+    private var inputContinuation: AsyncStream<Data>.Continuation?
+    private var inputTask: Task<Void, Never>?
+    private var connectionGeneration: UInt64 = 0
     private let knownHosts: KnownHostsStore
     private var pumpTask: Task<Void, Never>?
     private var statePumpTask: Task<Void, Never>?
@@ -105,23 +113,25 @@ final class TerminalSession: ObservableObject, Identifiable {
         self.sessionFactory = sessionFactory
         self.credentialResolver = credentialResolver
         self.session = sessionFactory()
-        #if os(macOS)
-        let defaultKHURL = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".ssh/known_hosts")
-        #else
-        // homeDirectoryForCurrentUser is unavailable on iOS; NSHomeDirectory()
-        // is the cross-platform equivalent (app sandbox home on iOS).
-        let defaultKHURL = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".ssh/known_hosts")
-        #endif
-        let khURL = knownHostsURL ?? defaultKHURL
-        self.knownHosts = KnownHostsStore(fileURL: khURL)
+        self.knownHosts = SSHKnownHostsStorage.makeStore(override: knownHostsURL)
+        startInputWriter(for: session)
+    }
+
+    deinit {
+        inputTask?.cancel()
+        inputContinuation?.finish()
+        pumpTask?.cancel()
+        statePumpTask?.cancel()
     }
 
     func connect(cols: Int, rows: Int) async {
+        connectionGeneration &+= 1
+        let generation = connectionGeneration
+        stopInputWriter()
         isTerminalStateLocked = false
         pumpTask?.cancel()
         statePumpTask?.cancel()
+        hostKeyPrompt = nil
         // See LOCAL FIX (I2): only disconnect the current session if it was already put
         // to use by a previous attempt — the very first attempt on a fresh instance reuses
         // the untouched init-time session, so there is nothing to disconnect yet.
@@ -129,6 +139,7 @@ final class TerminalSession: ObservableObject, Identifiable {
         pendingShell = (cols, rows)
 
         let creds = credentialResolver()
+        connectionTarget = SSHKeyRegistrationTarget(host: host, user: creds.user, port: creds.port)
         guard !creds.keys.isEmpty else {
             #if os(macOS)
             state = .disconnected(reason: "SSH 개인키를 찾을 수 없습니다. ~/.ssh 에 키를 만들어주세요.")
@@ -140,17 +151,36 @@ final class TerminalSession: ObservableObject, Identifiable {
 
         state = .connecting
         var lastAuthError: String?
+        var allFailuresWereTypedRejections = true
 
         // OpenSSH-style: offer each key in order until one authenticates.
         for key in creds.keys {
             let s: SSHSession = hasAttemptedConnect ? sessionFactory() : session
             self.session = s
+            startInputWriter(for: s)
             hasAttemptedConnect = true
             do {
                 try await s.connect(host: host, port: creds.port, user: creds.user,
                                     auth: .privateKey(key.pem, passphrase: nil))
+                guard connectionGeneration == generation else { return }
+            } catch let failure as SSHFailure {
+                guard connectionGeneration == generation else { return }
+                stopInputWriter()
+                if failure == .authenticationRejected {
+                    lastAuthError = failure.localizedDescription
+                    s.disconnect()
+                    continue
+                }
+                state = .disconnected(reason: failure.localizedDescription)
+                return
             } catch let e as SSHError {
+                // A newer connect/close can run while authentication suspends.
+                // A stale attempt must not cancel the new writer or start a
+                // fallback writer after its own connection has been closed.
+                guard connectionGeneration == generation else { return }
+                stopInputWriter()
                 if case .authFailed(let m) = e {
+                    allFailuresWereTypedRejections = false
                     lastAuthError = m
                     s.disconnect()
                     continue                      // 다음 키로 폴백
@@ -158,25 +188,39 @@ final class TerminalSession: ObservableObject, Identifiable {
                 state = .disconnected(reason: describe(e))   // unreachable/handshake 등 즉시 실패
                 return
             } catch {
+                guard connectionGeneration == generation else { return }
+                stopInputWriter()
                 state = .disconnected(reason: "\(error)")
                 return
             }
             // 인증 성공 세션에 대해서만 호스트키 TOFU 판정
             switch HostKeyGate.evaluate(host: host, fingerprint: s.remoteHostKey, store: knownHosts) {
             case .proceed:
-                startStatePump()
-                await openShellNow()
+                startStatePump(for: s, generation: generation)
+                await openShellNow(for: s, generation: generation)
                 return
             case .needsTrust(let sha):
-                startStatePump()
+                startStatePump(for: s, generation: generation)
                 hostKeyPrompt = .needsTrust(sha256: sha)
                 return
             case .blocked:
+                stopInputWriter()
                 isTerminalStateLocked = true
                 state = .disconnected(reason: "호스트키 불일치 — 연결 차단")
                 s.disconnect()
                 return
+            case .storageUnavailable:
+                stopForTrustStorageFailure()
+                return
             }
+        }
+
+        let algos = creds.keys.map(\.algorithm).joined(separator: ", ")
+        if allFailuresWereTypedRejections {
+            state = .disconnected(reason:
+                "SSH 인증 실패 — 제시한 키(\(algos))를 서버가 받아들이지 않았습니다. "
+                + "계정 이름, 해당 계정에 등록된 공개키, 서버의 로그인 허용 설정을 확인하세요.")
+            return
         }
 
         // 모든 키 실패. NOTE: the libssh2 backend collapses TCP-refused / host-down /
@@ -185,7 +229,6 @@ final class TerminalSession: ObservableObject, Identifiable {
         // raw reason and phrase the message to cover both ("거부 또는 도달 실패") instead of
         // only telling the user to register keys against a host that may simply be down.
         if let m = lastAuthError { NSLog("[terminal] all offered keys rejected; last: \(m)") }
-        let algos = creds.keys.map(\.algorithm).joined(separator: ", ")
         let detail = lastAuthError.map { " (사유: \($0))" } ?? ""
         state = .disconnected(reason:
             "연결 실패 — 제시한 키(\(algos))가 \(host)에서 거부되었거나 호스트에 도달하지 못했습니다\(detail). "
@@ -194,34 +237,59 @@ final class TerminalSession: ObservableObject, Identifiable {
 
     /// Called by the TOFU sheet's "Trust" action.
     func trustPendingHostKey() async {
-        guard let fp = session.remoteHostKey else { return }
-        try? knownHosts.trust(HostKeyGate.entry(host: host, fingerprint: fp))
+        let backend = session
+        let generation = connectionGeneration
+        guard case .needsTrust = hostKeyPrompt,
+              let fp = backend.remoteHostKey else { return }
+        do { try knownHosts.trust(HostKeyGate.entry(host: host, fingerprint: fp)) }
+        catch {
+            stopForTrustStorageFailure()
+            return
+        }
         hostKeyPrompt = nil
-        await openShellNow()
+        await openShellNow(for: backend, generation: generation)
+    }
+
+    private func stopForTrustStorageFailure() {
+        cancelPendingHostKey()
+        state = .disconnected(reason: SSHKeyRegistrationError.trustStoreUnavailable.localizedDescription)
     }
 
     func cancelPendingHostKey() {
+        connectionGeneration &+= 1
+        stopInputWriter()
         hostKeyPrompt = nil
+        pendingShell = nil
         isTerminalStateLocked = true
         state = .disconnected(reason: "호스트키 신뢰 취소")
         statePumpTask?.cancel()
+        pumpTask?.cancel()
         session.disconnect()
     }
 
-    private func openShellNow() async {
-        guard let s = pendingShell else { return }
-        startOutputPump()
+    private func isCurrentConnection(_ backend: SSHSession, generation: UInt64) -> Bool {
+        !Task.isCancelled && connectionGeneration == generation && session === backend
+    }
+
+    private func openShellNow(for backend: SSHSession, generation: UInt64) async {
+        guard isCurrentConnection(backend, generation: generation),
+              let s = pendingShell else { return }
+        startOutputPump(for: backend, generation: generation)
         do {
-            try await session.openShell(termType: "xterm-256color", cols: s.cols, rows: s.rows)
+            try await backend.openShell(termType: "xterm-256color", cols: s.cols, rows: s.rows)
+            guard isCurrentConnection(backend, generation: generation) else { return }
             if persistenceEnabled() {
-                await injectBootstrapWhenReady()   // exec 직전 applyPendingSize 수행
+                await injectBootstrapWhenReady(for: backend, generation: generation)
             } else {
-                await applyPendingSize()           // plain 셸도 실제 뷰 크기로 맞춘다
+                await applyPendingSize(for: backend, generation: generation)
             }
             // Plain 셸(tmux 없음/off)의 첫 프롬프트가 뷰 훅업 전에 나와도 버려지지 않게
             // 하는 처리는 onOutput 버퍼링(위 onOutput.didSet)에서 담당한다.
         }
-        catch { state = .disconnected(reason: "셸 열기 실패: \(error)") }
+        catch {
+            guard isCurrentConnection(backend, generation: generation) else { return }
+            state = .disconnected(reason: "셸 열기 실패: \(error)")
+        }
     }
 
     /// tmux 부트스트랩을 "셸이 프롬프트에서 idle 상태가 된 뒤"에 주입한다.
@@ -238,30 +306,35 @@ final class TerminalSession: ObservableObject, Identifiable {
     /// 해법: 출력 펌프가 갱신하는 `lastOutputAt`를 보고, 배너·프롬프트가 다 그려진
     /// 뒤 출력이 `quietGap` 동안 잠잠해지면(= zle 준비 완료) 주입한다. 어떤 이유로든
     /// 안정 신호를 못 잡으면 `hardCap`에서 폴백 주입한다(느린 셸도 커버).
-    private func injectBootstrapWhenReady() async {
+    private func injectBootstrapWhenReady(for backend: SSHSession, generation: UInt64) async {
+        guard isCurrentConnection(backend, generation: generation) else { return }
         let quietGap: TimeInterval = 0.4      // 이만큼 출력이 없으면 프롬프트 안정으로 간주
         let hardCap = Date().addingTimeInterval(8.0)   // 안정 신호 실패 시 폴백 상한
         let poll: Duration = .milliseconds(50)
         // 1) 첫 출력(배너/프롬프트 시작)을 기다린다 — rc가 오래 침묵할 수 있다.
         while !sawShellOutput, Date() < hardCap {
+            guard isCurrentConnection(backend, generation: generation) else { return }
             try? await Task.sleep(for: poll)
         }
         // 2) 출력이 quietGap 동안 잠잠해질 때까지(= 배너·프롬프트 렌더 종료) 기다린다.
         while Date() < hardCap {
+            guard isCurrentConnection(backend, generation: generation) else { return }
             if sawShellOutput, Date().timeIntervalSince(lastOutputAt) >= quietGap { break }
             try? await Task.sleep(for: poll)
         }
         // exec tmux는 attach 시점의 PTY 크기로 창을 만든다. 프롬프트 안정까지 기다린
         // 이 시점엔 뷰 레이아웃이 끝나 실제 크기가 lastRequestedSize에 들어와 있으므로,
         // exec 직전에 PTY를 그 크기로 맞춰 tmux가 80×24가 아닌 실제 크기로 생성되게 한다.
-        await applyPendingSize()
-        try? await session.write(Data(Self.tmuxBootstrapLine().utf8))
+        await applyPendingSize(for: backend, generation: generation)
+        guard isCurrentConnection(backend, generation: generation) else { return }
+        try? await backend.write(Data(Self.tmuxBootstrapLine().utf8))
     }
 
     /// 뷰가 마지막으로 요청한 크기를 원격 PTY에 재적용한다(없으면 무시).
-    private func applyPendingSize() async {
-        guard let sz = lastRequestedSize else { return }
-        try? await session.resize(cols: sz.cols, rows: sz.rows)
+    private func applyPendingSize(for backend: SSHSession, generation: UInt64) async {
+        guard isCurrentConnection(backend, generation: generation),
+              let sz = lastRequestedSize else { return }
+        try? await backend.resize(cols: sz.cols, rows: sz.rows)
     }
 
     /// tmux 세션 지속 부트스트랩. exec() 사이드채널은 Citadel 백엔드에만 구현되어
@@ -290,14 +363,61 @@ final class TerminalSession: ObservableObject, Identifiable {
         " command -v tmux >/dev/null 2>&1 && exec tmux new-session -A -s hydra \\; set-option -g window-size largest; clear\n"
     }
 
-    func send(_ data: Data) { Task { try? await session.write(data) } }
+    func send(_ data: Data) {
+        inputContinuation?.yield(data)
+    }
+
+    private func startInputWriter(for backend: SSHSession) {
+        stopInputWriter()
+        let (input, continuation) = AsyncStream<Data>.makeStream()
+        inputContinuation = continuation
+        inputTask = Task {
+            for await data in input {
+                // finish() can leave buffered elements to drain. Cancellation
+                // must also be checked after an in-flight write returns so old
+                // input is discarded even if that transport ignores cancellation.
+                guard !Task.isCancelled else { break }
+                try? await backend.write(data)
+            }
+        }
+    }
+
+    private func stopInputWriter() {
+        inputTask?.cancel()
+        inputContinuation?.finish()
+        inputTask = nil
+        inputContinuation = nil
+    }
     func resize(cols: Int, rows: Int) {
         lastRequestedSize = (cols, rows)   // 셸 오픈 전에 와서 버려져도 exec 직전 재적용된다
-        Task { try? await session.resize(cols: cols, rows: rows) }
+        let backend = session
+        let generation = connectionGeneration
+        Task { [weak self] in
+            guard self?.isCurrentConnection(backend, generation: generation) == true else { return }
+            try? await backend.resize(cols: cols, rows: rows)
+        }
     }
+    /// Retire the failed backend before dismissing the native keyboard: ending
+    /// editing can commit a draft, which must not reach an old SSH connection.
+    func prepareKeyRegistration() -> SSHKeyRegistrationTarget? {
+        guard case .disconnected(let reason) = state, let reason,
+              !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let target = connectionTarget else { return nil }
+        close()
+        state = .disconnected(reason: reason)
+        return target
+    }
+
     func close() {
+        connectionGeneration &+= 1
+        stopInputWriter()
         pumpTask?.cancel()
         statePumpTask?.cancel()
+        pendingShell = nil
+        hostKeyPrompt = nil
+        // The retired state pump must not apply any more events, including its
+        // trailing disconnect. Publish this intentional close synchronously.
+        if !isTerminalStateLocked { state = .disconnected(reason: nil) }
         session.disconnect()
         // I2 hardening: a close() before the first connect() disconnects the pristine
         // init-time session; mark it "used" so a later connect() mints a FRESH session
@@ -306,22 +426,24 @@ final class TerminalSession: ObservableObject, Identifiable {
         hasAttemptedConnect = true
     }
 
-    private func startStatePump() {
+    private func startStatePump(for backend: SSHSession, generation: UInt64) {
         statePumpTask = Task { [weak self] in
-            guard let self else { return }
-            for await st in self.session.state {
+            guard self?.isCurrentConnection(backend, generation: generation) == true else { return }
+            for await st in backend.state {
+                guard let self, self.isCurrentConnection(backend, generation: generation) else { break }
                 guard !self.isTerminalStateLocked else { continue }
                 self.state = st
             }
         }
     }
-    private func startOutputPump() {
+    private func startOutputPump(for backend: SSHSession, generation: UInt64) {
         outputBuffer = Data()   // 새 셸 출력 스트림 — 이전 버퍼 잔재 제거
         lastOutputAt = .distantPast
         sawShellOutput = false
         pumpTask = Task { [weak self] in
-            guard let self else { return }
-            for await chunk in self.session.output {
+            guard self?.isCurrentConnection(backend, generation: generation) == true else { return }
+            for await chunk in backend.output {
+                guard let self, self.isCurrentConnection(backend, generation: generation) else { break }
                 // injectBootstrapWhenReady가 프롬프트 안정 시점을 잡도록 매 청크 갱신.
                 self.sawShellOutput = true
                 self.lastOutputAt = Date()

@@ -7,9 +7,36 @@ packages:
   TerminalCore:
     path: Packages/TerminalCore
   SwiftTerm:
-    url: https://github.com/s1ckdark/SwiftTerm
-    revision: 54b436a6231976fa64d7c3859d0b197a6ccfcb91
+    path: Packages/SwiftTerm
 targets:
+  TerminalInputUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: HydraiOSUITests
+    dependencies:
+      - target: HydraiOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.s1ckdark.hydraios.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        SWIFT_VERSION: "5.0"
+  TerminalInputTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Packages/SwiftTerm/Tests/SwiftTermInputTests
+      - path: HydraiOSInputTests
+    dependencies:
+      - target: HydraiOS
+      - package: SwiftTerm
+        product: SwiftTerm
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+        SWIFT_VERSION: "5.0"
   HydraiOS:
     type: application
     platform: iOS
@@ -39,9 +66,44 @@ targets:
         product: SwiftTerm
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.hydra.ios
+        PRODUCT_BUNDLE_IDENTIFIER: com.s1ckdark.hydraios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1,2"
         CODE_SIGNING_ALLOWED: NO
+schemes:
+  HydraiOS:
+    build:
+      targets:
+        HydraiOS: all
+    run:
+      config: Debug
+  TerminalInputTests:
+    build:
+      targets:
+        HydraiOS: all
+        TerminalInputTests: [test]
+    test:
+      targets:
+        - TerminalInputTests
+  TerminalInputUITests:
+    build:
+      targets:
+        HydraiOS: all
+        TerminalInputUITests: [test]
+    test:
+      targets:
+        - TerminalInputUITests
+  TerminalInputValidation:
+    build:
+      targets:
+        HydraiOS: all
+        TerminalInputTests: [test]
+        TerminalInputUITests: [test]
+    test:
+      targets:
+        - TerminalInputTests
+        - TerminalInputUITests

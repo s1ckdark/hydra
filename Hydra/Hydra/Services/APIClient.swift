@@ -6,13 +6,27 @@ actor APIClient {
     private var baseURL: URL
     private let session: URLSession
     private let decoder: JSONDecoder
+    private let apiKeyProvider: @Sendable () -> String
 
-    init() {
-        let stored = UserDefaults.standard.string(forKey: "serverURL") ?? "http://localhost:8080"
-        self.baseURL = URL(string: stored)!
+    /// Default backend address when the user has not set one.
+    /// macOS runs an embedded hydra-server on loopback; iOS has no embedded
+    /// server, so it points at the always-on backend instead.
+    static let defaultServerURL: String = {
+        #if os(iOS)
+        return "http://100.125.85.81:8081"   // racknerd
+        #else
+        return "http://localhost:8080"
+        #endif
+    }()
+
+    init(baseURL: URL? = nil, session: URLSession? = nil,
+         apiKeyProvider: @escaping @Sendable () -> String = { CredentialStore.shared.get(.serverAPIKey) }) {
+        let stored = UserDefaults.standard.string(forKey: "serverURL") ?? Self.defaultServerURL
+        self.baseURL = baseURL ?? URL(string: stored) ?? URL(string: Self.defaultServerURL)!
+        self.apiKeyProvider = apiKeyProvider
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
-        self.session = URLSession(configuration: config)
+        self.session = session ?? URLSession(configuration: config)
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
@@ -31,8 +45,9 @@ actor APIClient {
 
     /// Reloads base URL from UserDefaults (call after settings change).
     func reloadBaseURL() {
-        let stored = UserDefaults.standard.string(forKey: "serverURL") ?? "http://localhost:8080"
-        self.baseURL = URL(string: stored)!
+        let stored = UserDefaults.standard.string(forKey: "serverURL") ?? Self.defaultServerURL
+        guard let url = URL(string: stored), ["http", "https"].contains(url.scheme?.lowercased() ?? ""), url.host != nil else { return }
+        self.baseURL = url
     }
 
     // MARK: - Devices
@@ -46,6 +61,25 @@ actor APIClient {
         if !includeMobile { items.append("include_mobile=false") }
         let path = items.isEmpty ? "/api/devices" : "/api/devices?" + items.joined(separator: "&")
         return try await get(path)
+    }
+
+    /// A strict inventory refresh, without invoking SSH metric collection.
+    /// The confirmation header prevents old servers that ignore the new flag
+    /// from presenting cached data as a successful Tailscale update.
+    func refreshTailscaleDevices() async throws -> [Device] {
+        guard ["http", "https"].contains(baseURL.scheme?.lowercased() ?? ""), baseURL.host != nil else {
+            throw APIError.invalidServerURL
+        }
+        var request = URLRequest(url: makeURL("/api/devices?refresh=tailscale"),
+                                 cachePolicy: .reloadIgnoringLocalCacheData)
+        applyAuth(&request)
+        let (data, response) = try await session.data(for: request)
+        try checkResponse(response, data)
+        guard let http = response as? HTTPURLResponse,
+              http.value(forHTTPHeaderField: "X-Hydra-Tailscale-Refresh") == "fresh" else {
+            throw APIError.tailscaleRefreshUnsupported
+        }
+        return try decoder.decode([Device].self, from: data)
     }
 
     func getDevice(id: String) async throws -> Device {
@@ -298,7 +332,9 @@ actor APIClient {
     }
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
-        let (data, response) = try await session.data(from: makeURL(path))
+        var request = URLRequest(url: makeURL(path))
+        applyAuth(&request)
+        let (data, response) = try await session.data(for: request)
         try checkResponse(response, data)
         return try decoder.decode(T.self, from: data)
     }
@@ -324,7 +360,7 @@ actor APIClient {
     }
 
     private func applyAuth(_ request: inout URLRequest) {
-        let key = CredentialStore.shared.get(.serverAPIKey)
+        let key = apiKeyProvider()
         if !key.isEmpty {
             request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         }
@@ -341,11 +377,17 @@ actor APIClient {
 
 enum APIError: LocalizedError {
     case server(status: Int, message: String)
+    case tailscaleRefreshUnsupported
+    case invalidServerURL
 
     var errorDescription: String? {
         switch self {
         case .server(let status, let message):
             return "[\(status)] \(message)"
+        case .tailscaleRefreshUnsupported:
+            return "서버가 Tailscale 강제 갱신을 지원하지 않습니다. Hydra 서버를 업데이트해 주세요."
+        case .invalidServerURL:
+            return "서버 주소를 확인해 주세요. http:// 또는 https://로 시작하는 주소가 필요합니다."
         }
     }
 }

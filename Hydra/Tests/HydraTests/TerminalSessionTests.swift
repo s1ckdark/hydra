@@ -35,6 +35,45 @@ final class TerminalSessionTests: XCTestCase {
         XCTAssertTrue(store.sessions.isEmpty)
     }
 
+    func testFailedTrustPersistenceDoesNotOpenShell() async throws {
+        let file = tempKnownHostsURL()
+        // A directory is not a usable trust file. The failure must not be swallowed.
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let session = TerminalSession(device: device("trust-failure"), sessionFactory: { FakeSSHSession() }, knownHostsURL: file)
+        defer { session.close() }
+        var received = Data()
+        session.onOutput = { received.append($0) }
+        await session.connect(cols: 80, rows: 24)
+        if case .needsTrust = session.hostKeyPrompt { await session.trustPendingHostKey() }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        guard case .disconnected(let reason) = session.state else { return XCTFail("Trust write failure must disconnect") }
+        XCTAssertTrue(reason?.contains("신뢰 기록") ?? false)
+        XCTAssertFalse(String(decoding: received, as: UTF8.self).contains("fake$"))
+    }
+
+    func testStorageFailureAfterTrustPromptDoesNotOpenShell() async throws {
+        let file = tempKnownHostsURL()
+        defer { try? FileManager.default.removeItem(at: file) }
+        let session = TerminalSession(device: device("trust-save-failure"), sessionFactory: { FakeSSHSession() },
+            knownHostsURL: file, credentialResolver: {
+                SSHCredentials(user: "fixture", port: 22,
+                    keys: [.init(path: "fixture", pem: Data("fixture-only".utf8), algorithm: "ed25519")])
+            })
+        defer { session.close() }
+        var received = Data()
+        session.onOutput = { received.append($0) }
+        await session.connect(cols: 80, rows: 24)
+        guard case .needsTrust = session.hostKeyPrompt else { return XCTFail("Expected first-host approval") }
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: true)
+        await session.trustPendingHostKey()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        guard case .disconnected(let reason) = session.state else { return XCTFail("Failed save must disconnect") }
+        XCTAssertTrue(reason?.contains("신뢰 기록") ?? false)
+        XCTAssertNil(session.hostKeyPrompt)
+        XCTAssertFalse(String(decoding: received, as: UTF8.self).contains("fake$"))
+    }
+
     func testConnectReachesConnectedAndStreamsOutput() async {
         let khURL = tempKnownHostsURL()
         defer { try? FileManager.default.removeItem(at: khURL) }

@@ -4,14 +4,26 @@ import SSHTransport
 /// Connects to a device's SSH session and hosts the SwiftTerm terminal view.
 /// Mirrors the macOS terminal tab's connect/TOFU flow for a single full-screen
 /// iOS terminal.
+@MainActor
 struct TerminalScreen: View {
     let device: Device
     @StateObject private var session: TerminalSession
     @State private var trustSHA: String?
+    @State private var connectionRequest = UUID()
+    @State private var startedRequest: UUID?
+    @State private var registration: RegistrationPresentation?
+    private let registrationModelFactory: @MainActor (SSHKeyRegistrationTarget) -> SSHKeyRegistrationViewModel
 
-    init(device: Device) {
+    private struct RegistrationPresentation: Identifiable {
+        let id = UUID()
+        let model: SSHKeyRegistrationViewModel
+    }
+
+    init(device: Device, session: TerminalSession? = nil,
+         registrationModelFactory: @escaping @MainActor (SSHKeyRegistrationTarget) -> SSHKeyRegistrationViewModel = { .live(target: $0) }) {
         self.device = device
-        _session = StateObject(wrappedValue: TerminalSession(device: device,
+        self.registrationModelFactory = registrationModelFactory
+        _session = StateObject(wrappedValue: session ?? TerminalSession(device: device,
             sessionFactory: { TerminalSessionStore.defaultBackend() }))
     }
 
@@ -20,8 +32,14 @@ struct TerminalScreen: View {
             .ignoresSafeArea(.container, edges: .bottom)
             .navigationTitle(device.displayName)
             .navigationBarTitleDisplayMode(.inline)
-            .task { await session.connect(cols: 80, rows: 24) }
-            .onDisappear { session.close() }
+            .task(id: connectionRequest) {
+                guard startedRequest != connectionRequest, !Task.isCancelled else { return }
+                startedRequest = connectionRequest
+                await session.connect(cols: 80, rows: 24)
+            }
+            .onDisappear {
+                if registration == nil || session.prepareKeyRegistration() == nil { session.close() }
+            }
             .onChange(of: hostKeyPromptSHA) { _, sha in trustSHA = sha }
             .alert("호스트 키 신뢰?", isPresented: Binding(
                 get: { trustSHA != nil }, set: { if !$0 { trustSHA = nil } })) {
@@ -30,7 +48,18 @@ struct TerminalScreen: View {
             } message: {
                 Text("SHA256:\n\(trustSHA ?? "")")
             }
-            .overlay(alignment: .bottom) { statusBar }
+            .safeAreaInset(edge: .bottom, spacing: 0) { statusBar }
+            .sheet(item: $registration) { presentation in
+                NavigationStack {
+                    SSHKeyRegistrationScreen(model: presentation.model)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("닫기") { registration = nil }
+                                    .accessibilityIdentifier("terminal-registration-close")
+                            }
+                        }
+                }
+            }
     }
 
     private var hostKeyPromptSHA: String? {
@@ -39,9 +68,29 @@ struct TerminalScreen: View {
     }
 
     @ViewBuilder private var statusBar: some View {
-        if case .disconnected(let reason) = session.state, let reason {
-            Text(reason).font(.caption).padding(6)
-                .background(.ultraThinMaterial).foregroundStyle(.red)
+        if case .disconnected(let reason) = session.state, let reason,
+           !reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                AppLocalizedText(reason).font(.caption).foregroundStyle(.red)
+                    .accessibilityIdentifier("terminal-connection-error")
+                HStack {
+                    Button {
+                        guard let target = session.prepareKeyRegistration() else { return }
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        registration = RegistrationPresentation(model: registrationModelFactory(target))
+                    } label: {
+                        Label("SSH 키 등록", systemImage: "key.fill")
+                    }
+                    .disabled(session.connectionTarget == nil)
+                    .accessibilityIdentifier("terminal-register-key")
+                    Button("다시 연결") { connectionRequest = UUID() }
+                        .accessibilityIdentifier("terminal-retry")
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.regularMaterial)
         }
     }
 }

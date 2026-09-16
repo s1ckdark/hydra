@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct KeyImportScreen: View {
+    var showsRegistrationLink = true
     @State private var pem: String = CredentialStore.shared.get(.sshPrivateKeyPEM)
     @State private var publicKey: String = CredentialStore.shared.get(.sshPublicKeyOpenSSH)
     @State private var showingImporter = false
@@ -13,6 +14,16 @@ struct KeyImportScreen: View {
     var body: some View {
         Form {
             generateSection
+            if showsRegistrationLink { Section {
+                NavigationLink {
+                    SSHKeyRegistrationScreen()
+                } label: {
+                    Label("서버에 공개키 등록", systemImage: "server.rack")
+                }
+                .disabled(!hasKey)
+            } footer: {
+                Text("저장된 SSH 키의 공개키를 서버 계정에 등록합니다.")
+            } }
             if !publicKey.isEmpty { publicKeySection }
             Section("SSH 개인키 (PEM)") {
                 TextEditor(text: $pem)
@@ -30,9 +41,9 @@ struct KeyImportScreen: View {
                     }
                 }
             }
-            if let message { Section { Text(message).foregroundStyle(.secondary) } }
+            if let message { Section { AppLocalizedText(message).foregroundStyle(.secondary) } }
             Section {
-                Text(hasKey ? "키 저장됨 ✓" : "저장된 키 없음")
+                AppLocalizedText(hasKey ? "키 저장됨 ✓" : "저장된 키 없음")
                     .foregroundStyle(hasKey ? .green : .secondary)
             }
         }
