@@ -1,0 +1,27 @@
+.git
+.omc
+.cache
+.claude
+.superpowers
+.codegraph
+.DS_Store
+
+build/
+Hydra/
+android/
+python/
+mcp-server/
+docs/
+scripts/
+migrations/
+*.md
+
+# 리포 루트에 남아 있는 맥용 스트레이 바이너리 (gitignore 에도 없음)
+/server
+/clusterctl
+/cluster-agent
+
+# 비밀정보가 빌드 컨텍스트에 실리는 것을 방지
+config.yaml
+.env
+*.db
