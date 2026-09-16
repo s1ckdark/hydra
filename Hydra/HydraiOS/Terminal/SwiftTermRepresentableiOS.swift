@@ -31,6 +31,9 @@ struct SwiftTermRepresentableiOS: UIViewRepresentable {
     func updateUIView(_ uiView: NativeTerminalInputView, context: Context) {}
 
     static func dismantleUIView(_ uiView: NativeTerminalInputView, coordinator: Coordinator) {
+        // onOutput은 makeUIView에서 설치한 뷰 캡처 클로저다. 끊지 않으면 세션이
+        // 뷰보다 오래 살 때 사라진 뷰로 계속 feed를 시도한다.
+        coordinator.session.onOutput = nil
         uiView.close()
     }
 
