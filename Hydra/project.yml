@@ -47,6 +47,7 @@ targets:
       - path: Hydra/State
       - path: Hydra/ViewModels
       - path: Hydra/Theme
+      - path: Hydra/Resources     # 공유 번역 테이블 (ko/en .lproj)
       - path: Hydra/Services
         excludes:
           - "PYExecutor.swift"        # subprocess — macOS only
