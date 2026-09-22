@@ -6,6 +6,7 @@ import SwiftTerm
 /// to the SSH session via the delegate.
 struct SwiftTermRepresentableiOS: UIViewRepresentable {
     let session: TerminalSession
+    var scheme: TerminalColorScheme = .defaultDark
 
     func makeCoordinator() -> Coordinator { Coordinator(session: session) }
 
@@ -25,10 +26,22 @@ struct SwiftTermRepresentableiOS: UIViewRepresentable {
             guard let view else { return }
             view.feed(byteArray: [UInt8](data)[...])
         }
+        applyScheme(to: container, coordinator: context.coordinator)
         return container
     }
 
-    func updateUIView(_ uiView: NativeTerminalInputView, context: Context) {}
+    func updateUIView(_ uiView: NativeTerminalInputView, context: Context) {
+        applyScheme(to: uiView, coordinator: context.coordinator)
+    }
+
+    /// SwiftUI는 update를 자주 부른다 — id가 바뀔 때만 팔레트를 다시 설치한다.
+    /// SwiftTerm iOS 뷰는 non-opaque라 컨테이너 배경이 비치므로 같이 칠한다.
+    private func applyScheme(to container: NativeTerminalInputView, coordinator: Coordinator) {
+        guard coordinator.appliedSchemeID != scheme.id else { return }
+        scheme.apply(to: container.terminal)
+        container.backgroundColor = TerminalColorScheme.platformColor(scheme.background)
+        coordinator.appliedSchemeID = scheme.id
+    }
 
     static func dismantleUIView(_ uiView: NativeTerminalInputView, coordinator: Coordinator) {
         // onOutput은 makeUIView에서 설치한 뷰 캡처 클로저다. 끊지 않으면 세션이
@@ -39,6 +52,7 @@ struct SwiftTermRepresentableiOS: UIViewRepresentable {
 
     final class Coordinator: NSObject, TerminalViewDelegate {
         let session: TerminalSession
+        var appliedSchemeID: String?
         init(session: TerminalSession) { self.session = session }
 
         // User typed → forward bytes to SSH. TerminalViewDelegate callbacks

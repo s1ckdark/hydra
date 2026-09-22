@@ -12,6 +12,7 @@ struct TerminalScreen: View {
     @State private var connectionRequest = UUID()
     @State private var startedRequest: UUID?
     @State private var registration: RegistrationPresentation?
+    @AppStorage(TerminalColorScheme.storageKey) private var schemeID = TerminalColorScheme.defaultDark.id
     private let registrationModelFactory: @MainActor (SSHKeyRegistrationTarget) -> SSHKeyRegistrationViewModel
 
     private struct RegistrationPresentation: Identifiable {
@@ -28,7 +29,7 @@ struct TerminalScreen: View {
     }
 
     var body: some View {
-        SwiftTermRepresentableiOS(session: session)
+        SwiftTermRepresentableiOS(session: session, scheme: TerminalColorScheme.find(id: schemeID))
             .ignoresSafeArea(.container, edges: .bottom)
             .navigationTitle(device.displayName)
             .navigationBarTitleDisplayMode(.inline)
