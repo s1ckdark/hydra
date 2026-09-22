@@ -262,7 +262,6 @@
 "서버의 공개키 등록 명령이 실패했습니다. 서버의 명령 실행 허용 여부와 기본 셸 설정을 확인하세요." = "The server's public key registration command failed. Check command execution permissions and the default shell settings.";
 "공개키가 추가되었을 수 있으므로 터미널에서 연결을 확인하세요." = "The public key may have been added; check the connection in a terminal.";
 " (서버 종료 코드: %d)" = " (server exit code: %d)";
-"터미널 테마" = "Terminal theme";
 "Language" = "Language";
 
 /* MARK: macOS ChatDrawerView */
@@ -455,7 +454,6 @@
 "Style" = "Style";
 "Theme" = "Theme";
 "Font" = "Font";
-"Terminal theme" = "Terminal theme";
 "Text size" = "Text size";
 "Preview" = "Preview";
 "The quick brown fox jumps over the lazy dog" = "The quick brown fox jumps over the lazy dog";
@@ -552,3 +550,16 @@
 "밑줄" = "Underline";
 "세로줄 (깜빡임)" = "Bar (blinking)";
 "세로줄" = "Bar";
+"색상 테마" = "Color theme";
+"폰트" = "Font";
+"크기 %lld pt" = "Size %lld pt";
+"동작" = "Behavior";
+"커서" = "Cursor";
+"스크롤백" = "Scrollback";
+"%lld줄" = "%lld lines";
+"(사용할 수 없음)" = "(unavailable)";
+"노드별 설정이 없습니다." = "No per-node settings.";
+"초기화" = "Reset";
+"노드별 설정" = "Per-node settings";
+"터미널 화면의 ⚙에서 '전체 설정 따르기'를 끄면 그 노드만의 설정을 쓸 수 있습니다." = "Turn off 'Use global settings' from ⚙ in a terminal to give that node its own settings.";
+"터미널 설정" = "Terminal settings";

@@ -60,6 +60,11 @@ enum TerminalFontCatalog {
         return result
     }
 
+    /// availableFonts()는 시스템 폰트를 전부 훑는다 — 폼이 다시 만들어질 때마다 부르지 않도록 한 번만 계산한다.
+    /// 다운로드 폰트(후속 작업)를 설치한 뒤에는 refreshAvailableFonts()로 갱신한다.
+    private(set) static var cachedAvailableFonts: [TerminalFontOption] = availableFonts()
+    static func refreshAvailableFonts() { cachedAvailableFonts = availableFonts() }
+
     static func resolve(_ name: String, size: CGFloat) -> Resolved {
         if name != systemID, let font = TerminalPlatformFont(name: name, size: size) {
             return Resolved(font: font, isFallback: false)

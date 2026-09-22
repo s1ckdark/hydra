@@ -2,7 +2,7 @@ import SwiftUI
 
 /// 터미널 색상 프리셋 선택 행 목록. Form/Section 안에 넣어 쓴다 (macOS 설정 탭, iOS 테마 화면 공용).
 struct TerminalColorSchemeOptions: View {
-    @AppStorage(TerminalColorScheme.storageKey) private var selectedID = TerminalColorScheme.defaultDark.id
+    @Binding var selectedID: String
 
     var body: some View {
         ForEach(TerminalColorScheme.presets) { scheme in
@@ -13,14 +13,6 @@ struct TerminalColorSchemeOptions: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("terminal-scheme-\(scheme.id)")
         }
-    }
-}
-
-/// iOS 설정에서 NavigationLink로 여는 전체 화면.
-struct TerminalColorSchemeScreen: View {
-    var body: some View {
-        Form { Section { TerminalColorSchemeOptions() } }
-            .localizedNavigationTitle("터미널 테마")
     }
 }
 

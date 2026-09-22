@@ -27,9 +27,12 @@ struct SettingsView: View {
 
 private struct TerminalSettingsTab: View {
     @AppStorage("terminalPersistViaTmux") private var persistViaTmux = false
+    @ObservedObject private var settingsStore = TerminalSettingsStore.shared
 
     var body: some View {
         Form {
+            TerminalSettingsForm(settings: settingsStore.globalBinding)
+
             Section {
                 Toggle("tmux 세션 지속", isOn: $persistViaTmux)
                 Text("""
@@ -48,6 +51,8 @@ private struct TerminalSettingsTab: View {
             } header: {
                 Text("세션 지속")
             }
+
+            TerminalNodeOverridesSection(store: settingsStore)
         }
         .formStyle(.grouped)
     }
