@@ -97,3 +97,9 @@ struct TerminalColorScheme: Identifiable, Equatable {
 - 앱 라이트/다크 연동 자동 전환
 - AI Dock 크롬 색 (4/4에서)
 - Android 터미널
+
+## 구현 계획 반영 메모
+
+- 공유 UI는 `TerminalColorSchemeOptions`(Form 안에 넣는 행 목록)와 `TerminalColorSchemeScreen`(iOS 전체 화면)으로 나눈다.
+  macOS는 `Picker` 대신 같은 행 목록을 Appearance 탭의 `Section`에 넣는다. Picker 메뉴에서는 색 칩이 제대로 그려지지 않기 때문이다.
+- 계획: `docs/superpowers/plans/2026-09-22-terminal-color-scheme.md`
