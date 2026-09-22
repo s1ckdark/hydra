@@ -13,6 +13,10 @@ struct HydraApp: App {
     @StateObject private var chatVM = ChatViewModel()
     @StateObject private var appState = AppState()
 
+    init() {
+        AppAppearancePreferences().migrateLanguageIfNeeded()
+    }
+
     var body: some Scene {
         #if os(iOS)
         WindowGroup {

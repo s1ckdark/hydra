@@ -35,18 +35,18 @@ final class AppAppearancePreferencesTests: XCTestCase {
         defaults.set("unknown-language", forKey: "appLanguage")
         defaults.set("unknown-theme", forKey: "appTheme")
         let preferences = AppAppearancePreferences(defaults: defaults)
-        XCTAssertEqual(preferences.language, .system)
+        XCTAssertEqual(preferences.language, .deviceDefault())
         XCTAssertEqual(preferences.theme, .system)
         XCTAssertNil(preferences.theme.colorScheme)
     }
 
     func testLanguageSelectionResolvesSupportedPreferredLanguages() {
-        XCTAssertEqual(AppDisplayLanguage.system.resolvedIdentifier(preferredLanguages: ["ko-KR", "en-US"]), "ko")
-        XCTAssertEqual(AppDisplayLanguage.system.resolvedIdentifier(preferredLanguages: ["fr-FR", "en-GB"]), "en")
-        XCTAssertEqual(AppDisplayLanguage.system.resolvedIdentifier(preferredLanguages: ["ja-JP", "ko_KR"]), "ko")
-        XCTAssertEqual(AppDisplayLanguage.system.resolvedIdentifier(preferredLanguages: ["ja-JP"]), "en")
-        XCTAssertEqual(AppDisplayLanguage.english.resolvedIdentifier(preferredLanguages: ["ko-KR"]), "en")
-        XCTAssertEqual(AppDisplayLanguage.korean.resolvedIdentifier(preferredLanguages: ["en-US"]), "ko")
+        XCTAssertEqual(AppDisplayLanguage.deviceDefault(preferredLanguages: ["ko-KR", "en-US"]), .korean)
+        XCTAssertEqual(AppDisplayLanguage.deviceDefault(preferredLanguages: ["fr-FR", "en-GB"]), .english)
+        XCTAssertEqual(AppDisplayLanguage.deviceDefault(preferredLanguages: ["ja-JP", "ko_KR"]), .korean)
+        XCTAssertEqual(AppDisplayLanguage.deviceDefault(preferredLanguages: ["ja-JP"]), .english)
+        XCTAssertEqual(AppDisplayLanguage.english.rawValue, "en")
+        XCTAssertEqual(AppDisplayLanguage.korean.rawValue, "ko")
     }
 
     func testBundledTranslationsAndDynamicMessagesUseTheSelectedLanguage() {

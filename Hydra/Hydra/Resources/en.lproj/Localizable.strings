@@ -7,7 +7,7 @@
 "앱 언어" = "App language";
 "테마" = "Theme";
 "언어 및 테마" = "Language and theme";
-"선택하면 바로 적용됩니다. 시스템 설정을 선택하면 기기 설정을 따릅니다." = "Changes apply immediately. Select System to follow your device settings.";
+"선택하면 바로 적용됩니다." = "Changes apply immediately.";
 "설정" = "Settings";
 "Settings" = "Settings";
 "기기" = "Devices";

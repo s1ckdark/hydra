@@ -5,17 +5,21 @@ struct HydraiOSApp: App {
     @StateObject private var dashboardVM = DashboardViewModel()
     @StateObject private var appState = AppState()
 
+    init() {
+        AppAppearancePreferences(defaults: Self.appearanceDefaults).migrateLanguageIfNeeded()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
                 .hydraAppearancePreferences()
-                .defaultAppStorage(appearanceDefaults)
+                .defaultAppStorage(Self.appearanceDefaults)
                 .environmentObject(dashboardVM)
                 .environmentObject(appState)
         }
     }
 
-    private var appearanceDefaults: UserDefaults {
+    private static var appearanceDefaults: UserDefaults {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--settings-ui-test") {
             return SettingsUITestFixture.preferenceStore
