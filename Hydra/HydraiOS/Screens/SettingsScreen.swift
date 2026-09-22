@@ -20,6 +20,10 @@ struct SettingsScreen: View {
             }
             AppearanceSettingsSection()
             DeviceRefreshSettingsSection(model: dashboardVM)
+            Section("터미널") {
+                NavigationLink("터미널 테마") { TerminalColorSchemeScreen() }
+                    .accessibilityIdentifier("settings-terminal-scheme")
+            }
             Section("SSH") {
                 TextField("username", text: $sshUsername)
                     .textInputAutocapitalization(.never)

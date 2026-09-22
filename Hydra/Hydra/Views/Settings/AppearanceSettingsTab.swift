@@ -108,6 +108,12 @@ struct AppearanceSettingsTab: View {
             }
 
             Section {
+                TerminalColorSchemeOptions()
+            } header: {
+                Text("Terminal theme")
+            }
+
+            Section {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("The quick brown fox jumps over the lazy dog")
                         .font(.headline)
