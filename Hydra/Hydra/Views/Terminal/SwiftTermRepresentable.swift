@@ -10,7 +10,7 @@ import SwiftTerm
 /// named `TerminalTabView` (see TerminalView.swift) to avoid the clash.
 struct SwiftTermRepresentable: NSViewRepresentable {
     let session: TerminalSession
-    var scheme: TerminalColorScheme = .defaultDark
+    var settings: TerminalSettings = TerminalSettings()
 
     func makeCoordinator() -> Coordinator { Coordinator(session: session) }
 
@@ -22,19 +22,19 @@ struct SwiftTermRepresentable: NSViewRepresentable {
             guard let view else { return }
             view.feed(byteArray: [UInt8](data)[...])
         }
-        applyScheme(to: view, coordinator: context.coordinator)
+        applySettings(to: view, coordinator: context.coordinator)
         return view
     }
 
     func updateNSView(_ nsView: SwiftTerm.TerminalView, context: Context) {
-        applyScheme(to: nsView, coordinator: context.coordinator)
+        applySettings(to: nsView, coordinator: context.coordinator)
     }
 
-    /// SwiftUI는 update를 자주 부른다 — id가 바뀔 때만 팔레트를 다시 설치한다.
-    private func applyScheme(to view: SwiftTerm.TerminalView, coordinator: Coordinator) {
-        guard coordinator.appliedSchemeID != scheme.id else { return }
-        scheme.apply(to: view)
-        coordinator.appliedSchemeID = scheme.id
+    /// SwiftUI는 update를 자주 부른다 — 이전에 적용한 값과 다른 항목만 반영한다.
+    private func applySettings(to view: SwiftTerm.TerminalView, coordinator: Coordinator) {
+        guard coordinator.appliedSettings != settings else { return }
+        settings.apply(to: view, previous: coordinator.appliedSettings)
+        coordinator.appliedSettings = settings
     }
 
     // SwiftTerm의 TerminalView는 intrinsicContentSize를 안 정하고 초기 프레임이
@@ -49,7 +49,7 @@ struct SwiftTermRepresentable: NSViewRepresentable {
 
     final class Coordinator: NSObject, TerminalViewDelegate {
         let session: TerminalSession
-        var appliedSchemeID: String?
+        var appliedSettings: TerminalSettings?
         init(session: TerminalSession) { self.session = session }
 
         // TerminalViewDelegate 콜백은 메인 스레드로 오지만, SwiftUI가 이 NSView를

@@ -173,7 +173,7 @@ private struct SessionStateDot: View {
 
 private struct TerminalSessionPane: View {
     @ObservedObject var session: TerminalSession
-    @AppStorage(TerminalColorScheme.storageKey) private var schemeID = TerminalColorScheme.defaultDark.id
+    @ObservedObject private var settingsStore = TerminalSettingsStore.shared
     var body: some View {
         VStack(spacing: 0) {
             if case .disconnected(let reason) = session.state {
@@ -190,7 +190,7 @@ private struct TerminalSessionPane: View {
                     }
                 }.padding(6).background(Color.red.opacity(0.08))
             }
-            SwiftTermRepresentable(session: session, scheme: TerminalColorScheme.find(id: schemeID))
+            SwiftTermRepresentable(session: session, settings: settingsStore.effective(for: session.deviceId))
                 // 페인을 꽉 채운다. 없으면 SwiftTerm NSView가 고유 크기(초기 80×24
                 // 그리드)로 작아져 창을 100% 안 채운다. 채우면 SwiftTerm이 bounds에서
                 // cols/rows를 다시 계산하고 sizeChanged→session.resize로 원격 PTY까지 맞춘다.

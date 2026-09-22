@@ -6,7 +6,7 @@ import SwiftTerm
 /// to the SSH session via the delegate.
 struct SwiftTermRepresentableiOS: UIViewRepresentable {
     let session: TerminalSession
-    var scheme: TerminalColorScheme = .defaultDark
+    var settings: TerminalSettings = TerminalSettings()
 
     func makeCoordinator() -> Coordinator { Coordinator(session: session) }
 
@@ -26,21 +26,23 @@ struct SwiftTermRepresentableiOS: UIViewRepresentable {
             guard let view else { return }
             view.feed(byteArray: [UInt8](data)[...])
         }
-        applyScheme(to: container, coordinator: context.coordinator)
+        applySettings(to: container, coordinator: context.coordinator)
         return container
     }
 
     func updateUIView(_ uiView: NativeTerminalInputView, context: Context) {
-        applyScheme(to: uiView, coordinator: context.coordinator)
+        applySettings(to: uiView, coordinator: context.coordinator)
     }
 
-    /// SwiftUI는 update를 자주 부른다 — id가 바뀔 때만 팔레트를 다시 설치한다.
-    /// SwiftTerm iOS 뷰는 non-opaque라 컨테이너 배경이 비치므로 같이 칠한다.
-    private func applyScheme(to container: NativeTerminalInputView, coordinator: Coordinator) {
-        guard coordinator.appliedSchemeID != scheme.id else { return }
-        scheme.apply(to: container.terminal)
-        container.backgroundColor = TerminalColorScheme.platformColor(scheme.background)
-        coordinator.appliedSchemeID = scheme.id
+    /// SwiftUI는 update를 자주 부른다 — 이전에 적용한 값과 다른 항목만 반영한다.
+    /// SwiftTerm iOS 뷰는 non-opaque라 컨테이너 배경이 비치므로 같이 칠하고,
+    /// 입력 뷰가 터미널 폰트를 따라가도록 레이아웃을 다시 요청한다.
+    private func applySettings(to container: NativeTerminalInputView, coordinator: Coordinator) {
+        guard coordinator.appliedSettings != settings else { return }
+        settings.apply(to: container.terminal, previous: coordinator.appliedSettings)
+        container.backgroundColor = TerminalColorScheme.platformColor(TerminalColorScheme.find(id: settings.colorSchemeID).background)
+        container.setNeedsLayout()
+        coordinator.appliedSettings = settings
     }
 
     static func dismantleUIView(_ uiView: NativeTerminalInputView, coordinator: Coordinator) {
@@ -52,7 +54,7 @@ struct SwiftTermRepresentableiOS: UIViewRepresentable {
 
     final class Coordinator: NSObject, TerminalViewDelegate {
         let session: TerminalSession
-        var appliedSchemeID: String?
+        var appliedSettings: TerminalSettings?
         init(session: TerminalSession) { self.session = session }
 
         // User typed → forward bytes to SSH. TerminalViewDelegate callbacks
