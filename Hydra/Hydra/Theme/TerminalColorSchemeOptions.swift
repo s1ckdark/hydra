@@ -38,6 +38,9 @@ private struct TerminalColorSchemeRow: View {
             }
         }
         .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(scheme.displayName)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     /// 테마 배경 위에 전경색 "Aa" + ANSI normal 8색 칩.

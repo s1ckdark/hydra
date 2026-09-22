@@ -103,3 +103,8 @@ struct TerminalColorScheme: Identifiable, Equatable {
 - 공유 UI는 `TerminalColorSchemeOptions`(Form 안에 넣는 행 목록)와 `TerminalColorSchemeScreen`(iOS 전체 화면)으로 나눈다.
   macOS는 `Picker` 대신 같은 행 목록을 Appearance 탭의 `Section`에 넣는다. Picker 메뉴에서는 색 칩이 제대로 그려지지 않기 때문이다.
 - 계획: `docs/superpowers/plans/2026-09-22-terminal-color-scheme.md`
+
+## 알려진 한계
+
+- iOS에서는 터미널이 `RootView`의 `.fullScreenCover`로 뜨고 사라질 때 세션을 닫는다. 그래서 터미널을 연 채 설정을 바꿀 수 없고, "열린 세션에 즉시 반영"은 macOS(Cmd-, 설정 창)에만 해당한다. iOS는 다음에 터미널을 열 때 새 테마가 적용된다. `updateUIView`의 id 가드는 iPad 멀티윈도우 대비로 남겨 둔다.
+- 원격 프로그램이 OSC 11로 배경을 바꾸면 SwiftTerm 뷰 배경만 바뀌고, iOS 컨테이너 배경은 테마 색으로 남는다.
