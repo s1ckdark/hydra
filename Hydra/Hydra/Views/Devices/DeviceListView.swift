@@ -48,7 +48,7 @@ struct DeviceListView: View {
                     .searchable(text: $searchText, prompt: "Search devices")
                 }
             }
-            .navigationTitle("Devices")
+            .localizedNavigationTitle("Devices")
             .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 400)
             .toolbar {
                 ToolbarItem {
@@ -926,7 +926,7 @@ struct DeviceDetailView: View {
                         .accessibilityHidden(true)
                     Text(bannerTitle)
                         .font(.callout.bold())
-                        .accessibilityLabel("\(AppLocalization.string("SSH 연결 경고: %@").replacingOccurrences(of: "%@", with: bannerTitle))")
+                        .accessibilityLabel(Text(verbatim: AppLocalization.format("SSH 연결 경고: %@", bannerTitle)))
                     Spacer()
                     if isDiagnosing {
                         ProgressView().controlSize(.small)
@@ -988,7 +988,7 @@ struct DeviceDetailView: View {
         if metricsSuppressed {
             return AppLocalization.string("연결 일시 중단됨 — 재시도 대기 중")
         }
-        return diagnosis?.humanTitle ?? AppLocalization.string("SSH 연결 오류")
+        return diagnosis.map { AppLocalization.string($0.humanTitle) } ?? AppLocalization.string("SSH 연결 오류")
     }
 
     private var recoveryActionTitle: String {
@@ -1232,7 +1232,7 @@ private struct AddressRow: View {
                     .foregroundStyle(justCopied ? .green : .secondary)
             }
             .buttonStyle(.plain)
-            .help(AppLocalization.string("Copy %@").replacingOccurrences(of: "%@", with: kind))
+            .help(AppLocalization.format("Copy %@", kind))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -1287,7 +1287,7 @@ struct TaildropSection: View {
                         if isSending {
                             VStack(spacing: 6) {
                                 ProgressView()
-                                Text(sendingFilename.map { "\(AppLocalization.string("Sending")) \($0)…" } ?? AppLocalization.string("Sending…"))
+                                Text(sendingFilename.map { AppLocalization.format("Sending %@…", $0) } ?? AppLocalization.string("Sending…"))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -1323,9 +1323,7 @@ struct TaildropSection: View {
     private func statusBanner(_ s: Status) -> some View {
         switch s {
         case .success(let target, let filename):
-            Label(AppLocalization.string("Sent %@ to %@")
-                    .replacingOccurrences(of: "%1$@", with: filename)
-                    .replacingOccurrences(of: "%2$@", with: target),
+            Label(AppLocalization.format("Sent %@ to %@", filename, target),
                   systemImage: "checkmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(.green)

@@ -29,7 +29,7 @@ struct TasksView: View {
                         Button("Delete", role: .destructive) { store.delete(task) }
                     }
             }
-            .navigationTitle("Tasks")
+            .localizedNavigationTitle("Tasks")
             .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 380)
             .toolbar {
                 ToolbarItem {

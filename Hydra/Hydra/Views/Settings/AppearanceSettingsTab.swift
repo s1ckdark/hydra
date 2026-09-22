@@ -77,6 +77,7 @@ struct AppearanceSettingsTab: View {
                     ForEach(AppDisplayLanguage.allCases) { Text(verbatim: $0.label).tag($0.rawValue) }
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
             } header: {
                 Text("Language")
             }

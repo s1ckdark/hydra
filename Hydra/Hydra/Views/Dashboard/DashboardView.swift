@@ -27,21 +27,21 @@ struct DashboardView: View {
                     SummaryCard(
                         title: "GPU Nodes",
                         value: "\(vm.gpuDevices.count)",
-                        subtitle: "\(vm.totalGPUs) GPUs total",
+                        subtitle: AppLocalization.format("%lld GPUs total", vm.totalGPUs),
                         icon: "gpu",
                         color: .purple
                     )
                     SummaryCard(
                         title: "Orchs",
                         value: "\(vm.orchs.count)",
-                        subtitle: "\(vm.runningOrchs.count) running",
+                        subtitle: AppLocalization.format("%lld running", vm.runningOrchs.count),
                         icon: "server.rack",
                         color: .green
                     )
                     SummaryCard(
                         title: "Tasks",
                         value: "\(vm.runningTasks.count)",
-                        subtitle: "\(vm.tasks.count) total",
+                        subtitle: AppLocalization.format("%lld total", vm.tasks.count),
                         icon: "list.bullet.clipboard",
                         color: .orange
                     )
@@ -124,7 +124,7 @@ struct DashboardView: View {
                 }
             }
         }
-        .navigationTitle("Dashboard")
+        .localizedNavigationTitle("Dashboard")
         .onAppear { vm.startPolling(interval: 15) }
         .onDisappear { vm.stopPolling() }
     }
@@ -185,7 +185,7 @@ struct OfflineAlert: View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
-            Text("\(devices.count) device\(devices.count > 1 ? "s" : "") offline:")
+            Text(AppLocalization.format(devices.count == 1 ? "%lld device offline:" : "%lld devices offline:", devices.count))
                 .font(.caption)
                 .fontWeight(.medium)
             Text(devices.map(\.shortName).joined(separator: ", "))
@@ -860,7 +860,7 @@ struct DashboardDeviceCard: View {
         .opacity(device.isOnline ? 1 : 0.5)
         .contentShape(Rectangle())
         .help(device.isOnline
-              ? AppLocalization.string("Open %@").replacingOccurrences(of: "%@", with: device.shortName)
+              ? AppLocalization.format("Open %@", device.shortName)
               : "\(device.shortName) \(AppLocalization.string("— offline"))")
     }
 

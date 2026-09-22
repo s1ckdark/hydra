@@ -363,7 +363,7 @@ private struct TailscaleSettingsTab: View {
                 withAnimation { testStatus = .error("\(AppLocalization.string("Tailscale API returned status")) \(http.statusCode)") }
             }
         } catch {
-            withAnimation { testStatus = .error("Connection failed: \(error.localizedDescription)") }
+            withAnimation { testStatus = .error("\(AppLocalization.string("Connection failed:")) \(error.localizedDescription)") }
         }
     }
 

@@ -20,7 +20,7 @@ struct TerminalColorSchemeOptions: View {
 struct TerminalColorSchemeScreen: View {
     var body: some View {
         Form { Section { TerminalColorSchemeOptions() } }
-            .navigationTitle("터미널 테마")
+            .localizedNavigationTitle("터미널 테마")
     }
 }
 

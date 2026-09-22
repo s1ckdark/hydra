@@ -524,3 +524,23 @@
 "ms" = "ms";
 "Appearance" = "외형";
 "Enable Schedule" = "예약 사용";
+
+/* MARK: macOS review fix wave — window titles, SSH banner, numeric copy, format substitutions */
+"%lld workers" = "워커 %lld개";
+"Results from %lld workers" = "워커 %lld개의 결과";
+"Terminal output · %lld/%lld actions ok" = "터미널 출력 · 작업 %lld/%lld개 성공";
+"up %@" = "가동 %@";
+"SSH OK" = "SSH OK";
+"네트워크 연결 불가" = "네트워크 연결 불가";
+"호스트 키가 변경되었습니다" = "호스트 키가 변경되었습니다";
+"SSH 인증 실패" = "SSH 인증 실패";
+"SSH 키 파일 문제" = "SSH 키 파일 문제";
+"Tailscale 확인 필요" = "Tailscale 확인 필요";
+"SSH 오류" = "SSH 오류";
+"%lld GPUs total" = "GPU 총 %lld개";
+"%lld running" = "%lld개 실행 중";
+"%lld total" = "총 %lld개";
+"%lld device offline:" = "기기 %lld대 오프라인:";
+"%lld devices offline:" = "기기 %lld대 오프라인:";
+"Sending %@…" = "%@ 전송 중…";
+"Connection failed:" = "연결 실패:";

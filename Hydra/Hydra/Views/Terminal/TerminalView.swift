@@ -149,7 +149,7 @@ private struct SidebarRowView: View {
         .listRowBackground(isActive ? Color.accentColor.opacity(0.18) : nil)
         .help(row.isEnabled
               ? (row.sessionId == nil
-                 ? AppLocalization.string("%@에 SSH 터미널 세션 열기").replacingOccurrences(of: "%@", with: row.name)
+                 ? AppLocalization.format("%@에 SSH 터미널 세션 열기", row.name)
                  : AppLocalization.string("세션으로 이동"))
               : AppLocalization.string("오프라인이거나 SSH를 사용할 수 없는 노드"))
     }

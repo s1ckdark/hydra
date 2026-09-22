@@ -288,7 +288,7 @@ struct AISettingsTab: View {
             }
         } catch {
             guard !Task.isCancelled else { return }
-            withAnimation { testStatus = .error("Connection failed: \(error.localizedDescription)") }
+            withAnimation { testStatus = .error("\(AppLocalization.string("Connection failed:")) \(error.localizedDescription)") }
         }
     }
 

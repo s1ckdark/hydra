@@ -26,7 +26,7 @@ struct OrchListView: View {
                         }
                     }
             }
-            .navigationTitle("Orchestrations")
+            .localizedNavigationTitle("Orchestrations")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: { vm.showCreateSheet = true }) {

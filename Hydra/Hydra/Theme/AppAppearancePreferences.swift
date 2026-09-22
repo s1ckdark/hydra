@@ -128,3 +128,27 @@ extension View {
         modifier(HydraAppearancePreferencesModifier())
     }
 }
+
+/// macOS resolves window/navigation titles outside the environment's
+/// injected `\.locale` (unlike `Text`, which does pick it up), so a plain
+/// `.navigationTitle("Dashboard")` keeps showing English even after the user
+/// switches Hydra's display language to Korean. This modifier reads the
+/// injected locale directly and builds the title from `AppLocalization`
+/// instead, so window/split-view titles track the in-app language.
+private struct LocalizedNavigationTitleModifier: ViewModifier {
+    @Environment(\.locale) private var locale
+    let key: String
+
+    func body(content: Content) -> some View {
+        let language = AppDisplayLanguage(rawValue: locale.language.languageCode?.identifier ?? "") ?? AppAppearancePreferences().language
+        content.navigationTitle(Text(verbatim: AppLocalization.string(key, language: language)))
+    }
+}
+
+extension View {
+    /// Use in place of `.navigationTitle("literal key")` for any title that
+    /// must react to the in-app display language on macOS.
+    func localizedNavigationTitle(_ key: String) -> some View {
+        modifier(LocalizedNavigationTitleModifier(key: key))
+    }
+}
