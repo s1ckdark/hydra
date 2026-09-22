@@ -264,3 +264,263 @@
 " (서버 종료 코드: %d)" = " (server exit code: %d)";
 "터미널 테마" = "Terminal theme";
 "Language" = "Language";
+
+/* MARK: macOS ChatDrawerView */
+"Expand to full window" = "Expand to full window";
+"Close drawer" = "Close drawer";
+"Active tab is auto-included as context." = "Active tab is auto-included as context.";
+"Ask…" = "Ask…";
+
+/* MARK: macOS ChatTabView */
+"Ask Hydra anything" = "Ask Hydra anything";
+"e.g. \\\"list devices\\\" or \\\"create an orch on home-mac\\\"" = "e.g. \"list devices\" or \"create an orch on home-mac\"";
+"Ask Hydra…" = "Ask Hydra…";
+
+/* MARK: macOS ConnectionView */
+"서버를 찾고 있습니다..." = "Searching for server...";
+"연결 중..." = "Connecting...";
+"서버를 찾을 수 없습니다" = "Server not found";
+"인증에 실패했습니다" = "Authentication failed";
+
+/* MARK: macOS ContentView */
+"Hydra" = "Hydra";
+"Open chat (⌘/)" = "Open chat (⌘/)";
+"Console" = "Console";
+"디바이스 정보를 불러오는 중…" = "Loading device information…";
+"로컬 서버 시작 중…" = "Starting local server…";
+
+/* MARK: macOS ConsoleView */
+"새 스니펫" = "New Snippet";
+"실행" = "Run";
+"로컬(:8080)에서 실행됨 — 사용자 코드가 이 머신에서 그대로 실행됩니다." = "Runs locally (:8080) — your code executes directly on this machine.";
+
+/* MARK: macOS DashboardView */
+"Force refresh — re-probe and re-collect metrics from every device" = "Force refresh — re-probe and re-collect metrics from every device";
+"Server Connected" = "Server Connected";
+"Server Disconnected" = "Server Disconnected";
+"Checking..." = "Checking...";
+"Utilization" = "Utilization";
+"Avg Util" = "Avg Util";
+"GPUs" = "GPUs";
+"Allow = run all · Ask = approve each · Auto = AI runs safe ones, asks on risky" = "Allow = run all · Ask = approve each · Auto = AI runs safe ones, asks on risky";
+"Command, or describe a goal for the AI agent…" = "Command, or describe a goal for the AI agent…";
+"Ask the AI agent to plan & run this" = "Ask the AI agent to plan & run this";
+"Run this command directly on the selected device" = "Run this command directly on the selected device";
+"Remove from history" = "Remove from history";
+"Running..." = "Running...";
+"Terminal output" = "Terminal output";
+"GPU Nodes" = "GPU Nodes";
+"online" = "online";
+"·" = "·";
+"CPU" = "CPU";
+"RAM" = "RAM";
+"GPU" = "GPU";
+"Open" = "Open";
+"— offline" = "— offline";
+
+/* MARK: macOS DeviceListView */
+"Search devices" = "Search devices";
+"Show mobile devices (iPhone / iPad)" = "Show mobile devices (iPhone / iPad)";
+"Hide mobile devices — worker-only view" = "Hide mobile devices — worker-only view";
+"Done editing" = "Done editing";
+"Edit device order & visibility" = "Edit device order & visibility";
+"Select a device" = "Select a device";
+"터미널 열기" = "Open Terminal";
+"이 디바이스로 SSH 터미널 세션을 엽니다 — Terminal 탭에서 확인" = "Opens an SSH terminal session to this device — check the Terminal tab";
+"OS" = "OS";
+"User" = "User";
+"Enabled" = "Enabled";
+"Disabled" = "Disabled";
+"Unknown" = "Unknown";
+"Load:" = "Load:";
+"Ping" = "Ping";
+"Ping device" = "Ping device";
+"Probing" = "Probing";
+"min" = "min";
+"avg" = "avg";
+"max" = "max";
+"loss" = "loss";
+"Target" = "Target";
+"succeeded" = "succeeded";
+"Click Ping device to measure TCP connect latency to this device's Tailscale IP." = "Click Ping device to measure TCP connect latency to this device's Tailscale IP.";
+"Core" = "Core";
+"VRAM" = "VRAM";
+"Fan speed" = "Fan speed";
+"Current SM / memory clock" = "Current SM / memory clock";
+"Performance state — P0 is max, P12+ is idle" = "Performance state — P0 is max, P12+ is idle";
+"Current PCIe link" = "Current PCIe link";
+"Processes" = "Processes";
+"Policy:" = "Policy:";
+"Allow = run all · Ask = approve each · Auto = AI judges safety, asks on risky" = "Allow = run all · Ask = approve each · Auto = AI judges safety, asks on risky";
+"Shell command to run on this device…" = "Shell command to run on this device…";
+"Execute" = "Execute";
+"Need the AI agent? Open Chat (⌘/) — it already knows this device." = "Need the AI agent? Open Chat (⌘/) — it already knows this device.";
+"이 호스트 SSH 공개키" = "This host's SSH public key";
+"~/.ssh에 키가 없어요. Ed25519 키페어를 생성하고 공개키를 복사합니다." = "No key found in ~/.ssh. Generates an Ed25519 key pair and copies the public key.";
+"디바이스 ~/.ssh/authorized_keys에 등록할 공개키를 클립보드로 복사합니다." = "Copies the public key to the clipboard for registering in the device's ~/.ssh/authorized_keys.";
+"원격 ~/.ssh/authorized_keys 에 붙여넣어 사용" = "Paste into the remote ~/.ssh/authorized_keys";
+"복사됨" = "Copied";
+"복사됨 — " = "Copied — ";
+"Tailscale addresses" = "Tailscale addresses";
+"MagicDNS" = "MagicDNS";
+"IPv4" = "IPv4";
+"IPv6" = "IPv6";
+"Copy %@" = "Copy %@";
+"Taildrop" = "Taildrop";
+"Select or drag and drop a file to send it to this device…" = "Select or drag and drop a file to send it to this device…";
+"Select a File…" = "Select a File…";
+"Sending" = "Sending";
+"Sending…" = "Sending…";
+"Sent %@ to %@" = "Sent %1$@ to %2$@";
+"SSH 연결 경고: %@" = "SSH connection warning: %@";
+"SSH 복구 배너 닫기" = "Dismiss SSH recovery banner";
+"지금 재시도" = "Retry now";
+"새 호스트 키를 신뢰하시겠습니까?" = "Trust the new host key?";
+"이 새 키 신뢰" = "Trust this new key";
+"연결 일시 중단됨 — 재시도 대기 중" = "Connection suspended — waiting to retry";
+"SSH 연결 오류" = "SSH connection error";
+"신뢰하고 업데이트" = "Trust and update";
+"재시도" = "Retry";
+"로그인 정보 확인" = "Check login credentials";
+"키 파일 위치 확인" = "Check key file location";
+"Tailscale 열기" = "Open Tailscale";
+"다시 진단" = "Diagnose again";
+"SSH 연결 진단" = "Diagnose SSH connection";
+"SSH 키가 서버의 authorized_keys에 등록되어 있는지, 사용자 계정이 올바른지 확인하세요." = "Check that the SSH key is registered in the server's authorized_keys and that the account is correct.";
+"Hydra가 사용하는 SSH 개인키 경로를 환경 설정에서 확인하세요." = "Check the SSH private key path Hydra uses in Preferences.";
+"SSH 연결이 정상입니다." = "The SSH connection is healthy.";
+"진단을 시작할 수 없습니다. 잠시 후 다시 시도하세요." = "Could not start diagnosis. Try again shortly.";
+"호스트 키가 업데이트되었습니다. 재연결 중..." = "Host key updated. Reconnecting...";
+"키를 저장하지 못했습니다. 잠시 후 다시 시도하세요." = "Could not save the key. Try again shortly.";
+"재시도 중..." = "Retrying...";
+"재시도를 시작할 수 없습니다. 잠시 후 다시 시도하세요." = "Could not start the retry. Try again shortly.";
+"Head Node" = "Head Node";
+"Unknown error" = "Unknown error";
+
+/* MARK: macOS ChatSection (MenuBar) */
+"Open Chat" = "Open Chat";
+"Idle" = "Idle";
+
+/* MARK: macOS MenuBarView */
+"GPU Orch Manager" = "GPU Orch Manager";
+"connection error" = "connection error";
+"Open Dashboard" = "Open Dashboard";
+"Refresh Now" = "Refresh Now";
+"Quit" = "Quit";
+
+/* MARK: macOS CreateOrchView */
+"Orchestration name" = "Orchestration name";
+
+/* MARK: macOS OrchListView */
+"Orchestrations" = "Orchestrations";
+"Select a orch" = "Select a orch";
+"Command..." = "Command...";
+"Running on All Workers" = "Running on All Workers";
+"Run on All Workers" = "Run on All Workers";
+
+/* MARK: macOS AISettingsTab */
+"Provider" = "Provider";
+"API key" = "API key";
+"Endpoint" = "Endpoint";
+"Model (optional)" = "Model (optional)";
+"Model" = "Model";
+"(optional)" = "(optional)";
+"e.g. Prefer read-only commands. Answer concisely in Korean. Use nvidia-smi for GPU checks." = "e.g. Prefer read-only commands. Answer concisely in Korean. Use nvidia-smi for GPU checks.";
+"Sent with every Ask AI request — applies immediately, no server push needed." = "Sent with every Ask AI request — applies immediately, no server push needed.";
+"① AI Provider (Default)" = "① AI Provider (Default)";
+"② AI Instruction (optional)" = "② AI Instruction (optional)";
+"③ Verify" = "③ Verify";
+"④ Advanced (optional)" = "④ Advanced (optional)";
+"⑤ Save" = "⑤ Save";
+"Test Connection" = "Test Connection";
+"Testing…" = "Testing…";
+"Invalid provider or endpoint" = "Invalid provider or endpoint";
+"No response" = "No response";
+"Connected to" = "Connected to";
+"Save Locally" = "Save Locally";
+"Save & Push to Server" = "Save & Push to Server";
+"Test the connection first before saving." = "Test the connection first before saving.";
+"Pushing to server…" = "Pushing to server…";
+"Saved to Keychain" = "Saved to Keychain";
+"Saved locally & pushed to server" = "Saved locally & pushed to server";
+"Uses the default provider above." = "Uses the default provider above.";
+"Overrides are stored locally. Push to server to apply." = "Overrides are stored locally. Push to server to apply.";
+"claude, openai, ollama…" = "claude, openai, ollama…";
+"endpoint URL" = "endpoint URL";
+"Saved" = "Saved";
+"Invalid server URL:" = "Invalid server URL:";
+"Server returned" = "Server returned";
+
+/* MARK: macOS AppearanceSettingsTab */
+"Style" = "Style";
+"Theme" = "Theme";
+"Font" = "Font";
+"Terminal theme" = "Terminal theme";
+"Text size" = "Text size";
+"Preview" = "Preview";
+"The quick brown fox jumps over the lazy dog" = "The quick brown fox jumps over the lazy dog";
+"Devices 12/12 online · 6 GPUs" = "Devices 12/12 online · 6 GPUs";
+"$ nvidia-smi --query-gpu=utilization.gpu --format=csv" = "$ nvidia-smi --query-gpu=utilization.gpu --format=csv";
+
+/* MARK: macOS SettingsView */
+"tmux 세션 지속" = "Persist tmux session";
+"세션 지속" = "Persist session";
+"Server URL" = "Server URL";
+"API Key (optional)" = "API Key (optional)";
+"Only needed when connecting from outside the Tailscale network. On localhost or Tailscale, requests are authenticated automatically.\\n\\nTo generate a key: run `hydra config set api-key <your-key>` on the server, then enter the same key here." = "Only needed when connecting from outside the Tailscale network. On localhost or Tailscale, requests are authenticated automatically.\n\nTo generate a key: run `hydra config set api-key <your-key>` on the server, then enter the same key here.";
+"Hydra Server Connection" = "Hydra Server Connection";
+"Failed: non-200 response" = "Failed: non-200 response";
+"Connected —" = "Connected —";
+"Error:" = "Error:";
+"Tailnet" = "Tailnet";
+"OAuth Client ID" = "OAuth Client ID";
+"OAuth Client Secret" = "OAuth Client Secret";
+"Auth Method" = "Auth Method";
+"Tailscale API Key" = "Tailscale API Key";
+"Generate at admin.tailscale.com > Settings > Keys" = "Generate at admin.tailscale.com > Settings > Keys";
+"Create OAuth client at admin.tailscale.com > Settings > OAuth clients" = "Create OAuth client at admin.tailscale.com > Settings > OAuth clients";
+"① Tailscale Network" = "① Tailscale Network";
+"Your Tailscale tailnet name (e.g. \\\"myteam.org\\\" or use \\\"-\\\" for default)" = "Your Tailscale tailnet name (e.g. \"myteam.org\" or use \"-\" for default)";
+"② Authentication" = "② Authentication";
+"Connecting to Tailscale API..." = "Connecting to Tailscale API...";
+"④ Save" = "④ Save";
+"Save locally and send credentials to the hydra server" = "Save locally and send credentials to the hydra server";
+"Pushing to server..." = "Pushing to server...";
+"Invalid tailnet name" = "Invalid tailnet name";
+"Authentication failed — check your API key or OAuth credentials" = "Authentication failed — check your API key or OAuth credentials";
+"Connected to Tailscale API" = "Connected to Tailscale API";
+"Tailscale API returned status" = "Tailscale API returned status";
+
+/* MARK: macOS TasksView */
+"Select a task or create a new one" = "Select a task or create a new one";
+"Duplicate" = "Duplicate";
+"Timeout" = "Timeout";
+"Capabilities" = "Capabilities";
+"Last Run" = "Last Run";
+"Off" = "Off";
+"Target device:" = "Target device:";
+"Failed" = "Failed";
+"Success" = "Success";
+"Edit Task" = "Edit Task";
+"New Task" = "New Task";
+"Task Name" = "Task Name";
+"Command" = "Command";
+"seconds" = "seconds";
+"Add capability (e.g. gpu, gps)" = "Add capability (e.g. gpu, gps)";
+"Every" = "Every";
+"minutes" = "minutes";
+
+/* MARK: macOS TerminalView */
+"왼쪽에서 노드를 선택하세요." = "Select a node on the left.";
+"세션으로 이동" = "Go to session";
+"%@에 SSH 터미널 세션 열기" = "Open an SSH terminal session to %@";
+"오프라인이거나 SSH를 사용할 수 없는 노드" = "Node is offline or SSH is unavailable";
+"연결 끊김" = "Disconnected";
+"재연결" = "Reconnect";
+"새 호스트키" = "New host key";
+"신뢰" = "Trust";
+
+/* MARK: macOS misc (coverage fixups) */
+"ms" = "ms";
+"Appearance" = "Appearance";
+"Enable Schedule" = "Enable Schedule";

@@ -116,15 +116,15 @@ private struct ServerSettingsTab: View {
             let url = URL(string: serverURL)!.appendingPathComponent("health")
             let (data, response) = try await URLSession.shared.data(from: url)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                connectionStatus = "Failed: non-200 response"
+                connectionStatus = AppLocalization.string("Failed: non-200 response")
                 return
             }
             if let json = try? JSONDecoder().decode([String: String].self, from: data),
                let status = json["status"] {
-                connectionStatus = "Connected — \(status)"
+                connectionStatus = "\(AppLocalization.string("Connected —")) \(status)"
             }
         } catch {
-            connectionStatus = "Error: \(error.localizedDescription)"
+            connectionStatus = "\(AppLocalization.string("Error:")) \(error.localizedDescription)"
         }
     }
 }
@@ -319,7 +319,7 @@ private struct TailscaleSettingsTab: View {
         let urlStr = "https://api.tailscale.com/api/v2/tailnet/\(tn)/devices"
 
         guard let url = URL(string: urlStr) else {
-            withAnimation { testStatus = .error("Invalid tailnet name") }
+            withAnimation { testStatus = .error(AppLocalization.string("Invalid tailnet name")) }
             return
         }
 
@@ -354,13 +354,13 @@ private struct TailscaleSettingsTab: View {
                 } else {
                     withAnimation {
                         connectionVerified = true
-                        testStatus = .success("Connected to Tailscale API")
+                        testStatus = .success(AppLocalization.string("Connected to Tailscale API"))
                     }
                 }
             } else if http.statusCode == 401 || http.statusCode == 403 {
-                withAnimation { testStatus = .error("Authentication failed — check your API key or OAuth credentials") }
+                withAnimation { testStatus = .error(AppLocalization.string("Authentication failed — check your API key or OAuth credentials")) }
             } else {
-                withAnimation { testStatus = .error("Tailscale API returned status \(http.statusCode)") }
+                withAnimation { testStatus = .error("\(AppLocalization.string("Tailscale API returned status")) \(http.statusCode)") }
             }
         } catch {
             withAnimation { testStatus = .error("Connection failed: \(error.localizedDescription)") }

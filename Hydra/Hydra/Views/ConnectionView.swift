@@ -152,7 +152,7 @@ struct ConnectionView: View {
                     discovery.stopDiscovery()
                     onConnected()
                 } else {
-                    connectionState = .error("인증에 실패했습니다")
+                    connectionState = .error(AppLocalization.string("인증에 실패했습니다"))
                 }
             } catch {
                 // If this was a background attempt, don't show error yet

@@ -278,7 +278,7 @@ struct DeviceDetailView: View {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                     InfoField(label: "OS", value: device.os)
                     InfoField(label: "User", value: device.user)
-                    InfoField(label: "SSH", value: device.sshEnabled ? "Enabled" : "Disabled")
+                    InfoField(label: "SSH", value: device.sshEnabled ? AppLocalization.string("Enabled") : AppLocalization.string("Disabled"))
                     if device.hasGpu {
                         InfoField(label: "GPU", value: "\(device.gpuCount)x \(device.gpuModel ?? "Unknown")")
                     }
@@ -548,7 +548,7 @@ struct DeviceDetailView: View {
                                 }
                             }
                         } else if let status = gpuStatus, status.hasError {
-                            Text(status.error ?? "Unknown error")
+                            Text(status.error ?? AppLocalization.string("Unknown error"))
                                 .font(.caption)
                                 .foregroundStyle(.red)
                         } else {
@@ -719,8 +719,8 @@ struct DeviceDetailView: View {
 
     private var keyCopyStatusMessage: String {
         switch keyCopyStatus {
-        case .idle: return "원격 ~/.ssh/authorized_keys 에 붙여넣어 사용"
-        case .copied(let name): return "복사됨 — \(name)"
+        case .idle: return AppLocalization.string("원격 ~/.ssh/authorized_keys 에 붙여넣어 사용")
+        case .copied(let name): return "\(AppLocalization.string("복사됨 — "))\(name)"
         case .failed(let msg): return msg
         }
     }
@@ -734,8 +734,8 @@ struct DeviceDetailView: View {
     }
 
     private var keyCopyButtonTitle: String {
-        if case .copied = keyCopyStatus { return "복사됨" }
-        return "공개키 복사"
+        if case .copied = keyCopyStatus { return AppLocalization.string("복사됨") }
+        return AppLocalization.string("공개키 복사")
     }
 
     private var keyCopyButtonIcon: String {
@@ -804,7 +804,7 @@ struct DeviceDetailView: View {
     @ViewBuilder
     private func pingStat(label: String, ms: Double, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label)
+            AppLocalizedText(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             Text(String(format: "%.1f ms", ms))
@@ -926,7 +926,7 @@ struct DeviceDetailView: View {
                         .accessibilityHidden(true)
                     Text(bannerTitle)
                         .font(.callout.bold())
-                        .accessibilityLabel("SSH 연결 경고: \(bannerTitle)")
+                        .accessibilityLabel("\(AppLocalization.string("SSH 연결 경고: %@").replacingOccurrences(of: "%@", with: bannerTitle))")
                     Spacer()
                     if isDiagnosing {
                         ProgressView().controlSize(.small)
@@ -937,7 +937,7 @@ struct DeviceDetailView: View {
                         Image(systemName: "xmark")
                     }
                     .buttonStyle(.borderless)
-                    .accessibilityLabel("SSH 복구 배너 닫기")
+                    .accessibilityLabel(AppLocalization.string("SSH 복구 배너 닫기"))
                 }
                 if let text = sshErrorText, !text.isEmpty {
                     Text(text)
@@ -986,21 +986,21 @@ struct DeviceDetailView: View {
 
     private var bannerTitle: String {
         if metricsSuppressed {
-            return "연결 일시 중단됨 — 재시도 대기 중"
+            return AppLocalization.string("연결 일시 중단됨 — 재시도 대기 중")
         }
-        return diagnosis?.humanTitle ?? "SSH 연결 오류"
+        return diagnosis?.humanTitle ?? AppLocalization.string("SSH 연결 오류")
     }
 
     private var recoveryActionTitle: String {
         switch diagnosis?.category {
-        case "host_key_mismatch": return "신뢰하고 업데이트"
-        case "network_unreachable": return "재시도"
-        case "auth_failed": return "로그인 정보 확인"
-        case "key_file_missing": return "키 파일 위치 확인"
-        case "tailscale": return "Tailscale 열기"
-        case "ok": return "다시 진단"
-        case .none: return "SSH 연결 진단"
-        default: return "다시 진단"
+        case "host_key_mismatch": return AppLocalization.string("신뢰하고 업데이트")
+        case "network_unreachable": return AppLocalization.string("재시도")
+        case "auth_failed": return AppLocalization.string("로그인 정보 확인")
+        case "key_file_missing": return AppLocalization.string("키 파일 위치 확인")
+        case "tailscale": return AppLocalization.string("Tailscale 열기")
+        case "ok": return AppLocalization.string("다시 진단")
+        case .none: return AppLocalization.string("SSH 연결 진단")
+        default: return AppLocalization.string("다시 진단")
         }
     }
 
@@ -1033,10 +1033,10 @@ struct DeviceDetailView: View {
             // start of its run, so the help string must be set afterwards
             // or it would be wiped before the user sees it.
             await runDiagnose()
-            recoveryMessage = "SSH 키가 서버의 authorized_keys에 등록되어 있는지, 사용자 계정이 올바른지 확인하세요."
+            recoveryMessage = AppLocalization.string("SSH 키가 서버의 authorized_keys에 등록되어 있는지, 사용자 계정이 올바른지 확인하세요.")
         case "key_file_missing":
             await runDiagnose()
-            recoveryMessage = "Hydra가 사용하는 SSH 개인키 경로를 환경 설정에서 확인하세요."
+            recoveryMessage = AppLocalization.string("Hydra가 사용하는 SSH 개인키 경로를 환경 설정에서 확인하세요.")
         default:
             await runDiagnose()
         }
@@ -1076,14 +1076,14 @@ struct DeviceDetailView: View {
                 // m.hasError clears. Calling fetchMetrics here would clobber
                 // recoveryMessage on the same tick.
                 sshErrorText = nil
-                recoveryMessage = "SSH 연결이 정상입니다."
+                recoveryMessage = AppLocalization.string("SSH 연결이 정상입니다.")
                 return
             }
             if d.isHostKeyMismatch, d.hostKeyFingerprint != nil {
                 showFingerprintAlert = true
             }
         } catch {
-            recoveryMessage = "진단을 시작할 수 없습니다. 잠시 후 다시 시도하세요."
+            recoveryMessage = AppLocalization.string("진단을 시작할 수 없습니다. 잠시 후 다시 시도하세요.")
             print("ssh diagnose error: \(error.localizedDescription)")
         }
     }
@@ -1094,12 +1094,12 @@ struct DeviceDetailView: View {
         defer { isDiagnosing = false }
         do {
             _ = try await APIClient.shared.acceptSSHHostKey(id: device.id, fingerprint: fp)
-            recoveryMessage = "호스트 키가 업데이트되었습니다. 재연결 중..."
+            recoveryMessage = AppLocalization.string("호스트 키가 업데이트되었습니다. 재연결 중...")
             sshErrorText = nil
             diagnosis = nil
             await fetchMetrics()
         } catch {
-            recoveryMessage = "키를 저장하지 못했습니다. 잠시 후 다시 시도하세요."
+            recoveryMessage = AppLocalization.string("키를 저장하지 못했습니다. 잠시 후 다시 시도하세요.")
             print("ssh accept host key error: \(error.localizedDescription)")
         }
     }
@@ -1112,11 +1112,11 @@ struct DeviceDetailView: View {
         defer { isDiagnosing = false }
         do {
             _ = try await APIClient.shared.resetSSH(id: device.id)
-            recoveryMessage = "재시도 중..."
+            recoveryMessage = AppLocalization.string("재시도 중...")
             sshErrorText = nil
             await fetchMetrics()
         } catch {
-            recoveryMessage = "재시도를 시작할 수 없습니다. 잠시 후 다시 시도하세요."
+            recoveryMessage = AppLocalization.string("재시도를 시작할 수 없습니다. 잠시 후 다시 시도하세요.")
             print("ssh reset error: \(error.localizedDescription)")
         }
     }
@@ -1138,7 +1138,7 @@ struct InfoField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label)
+            AppLocalizedText(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text(value)
@@ -1151,7 +1151,7 @@ struct StatusBadge: View {
     let isOnline: Bool
 
     var body: some View {
-        Text(isOnline ? "Online" : "Offline")
+        AppLocalizedText(isOnline ? "Online" : "Offline")
             .font(.caption.bold())
             .foregroundStyle(isOnline ? .green : .red)
             .padding(.horizontal, 8)
@@ -1232,7 +1232,7 @@ private struct AddressRow: View {
                     .foregroundStyle(justCopied ? .green : .secondary)
             }
             .buttonStyle(.plain)
-            .help("Copy \(kind)")
+            .help(AppLocalization.string("Copy %@").replacingOccurrences(of: "%@", with: kind))
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -1287,7 +1287,7 @@ struct TaildropSection: View {
                         if isSending {
                             VStack(spacing: 6) {
                                 ProgressView()
-                                Text(sendingFilename.map { "Sending \($0)…" } ?? "Sending…")
+                                Text(sendingFilename.map { "\(AppLocalization.string("Sending")) \($0)…" } ?? AppLocalization.string("Sending…"))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -1323,7 +1323,10 @@ struct TaildropSection: View {
     private func statusBanner(_ s: Status) -> some View {
         switch s {
         case .success(let target, let filename):
-            Label("Sent \(filename) to \(target)", systemImage: "checkmark.circle.fill")
+            Label(AppLocalization.string("Sent %@ to %@")
+                    .replacingOccurrences(of: "%1$@", with: filename)
+                    .replacingOccurrences(of: "%2$@", with: target),
+                  systemImage: "checkmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(.green)
         case .failure(let message):

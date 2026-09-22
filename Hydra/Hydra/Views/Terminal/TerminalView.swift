@@ -148,8 +148,10 @@ private struct SidebarRowView: View {
         .opacity(row.isEnabled ? 1 : 0.4)
         .listRowBackground(isActive ? Color.accentColor.opacity(0.18) : nil)
         .help(row.isEnabled
-              ? (row.sessionId == nil ? "\(row.name)에 SSH 터미널 세션 열기" : "세션으로 이동")
-              : "오프라인이거나 SSH를 사용할 수 없는 노드")
+              ? (row.sessionId == nil
+                 ? AppLocalization.string("%@에 SSH 터미널 세션 열기").replacingOccurrences(of: "%@", with: row.name)
+                 : AppLocalization.string("세션으로 이동"))
+              : AppLocalization.string("오프라인이거나 SSH를 사용할 수 없는 노드"))
     }
 }
 
@@ -176,7 +178,7 @@ private struct TerminalSessionPane: View {
         VStack(spacing: 0) {
             if case .disconnected(let reason) = session.state {
                 HStack {
-                    Text(reason ?? "연결 끊김").foregroundColor(.red).font(.caption)
+                    Text(reason ?? AppLocalization.string("연결 끊김")).foregroundColor(.red).font(.caption)
                     Spacer()
                     // Button 대신 TapLabel — _ButtonGesture 크래시 회피(파일 상단 주석).
                     TapLabel(action: { Task { await session.connect(cols: 80, rows: 24) } }) {

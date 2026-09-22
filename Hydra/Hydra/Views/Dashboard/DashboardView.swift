@@ -20,7 +20,7 @@ struct DashboardView: View {
                     SummaryCard(
                         title: "Devices",
                         value: "\(vm.onlineDevices.count)/\(vm.devices.count)",
-                        subtitle: "online",
+                        subtitle: AppLocalization.string("online"),
                         icon: "desktopcomputer",
                         color: .blue
                     )
@@ -168,9 +168,9 @@ struct ServerStatusBanner: View {
 
     private var statusText: String {
         switch status {
-        case .connected: return "Server Connected"
-        case .disconnected: return "Server Disconnected"
-        case .unknown: return "Checking..."
+        case .connected: return AppLocalization.string("Server Connected")
+        case .disconnected: return AppLocalization.string("Server Disconnected")
+        case .unknown: return AppLocalization.string("Checking...")
         }
     }
 }
@@ -298,7 +298,7 @@ struct GaugeRing: View {
             VStack(spacing: 0) {
                 Text(String(format: "%.0f%%", value))
                     .font(.system(.title3, design: .rounded, weight: .bold))
-                Text(label)
+                AppLocalizedText(label)
                     .font(.system(.caption2))
                     .foregroundStyle(.secondary)
             }
@@ -313,7 +313,7 @@ struct StatRow: View {
 
     var body: some View {
         HStack {
-            Text(label)
+            AppLocalizedText(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 55, alignment: .leading)
@@ -725,7 +725,7 @@ struct SummaryCard: View {
             HStack {
                 Image(systemName: icon)
                     .foregroundStyle(color)
-                Text(title)
+                AppLocalizedText(title)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -859,7 +859,9 @@ struct DashboardDeviceCard: View {
         )
         .opacity(device.isOnline ? 1 : 0.5)
         .contentShape(Rectangle())
-        .help(device.isOnline ? "Open \(device.shortName)" : "\(device.shortName) — offline")
+        .help(device.isOnline
+              ? "\(AppLocalization.string("Open")) \(device.shortName)"
+              : "\(device.shortName) \(AppLocalization.string("— offline"))")
     }
 
     /// One-line footer with the host's uptime. Shown only when the metrics
@@ -917,7 +919,7 @@ struct DashboardDeviceCard: View {
     /// Label/value columns are fixed so all three rows align under any locale.
     private func resourceRow(label: String, value: Double, color: Color) -> some View {
         HStack(spacing: 6) {
-            Text(label)
+            AppLocalizedText(label)
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)
                 .frame(width: 28, alignment: .leading)

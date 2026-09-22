@@ -157,7 +157,7 @@ struct OrchDetailView: View {
                         Button(action: {
                             Task { await vm.execute(command: command) }
                         }) {
-                            Label(vm.isExecuting ? "Running..." : "Run on All Workers", systemImage: "play.fill")
+                            Label(AppLocalization.string(vm.isExecuting ? "Running..." : "Run on All Workers"), systemImage: "play.fill")
                         }
                         .disabled(command.isEmpty || vm.isExecuting)
 

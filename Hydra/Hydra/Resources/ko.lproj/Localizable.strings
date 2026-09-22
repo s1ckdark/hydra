@@ -264,3 +264,263 @@
 " (서버 종료 코드: %d)" = " (서버 종료 코드: %d)";
 "터미널 테마" = "터미널 테마";
 "Language" = "언어";
+
+/* MARK: macOS ChatDrawerView */
+"Expand to full window" = "전체 창으로 확장";
+"Close drawer" = "드로어 닫기";
+"Active tab is auto-included as context." = "현재 탭이 컨텍스트로 자동 포함됩니다.";
+"Ask…" = "질문…";
+
+/* MARK: macOS ChatTabView */
+"Ask Hydra anything" = "Hydra에게 무엇이든 물어보세요";
+"e.g. \\\"list devices\\\" or \\\"create an orch on home-mac\\\"" = "예: \"디바이스 목록 보여줘\" 또는 \"home-mac에 orch 만들어줘\"";
+"Ask Hydra…" = "Hydra에게 질문…";
+
+/* MARK: macOS ConnectionView */
+"서버를 찾고 있습니다..." = "서버를 찾고 있습니다...";
+"연결 중..." = "연결 중...";
+"서버를 찾을 수 없습니다" = "서버를 찾을 수 없습니다";
+"인증에 실패했습니다" = "인증에 실패했습니다";
+
+/* MARK: macOS ContentView */
+"Hydra" = "Hydra";
+"Open chat (⌘/)" = "채팅 열기 (⌘/)";
+"Console" = "콘솔";
+"디바이스 정보를 불러오는 중…" = "디바이스 정보를 불러오는 중…";
+"로컬 서버 시작 중…" = "로컬 서버 시작 중…";
+
+/* MARK: macOS ConsoleView */
+"새 스니펫" = "새 스니펫";
+"실행" = "실행";
+"로컬(:8080)에서 실행됨 — 사용자 코드가 이 머신에서 그대로 실행됩니다." = "로컬(:8080)에서 실행됨 — 사용자 코드가 이 머신에서 그대로 실행됩니다.";
+
+/* MARK: macOS DashboardView */
+"Force refresh — re-probe and re-collect metrics from every device" = "강제 새로고침 — 모든 디바이스를 다시 조사하고 지표를 다시 수집합니다";
+"Server Connected" = "서버 연결됨";
+"Server Disconnected" = "서버 연결 끊김";
+"Checking..." = "확인 중...";
+"Utilization" = "사용률";
+"Avg Util" = "평균 사용률";
+"GPUs" = "GPU 개수";
+"Allow = run all · Ask = approve each · Auto = AI runs safe ones, asks on risky" = "허용 = 전체 실행 · 확인 = 개별 승인 · 자동 = AI가 안전한 것은 실행하고 위험하면 확인";
+"Command, or describe a goal for the AI agent…" = "명령을 입력하거나 AI 에이전트에게 목표를 설명하세요…";
+"Ask the AI agent to plan & run this" = "AI 에이전트에게 계획과 실행을 요청";
+"Run this command directly on the selected device" = "선택한 디바이스에서 이 명령을 직접 실행";
+"Remove from history" = "기록에서 제거";
+"Running..." = "실행 중...";
+"Terminal output" = "터미널 출력";
+"GPU Nodes" = "GPU 노드";
+"online" = "온라인";
+"·" = "·";
+"CPU" = "CPU";
+"RAM" = "RAM";
+"GPU" = "GPU";
+"Open" = "열기";
+"— offline" = "— 오프라인";
+
+/* MARK: macOS DeviceListView */
+"Search devices" = "디바이스 검색";
+"Show mobile devices (iPhone / iPad)" = "모바일 디바이스 표시 (iPhone / iPad)";
+"Hide mobile devices — worker-only view" = "모바일 디바이스 숨기기 — 워커 전용 보기";
+"Done editing" = "편집 완료";
+"Edit device order & visibility" = "디바이스 순서 및 표시 편집";
+"Select a device" = "디바이스를 선택하세요";
+"터미널 열기" = "터미널 열기";
+"이 디바이스로 SSH 터미널 세션을 엽니다 — Terminal 탭에서 확인" = "이 디바이스로 SSH 터미널 세션을 엽니다 — Terminal 탭에서 확인";
+"OS" = "OS";
+"User" = "사용자";
+"Enabled" = "사용";
+"Disabled" = "사용 안 함";
+"Unknown" = "알 수 없음";
+"Load:" = "부하:";
+"Ping" = "핑";
+"Ping device" = "디바이스 핑";
+"Probing" = "측정 중";
+"min" = "최소";
+"avg" = "평균";
+"max" = "최대";
+"loss" = "손실";
+"Target" = "대상";
+"succeeded" = "성공";
+"Click Ping device to measure TCP connect latency to this device's Tailscale IP." = "‘디바이스 핑’을 클릭하면 이 디바이스의 Tailscale IP로 TCP 연결 지연을 측정합니다.";
+"Core" = "코어";
+"VRAM" = "VRAM";
+"Fan speed" = "팬 속도";
+"Current SM / memory clock" = "현재 SM/메모리 클럭";
+"Performance state — P0 is max, P12+ is idle" = "성능 상태 — P0이 최대, P12 이상이 유휴";
+"Current PCIe link" = "현재 PCIe 링크";
+"Processes" = "프로세스";
+"Policy:" = "정책:";
+"Allow = run all · Ask = approve each · Auto = AI judges safety, asks on risky" = "허용 = 전체 실행 · 확인 = 개별 승인 · 자동 = AI가 안전성을 판단하고 위험하면 확인";
+"Shell command to run on this device…" = "이 디바이스에서 실행할 셸 명령…";
+"Execute" = "실행";
+"Need the AI agent? Open Chat (⌘/) — it already knows this device." = "AI 에이전트가 필요하신가요? 채팅 열기 (⌘/) — 이미 이 디바이스를 알고 있습니다.";
+"이 호스트 SSH 공개키" = "이 호스트 SSH 공개키";
+"~/.ssh에 키가 없어요. Ed25519 키페어를 생성하고 공개키를 복사합니다." = "~/.ssh에 키가 없어요. Ed25519 키페어를 생성하고 공개키를 복사합니다.";
+"디바이스 ~/.ssh/authorized_keys에 등록할 공개키를 클립보드로 복사합니다." = "디바이스 ~/.ssh/authorized_keys에 등록할 공개키를 클립보드로 복사합니다.";
+"원격 ~/.ssh/authorized_keys 에 붙여넣어 사용" = "원격 ~/.ssh/authorized_keys 에 붙여넣어 사용";
+"복사됨" = "복사됨";
+"복사됨 — " = "복사됨 — ";
+"Tailscale addresses" = "Tailscale 주소";
+"MagicDNS" = "MagicDNS";
+"IPv4" = "IPv4";
+"IPv6" = "IPv6";
+"Copy %@" = "%@ 복사";
+"Taildrop" = "Taildrop";
+"Select or drag and drop a file to send it to this device…" = "이 디바이스로 보낼 파일을 선택하거나 끌어다 놓으세요…";
+"Select a File…" = "파일 선택…";
+"Sending" = "전송 중";
+"Sending…" = "전송 중…";
+"Sent %@ to %@" = "%2$@에 %1$@ 전송 완료";
+"SSH 연결 경고: %@" = "SSH 연결 경고: %@";
+"SSH 복구 배너 닫기" = "SSH 복구 배너 닫기";
+"지금 재시도" = "지금 재시도";
+"새 호스트 키를 신뢰하시겠습니까?" = "새 호스트 키를 신뢰하시겠습니까?";
+"이 새 키 신뢰" = "이 새 키 신뢰";
+"연결 일시 중단됨 — 재시도 대기 중" = "연결 일시 중단됨 — 재시도 대기 중";
+"SSH 연결 오류" = "SSH 연결 오류";
+"신뢰하고 업데이트" = "신뢰하고 업데이트";
+"재시도" = "재시도";
+"로그인 정보 확인" = "로그인 정보 확인";
+"키 파일 위치 확인" = "키 파일 위치 확인";
+"Tailscale 열기" = "Tailscale 열기";
+"다시 진단" = "다시 진단";
+"SSH 연결 진단" = "SSH 연결 진단";
+"SSH 키가 서버의 authorized_keys에 등록되어 있는지, 사용자 계정이 올바른지 확인하세요." = "SSH 키가 서버의 authorized_keys에 등록되어 있는지, 사용자 계정이 올바른지 확인하세요.";
+"Hydra가 사용하는 SSH 개인키 경로를 환경 설정에서 확인하세요." = "Hydra가 사용하는 SSH 개인키 경로를 환경 설정에서 확인하세요.";
+"SSH 연결이 정상입니다." = "SSH 연결이 정상입니다.";
+"진단을 시작할 수 없습니다. 잠시 후 다시 시도하세요." = "진단을 시작할 수 없습니다. 잠시 후 다시 시도하세요.";
+"호스트 키가 업데이트되었습니다. 재연결 중..." = "호스트 키가 업데이트되었습니다. 재연결 중...";
+"키를 저장하지 못했습니다. 잠시 후 다시 시도하세요." = "키를 저장하지 못했습니다. 잠시 후 다시 시도하세요.";
+"재시도 중..." = "재시도 중...";
+"재시도를 시작할 수 없습니다. 잠시 후 다시 시도하세요." = "재시도를 시작할 수 없습니다. 잠시 후 다시 시도하세요.";
+"Head Node" = "총괄 노드";
+"Unknown error" = "알 수 없는 오류";
+
+/* MARK: macOS ChatSection (MenuBar) */
+"Open Chat" = "채팅 열기";
+"Idle" = "대기 중";
+
+/* MARK: macOS MenuBarView */
+"GPU Orch Manager" = "GPU 작업 분배 관리자";
+"connection error" = "연결 오류";
+"Open Dashboard" = "대시보드 열기";
+"Refresh Now" = "지금 새로고침";
+"Quit" = "종료";
+
+/* MARK: macOS CreateOrchView */
+"Orchestration name" = "작업 분배 이름";
+
+/* MARK: macOS OrchListView */
+"Orchestrations" = "작업 분배 목록";
+"Select a orch" = "작업 분배를 선택하세요";
+"Command..." = "명령...";
+"Running on All Workers" = "모든 워커에서 실행 중";
+"Run on All Workers" = "모든 워커에서 실행";
+
+/* MARK: macOS AISettingsTab */
+"Provider" = "제공자";
+"API key" = "API 키";
+"Endpoint" = "엔드포인트";
+"Model (optional)" = "모델 (선택)";
+"Model" = "모델";
+"(optional)" = "(선택)";
+"e.g. Prefer read-only commands. Answer concisely in Korean. Use nvidia-smi for GPU checks." = "예: 읽기 전용 명령을 선호하세요. 한국어로 간결하게 답하세요. GPU 확인에는 nvidia-smi를 사용하세요.";
+"Sent with every Ask AI request — applies immediately, no server push needed." = "모든 AI 질문 요청에 함께 전송됩니다 — 즉시 적용되며 서버 푸시가 필요하지 않습니다.";
+"① AI Provider (Default)" = "① AI 제공자 (기본값)";
+"② AI Instruction (optional)" = "② AI 지침 (선택)";
+"③ Verify" = "③ 확인";
+"④ Advanced (optional)" = "④ 고급 (선택)";
+"⑤ Save" = "⑤ 저장";
+"Test Connection" = "연결 테스트";
+"Testing…" = "테스트 중…";
+"Invalid provider or endpoint" = "잘못된 제공자 또는 엔드포인트입니다";
+"No response" = "응답 없음";
+"Connected to" = "연결됨:";
+"Save Locally" = "로컬에 저장";
+"Save & Push to Server" = "저장 후 서버로 푸시";
+"Test the connection first before saving." = "저장하기 전에 먼저 연결을 테스트하세요.";
+"Pushing to server…" = "서버로 푸시하는 중…";
+"Saved to Keychain" = "Keychain에 저장됨";
+"Saved locally & pushed to server" = "로컬 저장 및 서버 푸시 완료";
+"Uses the default provider above." = "위의 기본 제공자를 사용합니다.";
+"Overrides are stored locally. Push to server to apply." = "재정의는 로컬에 저장됩니다. 적용하려면 서버로 푸시하세요.";
+"claude, openai, ollama…" = "claude, openai, ollama…";
+"endpoint URL" = "엔드포인트 URL";
+"Saved" = "저장됨";
+"Invalid server URL:" = "잘못된 서버 URL:";
+"Server returned" = "서버 응답 코드";
+
+/* MARK: macOS AppearanceSettingsTab */
+"Style" = "스타일";
+"Theme" = "테마";
+"Font" = "폰트";
+"Terminal theme" = "터미널 테마";
+"Text size" = "글자 크기";
+"Preview" = "미리보기";
+"The quick brown fox jumps over the lazy dog" = "The quick brown fox jumps over the lazy dog";
+"Devices 12/12 online · 6 GPUs" = "기기 12/12 온라인 · GPU 6개";
+"$ nvidia-smi --query-gpu=utilization.gpu --format=csv" = "$ nvidia-smi --query-gpu=utilization.gpu --format=csv";
+
+/* MARK: macOS SettingsView */
+"tmux 세션 지속" = "tmux 세션 지속";
+"세션 지속" = "세션 지속";
+"Server URL" = "서버 URL";
+"API Key (optional)" = "API 키 (선택)";
+"Only needed when connecting from outside the Tailscale network. On localhost or Tailscale, requests are authenticated automatically.\\n\\nTo generate a key: run `hydra config set api-key <your-key>` on the server, then enter the same key here." = "Tailscale 네트워크 밖에서 연결할 때만 필요합니다. localhost나 Tailscale에서는 요청이 자동으로 인증됩니다.\n\n키를 생성하려면: 서버에서 `hydra config set api-key <your-key>`를 실행한 뒤 같은 키를 여기에 입력하세요.";
+"Hydra Server Connection" = "Hydra 서버 연결";
+"Failed: non-200 response" = "실패: 200이 아닌 응답";
+"Connected —" = "연결됨 —";
+"Error:" = "오류:";
+"Tailnet" = "Tailnet";
+"OAuth Client ID" = "OAuth 클라이언트 ID";
+"OAuth Client Secret" = "OAuth 클라이언트 시크릿";
+"Auth Method" = "인증 방식";
+"Tailscale API Key" = "Tailscale API 키";
+"Generate at admin.tailscale.com > Settings > Keys" = "admin.tailscale.com > Settings > Keys에서 생성하세요";
+"Create OAuth client at admin.tailscale.com > Settings > OAuth clients" = "admin.tailscale.com > Settings > OAuth clients에서 OAuth 클라이언트를 만드세요";
+"① Tailscale Network" = "① Tailscale 네트워크";
+"Your Tailscale tailnet name (e.g. \\\"myteam.org\\\" or use \\\"-\\\" for default)" = "Tailscale의 tailnet 이름 (예: \"myteam.org\", 기본값을 사용하려면 \"-\")";
+"② Authentication" = "② 인증";
+"Connecting to Tailscale API..." = "Tailscale API에 연결하는 중...";
+"④ Save" = "④ 저장";
+"Save locally and send credentials to the hydra server" = "로컬에 저장하고 hydra 서버로 자격 증명을 전송";
+"Pushing to server..." = "서버로 푸시하는 중...";
+"Invalid tailnet name" = "잘못된 tailnet 이름입니다";
+"Authentication failed — check your API key or OAuth credentials" = "인증 실패 — API 키 또는 OAuth 자격 증명을 확인하세요";
+"Connected to Tailscale API" = "Tailscale API에 연결됨";
+"Tailscale API returned status" = "Tailscale API 응답 코드";
+
+/* MARK: macOS TasksView */
+"Select a task or create a new one" = "작업을 선택하거나 새로 만드세요";
+"Duplicate" = "복제";
+"Timeout" = "제한 시간";
+"Capabilities" = "기능";
+"Last Run" = "마지막 실행";
+"Off" = "꺼짐";
+"Target device:" = "대상 디바이스:";
+"Failed" = "실패";
+"Success" = "성공";
+"Edit Task" = "작업 편집";
+"New Task" = "새 작업";
+"Task Name" = "작업 이름";
+"Command" = "명령";
+"seconds" = "초";
+"Add capability (e.g. gpu, gps)" = "기능 추가 (예: gpu, gps)";
+"Every" = "매";
+"minutes" = "분";
+
+/* MARK: macOS TerminalView */
+"왼쪽에서 노드를 선택하세요." = "왼쪽에서 노드를 선택하세요.";
+"세션으로 이동" = "세션으로 이동";
+"%@에 SSH 터미널 세션 열기" = "%@에 SSH 터미널 세션 열기";
+"오프라인이거나 SSH를 사용할 수 없는 노드" = "오프라인이거나 SSH를 사용할 수 없는 노드";
+"연결 끊김" = "연결 끊김";
+"재연결" = "재연결";
+"새 호스트키" = "새 호스트키";
+"신뢰" = "신뢰";
+
+/* MARK: macOS misc (coverage fixups) */
+"ms" = "ms";
+"Appearance" = "외형";
+"Enable Schedule" = "예약 사용";

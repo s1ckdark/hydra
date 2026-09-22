@@ -134,7 +134,7 @@ struct ContentView: View {
                 let active = appState.activeTab == item.tab
                 HStack(spacing: 5) {
                     Image(systemName: item.icon)
-                    Text(item.title)
+                    AppLocalizedText(item.title)
                 }
                 .font(.callout)
                 .foregroundStyle(active ? Color.accentColor : Color.secondary)
@@ -189,7 +189,7 @@ private struct LaunchLoadingView: View {
                 .font(.title2.bold())
             ProgressView()
                 .controlSize(.small)
-            Text(serverStatus == .connected
+            AppLocalizedText(serverStatus == .connected
                  ? "디바이스 정보를 불러오는 중…"
                  : "로컬 서버 시작 중…")
                 .font(.caption)

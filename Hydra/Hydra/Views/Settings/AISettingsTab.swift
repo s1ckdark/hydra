@@ -267,7 +267,7 @@ struct AISettingsTab: View {
         withAnimation { testStatus = .testing }
 
         guard let req = AIProviderConfig.testConnectionRequest(provider: provider, apiKey: apiKey, endpoint: endpoint) else {
-            withAnimation { testStatus = .error("Invalid provider or endpoint") }
+            withAnimation { testStatus = .error(AppLocalization.string("Invalid provider or endpoint")) }
             return
         }
 
@@ -275,13 +275,13 @@ struct AISettingsTab: View {
             let (_, response) = try await URLSession.shared.data(for: req)
             guard !Task.isCancelled else { return }
             guard let http = response as? HTTPURLResponse else {
-                withAnimation { testStatus = .error("No response") }
+                withAnimation { testStatus = .error(AppLocalization.string("No response")) }
                 return
             }
             if (200...299).contains(http.statusCode) {
                 withAnimation {
                     connectionVerified = true
-                    testStatus = .success("Connected to \(provider)")
+                    testStatus = .success("\(AppLocalization.string("Connected to")) \(provider)")
                 }
             } else {
                 withAnimation { testStatus = .error("\(provider) returned HTTP \(http.statusCode)") }
@@ -371,7 +371,7 @@ struct AISettingsTab: View {
         }
 
         guard let baseURL = URL(string: serverURL) else {
-            withAnimation { saveStatus = .error("Invalid server URL: \(serverURL)") }
+            withAnimation { saveStatus = .error("\(AppLocalization.string("Invalid server URL:")) \(serverURL)") }
             return
         }
 
@@ -390,7 +390,7 @@ struct AISettingsTab: View {
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                withAnimation { saveStatus = .error("Server returned \(code)") }
+                withAnimation { saveStatus = .error("\(AppLocalization.string("Server returned")) \(code)") }
                 return
             }
 
