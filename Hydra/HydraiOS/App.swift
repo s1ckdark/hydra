@@ -6,6 +6,7 @@ struct HydraiOSApp: App {
     @StateObject private var appState = AppState()
 
     init() {
+        TerminalFontCatalog.registerBundledFonts()
         AppAppearancePreferences(defaults: Self.appearanceDefaults).migrateLanguageIfNeeded()
     }
 

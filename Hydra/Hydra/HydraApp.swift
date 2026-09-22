@@ -14,6 +14,7 @@ struct HydraApp: App {
     @StateObject private var appState = AppState()
 
     init() {
+        TerminalFontCatalog.registerBundledFonts()
         AppAppearancePreferences().migrateLanguageIfNeeded()
     }
 
