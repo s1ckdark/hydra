@@ -544,3 +544,11 @@
 "%lld devices offline:" = "%lld devices offline:";
 "Sending %@…" = "Sending %@…";
 "Connection failed:" = "Connection failed:";
+
+/* MARK: terminal settings */
+"블록 (깜빡임)" = "Block (blinking)";
+"블록" = "Block";
+"밑줄 (깜빡임)" = "Underline (blinking)";
+"밑줄" = "Underline";
+"세로줄 (깜빡임)" = "Bar (blinking)";
+"세로줄" = "Bar";
