@@ -315,7 +315,7 @@
 "CPU" = "CPU";
 "RAM" = "RAM";
 "GPU" = "GPU";
-"Open" = "Open";
+"Open %@" = "Open %@";
 "— offline" = "— offline";
 
 /* MARK: macOS DeviceListView */

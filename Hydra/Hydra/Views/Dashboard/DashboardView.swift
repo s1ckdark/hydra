@@ -860,7 +860,7 @@ struct DashboardDeviceCard: View {
         .opacity(device.isOnline ? 1 : 0.5)
         .contentShape(Rectangle())
         .help(device.isOnline
-              ? "\(AppLocalization.string("Open")) \(device.shortName)"
+              ? AppLocalization.string("Open %@").replacingOccurrences(of: "%@", with: device.shortName)
               : "\(device.shortName) \(AppLocalization.string("— offline"))")
     }
 
