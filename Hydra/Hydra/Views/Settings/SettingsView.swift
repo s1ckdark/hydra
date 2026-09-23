@@ -28,6 +28,7 @@ struct SettingsView: View {
 private struct TerminalSettingsTab: View {
     @AppStorage("terminalPersistViaTmux") private var persistViaTmux = false
     @ObservedObject private var settingsStore = TerminalSettingsStore.shared
+    @EnvironmentObject private var dashboardVM: DashboardViewModel
 
     var body: some View {
         Form {
@@ -52,7 +53,9 @@ private struct TerminalSettingsTab: View {
                 Text("세션 지속")
             }
 
-            TerminalNodeOverridesSection(store: settingsStore)
+            TerminalNodeOverridesSection(store: settingsStore, nodeName: { id in
+                dashboardVM.devices.first { $0.id == id }?.displayName ?? id
+            })
         }
         .formStyle(.grouped)
     }

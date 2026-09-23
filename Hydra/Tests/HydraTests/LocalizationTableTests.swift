@@ -21,15 +21,18 @@ final class LocalizationTableTests: XCTestCase {
     }
 
     /// macOS 화면의 LocalizedStringKey 리터럴(보간 없는 것)은 모두 테이블에 키가 있어야 한다.
+    /// `Hydra/Views`뿐 아니라 `Hydra/Theme`(터미널 설정 패널 등)도 같은 필터로 훑는다.
     func testMacViewLiteralsHaveTranslations() throws {
         let en = try Self.table("en")
-        let views = Self.packageRoot.appendingPathComponent("Hydra/Views")
+        let roots = ["Hydra/Views", "Hydra/Theme"].map { Self.packageRoot.appendingPathComponent($0) }
         let pattern = try NSRegularExpression(pattern:
             #"(?:Text|Button|Label|Section|Toggle|Picker|TextField|SecureField|Menu|LabeledContent|navigationTitle|help|alert|confirmationDialog)\(\s*"((?:[^"\\]|\\.)+)""#)
         var missing: [String] = []
-        let files = FileManager.default.enumerator(at: views, includingPropertiesForKeys: nil)!
-            .compactMap { $0 as? URL }
-            .filter { $0.pathExtension == "swift" && !$0.path.contains("/Views/iOS/") && !$0.path.contains("/.omc/") }
+        let files = roots.flatMap { root in
+            FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)!
+                .compactMap { $0 as? URL }
+                .filter { $0.pathExtension == "swift" && !$0.path.contains("/Views/iOS/") && !$0.path.contains("/.omc/") }
+        }
         for file in files {
             let source = try String(contentsOf: file, encoding: .utf8)
             let range = NSRange(source.startIndex..., in: source)

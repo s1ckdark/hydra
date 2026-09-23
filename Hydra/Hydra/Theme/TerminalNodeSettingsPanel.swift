@@ -6,8 +6,10 @@ extension TerminalSettingsStore {
         update(deviceID) { $0.fontSize += delta }
     }
 
-    /// ⌘0 — 노드 크기를 전체 설정의 크기로 되돌린다.
+    /// ⌘0 — 노드 크기를 전체 설정의 크기로 되돌린다. 전체 설정을 따르던 노드는 이미
+    /// 전체 크기이므로 건드리지 않는다(그렇지 않으면 따르던 노드에 오버라이드가 생겨 버린다).
     func resetFontSize(_ deviceID: String) {
+        guard !isFollowingGlobal(deviceID) else { return }
         let size = global.fontSize
         update(deviceID) { $0.fontSize = size }
     }

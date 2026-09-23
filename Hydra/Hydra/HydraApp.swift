@@ -81,14 +81,7 @@ struct HydraApp: App {
                 .keyboardShortcut("z", modifiers: [.command, .shift])
             }
 
-            CommandMenu("Terminal") {
-                Button("Increase Font Size") { adjustActiveTerminalFont(1) }
-                    .keyboardShortcut("=")
-                Button("Decrease Font Size") { adjustActiveTerminalFont(-1) }
-                    .keyboardShortcut("-")
-                Button("Reset Font Size") { resetActiveTerminalFont() }
-                    .keyboardShortcut("0")
-            }
+            CommandMenu("Terminal") { TerminalFontCommands() }
 
             CommandMenu("Chat") {
                 Button("Toggle Chat Drawer") {
@@ -110,6 +103,7 @@ struct HydraApp: App {
 
         Settings {
             SettingsView()
+                .environmentObject(dashboardVM)
                 .appAppearance()
         }
 
@@ -174,19 +168,38 @@ struct HydraApp: App {
         #endif
     }
 
-    #if os(macOS)
-    /// 활성 터미널 세션(세션 id = 노드 id)의 노드 설정만 바꾼다. 세션이 없으면 아무것도 하지 않는다.
-    private func adjustActiveTerminalFont(_ delta: Double) {
-        guard let id = TerminalSessionStore.shared.activeSessionId else { return }
+}
+
+#if os(macOS)
+/// "Terminal" 커맨드 메뉴의 폰트 크기 항목. 활성 세션이 있을 때만 활성화되고
+/// (finding 5), 어느 탭/창에 포커스가 있든 `TerminalSessionStore.shared`의
+/// `activeSessionId`(= 세션 id = 노드 id)를 대상으로 한다.
+private struct TerminalFontCommands: View {
+    @ObservedObject private var sessions = TerminalSessionStore.shared
+
+    var body: some View {
+        Group {
+            Button("Increase Font Size") { adjust(1) }
+                .keyboardShortcut("=")
+            Button("Decrease Font Size") { adjust(-1) }
+                .keyboardShortcut("-")
+            Button("Reset Font Size") { reset() }
+                .keyboardShortcut("0")
+        }
+        .disabled(sessions.activeSessionId == nil)
+    }
+
+    private func adjust(_ delta: Double) {
+        guard let id = sessions.activeSessionId else { return }
         TerminalSettingsStore.shared.adjustFontSize(id, by: delta)
     }
 
-    private func resetActiveTerminalFont() {
-        guard let id = TerminalSessionStore.shared.activeSessionId else { return }
+    private func reset() {
+        guard let id = sessions.activeSessionId else { return }
         TerminalSettingsStore.shared.resetFontSize(id)
     }
-    #endif
 }
+#endif
 
 #if os(macOS)
 /// Pins the app's activation policy and re-surfaces the dashboard window

@@ -6,12 +6,15 @@ struct TerminalColorSchemeOptions: View {
 
     var body: some View {
         ForEach(TerminalColorScheme.presets) { scheme in
-            Button { selectedID = scheme.id } label: {
-                TerminalColorSchemeRow(scheme: scheme,
-                                       isSelected: TerminalColorScheme.find(id: selectedID) == scheme)
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("terminal-scheme-\(scheme.id)")
+            // Button 대신 탭 제스처 — macOS 26 `_ButtonGesture` → `assumeIsolated` 크래시
+            // 회피(TerminalView.swift 상단 주석 참고). 이 뷰는 터미널 탭 ⚙ 팝오버에서도 쓰인다.
+            TerminalColorSchemeRow(scheme: scheme,
+                                   isSelected: TerminalColorScheme.find(id: selectedID) == scheme)
+                .contentShape(Rectangle())
+                .onTapGesture { selectedID = scheme.id }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { selectedID = scheme.id }
+                .accessibilityIdentifier("terminal-scheme-\(scheme.id)")
         }
     }
 }

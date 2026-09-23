@@ -146,8 +146,8 @@ private struct LocalizedNavigationTitleModifier: ViewModifier {
 }
 
 extension View {
-    /// Use in place of `.navigationTitle("literal key")` for any title that
-    /// must react to the in-app display language on macOS.
+    /// Use in place of a raw `.navigationTitle` string-literal call for any title
+    /// that must react to the in-app display language on macOS.
     func localizedNavigationTitle(_ key: String) -> some View {
         modifier(LocalizedNavigationTitleModifier(key: key))
     }

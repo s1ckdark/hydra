@@ -116,6 +116,24 @@ final class TerminalSettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.effective(for: "node-a").fontSize, 13)
     }
 
+    /// ⌘0을 전체 설정을 따르던 노드에 눌러도 오버라이드가 생기면 안 된다(리뷰 finding).
+    /// 이미 오버라이드된 노드는 전체 크기로 복원하되 오버라이드 자체는 유지한다.
+    func testResetFontSizeDoesNotCreateOverrideOnFollowingNode() {
+        var g = store.global; g.fontSize = 13; store.global = g
+        XCTAssertTrue(store.isFollowingGlobal("node-a"))
+        store.resetFontSize("node-a")
+        XCTAssertTrue(store.isFollowingGlobal("node-a"))
+        XCTAssertEqual(store.overriddenDeviceIDs, [])
+        XCTAssertEqual(store.effective(for: "node-a").fontSize, 13)
+
+        store.update("node-a") { $0.fontSize = 20 }
+        XCTAssertFalse(store.isFollowingGlobal("node-a"))
+        store.resetFontSize("node-a")
+        XCTAssertFalse(store.isFollowingGlobal("node-a"))
+        XCTAssertEqual(store.overriddenDeviceIDs, ["node-a"])
+        XCTAssertEqual(store.effective(for: "node-a").fontSize, 13)
+    }
+
     func testChangesNotifyObservers() {
         var fired = 0
         let c = store.objectWillChange.sink { fired += 1 }

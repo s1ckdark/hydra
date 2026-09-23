@@ -49,17 +49,31 @@ struct TerminalScreen: View {
                     Menu {
                         Button("터미널 설정") { showingSettings = true }
                         Divider()
+                        // 단축키 표기용(발견 용이성) — 실제 응답 체인은 아래 숨은 버튼이 맡는다.
+                        // Menu가 닫혀 있으면 그 안의 Button은 응답 체인 밖이라 하드웨어
+                        // 키보드 단축키가 눌리지 않는다(finding 4).
                         Button("글자 크게") { settingsStore.adjustFontSize(session.deviceId, by: 1) }
-                            .keyboardShortcut("=", modifiers: .command)
                         Button("글자 작게") { settingsStore.adjustFontSize(session.deviceId, by: -1) }
-                            .keyboardShortcut("-", modifiers: .command)
                         Button("기본 크기") { settingsStore.resetFontSize(session.deviceId) }
-                            .keyboardShortcut("0", modifiers: .command)
                     } label: {
                         Image(systemName: "gearshape")
                     }
                     .accessibilityIdentifier("terminal-node-settings")
                 }
+            }
+            .background {
+                // 하드웨어 키보드 단축키는 메뉴가 닫혀 있어도 응답 체인에 있어야 한다.
+                VStack {
+                    Button("") { settingsStore.adjustFontSize(session.deviceId, by: 1) }
+                        .keyboardShortcut("=", modifiers: .command)
+                    Button("") { settingsStore.adjustFontSize(session.deviceId, by: -1) }
+                        .keyboardShortcut("-", modifiers: .command)
+                    Button("") { settingsStore.resetFontSize(session.deviceId) }
+                        .keyboardShortcut("0", modifiers: .command)
+                }
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
             }
             .sheet(isPresented: $showingSettings) {
                 NavigationStack {
