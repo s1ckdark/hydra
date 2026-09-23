@@ -81,6 +81,15 @@ struct HydraApp: App {
                 .keyboardShortcut("z", modifiers: [.command, .shift])
             }
 
+            CommandMenu("Terminal") {
+                Button("Increase Font Size") { adjustActiveTerminalFont(1) }
+                    .keyboardShortcut("=")
+                Button("Decrease Font Size") { adjustActiveTerminalFont(-1) }
+                    .keyboardShortcut("-")
+                Button("Reset Font Size") { resetActiveTerminalFont() }
+                    .keyboardShortcut("0")
+            }
+
             CommandMenu("Chat") {
                 Button("Toggle Chat Drawer") {
                     appState.isChatDrawerOpen.toggle()
@@ -164,6 +173,19 @@ struct HydraApp: App {
         await CapabilityReporter.shared.report(via: APIClient.shared)
         #endif
     }
+
+    #if os(macOS)
+    /// 활성 터미널 세션(세션 id = 노드 id)의 노드 설정만 바꾼다. 세션이 없으면 아무것도 하지 않는다.
+    private func adjustActiveTerminalFont(_ delta: Double) {
+        guard let id = TerminalSessionStore.shared.activeSessionId else { return }
+        TerminalSettingsStore.shared.adjustFontSize(id, by: delta)
+    }
+
+    private func resetActiveTerminalFont() {
+        guard let id = TerminalSessionStore.shared.activeSessionId else { return }
+        TerminalSettingsStore.shared.resetFontSize(id)
+    }
+    #endif
 }
 
 #if os(macOS)

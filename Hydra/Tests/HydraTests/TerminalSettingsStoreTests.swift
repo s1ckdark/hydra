@@ -104,6 +104,18 @@ final class TerminalSettingsStoreTests: XCTestCase {
         XCTAssertTrue(store.isFollowingGlobal("bad"))
     }
 
+    func testAdjustFontSizeTurnsOffFollowAndClamps() {
+        var g = store.global; g.fontSize = 13; store.global = g
+        store.adjustFontSize("node-a", by: 1)
+        XCTAssertFalse(store.isFollowingGlobal("node-a"))
+        XCTAssertEqual(store.effective(for: "node-a").fontSize, 14)
+        XCTAssertEqual(store.global.fontSize, 13)
+        for _ in 0..<40 { store.adjustFontSize("node-a", by: 1) }
+        XCTAssertEqual(store.effective(for: "node-a").fontSize, 32)
+        store.resetFontSize("node-a")
+        XCTAssertEqual(store.effective(for: "node-a").fontSize, 13)
+    }
+
     func testChangesNotifyObservers() {
         var fired = 0
         let c = store.objectWillChange.sink { fired += 1 }

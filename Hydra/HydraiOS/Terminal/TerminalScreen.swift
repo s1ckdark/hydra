@@ -12,6 +12,7 @@ struct TerminalScreen: View {
     @State private var connectionRequest = UUID()
     @State private var startedRequest: UUID?
     @State private var registration: RegistrationPresentation?
+    @State private var showingSettings = false
     @ObservedObject private var settingsStore = TerminalSettingsStore.shared
     private let registrationModelFactory: @MainActor (SSHKeyRegistrationTarget) -> SSHKeyRegistrationViewModel
 
@@ -30,9 +31,48 @@ struct TerminalScreen: View {
 
     var body: some View {
         SwiftTermRepresentableiOS(session: session, settings: settingsStore.effective(for: session.deviceId))
+            #if DEBUG
+            .overlay(alignment: .topLeading) {
+                if ProcessInfo.processInfo.arguments.contains("--terminal-recovery-ui-test") {
+                    let s = settingsStore.effective(for: session.deviceId)
+                    Text(verbatim: "\(Int(s.fontSize))|\(s.colorSchemeID)")
+                        .font(.caption2).opacity(0.01)
+                        .accessibilityIdentifier("terminal-settings-probe")
+                }
+            }
+            #endif
             .ignoresSafeArea(.container, edges: .bottom)
             .navigationTitle(device.displayName)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Button("터미널 설정") { showingSettings = true }
+                        Divider()
+                        Button("글자 크게") { settingsStore.adjustFontSize(session.deviceId, by: 1) }
+                            .keyboardShortcut("=", modifiers: .command)
+                        Button("글자 작게") { settingsStore.adjustFontSize(session.deviceId, by: -1) }
+                            .keyboardShortcut("-", modifiers: .command)
+                        Button("기본 크기") { settingsStore.resetFontSize(session.deviceId) }
+                            .keyboardShortcut("0", modifiers: .command)
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityIdentifier("terminal-node-settings")
+                }
+            }
+            .sheet(isPresented: $showingSettings) {
+                NavigationStack {
+                    TerminalNodeSettingsPanel(deviceID: session.deviceId, nodeName: device.displayName)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("완료") { showingSettings = false }
+                                    .accessibilityIdentifier("terminal-node-settings-done")
+                            }
+                        }
+                }
+                .presentationDetents([.medium, .large])
+            }
             .task(id: connectionRequest) {
                 guard startedRequest != connectionRequest, !Task.isCancelled else { return }
                 startedRequest = connectionRequest

@@ -174,8 +174,25 @@ private struct SessionStateDot: View {
 private struct TerminalSessionPane: View {
     @ObservedObject var session: TerminalSession
     @ObservedObject private var settingsStore = TerminalSettingsStore.shared
+    @State private var showingSettings = false
     var body: some View {
         VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                // Button 대신 TapLabel — _ButtonGesture 크래시 회피(파일 상단 주석).
+                TapLabel(action: { showingSettings = true }) {
+                    Image(systemName: "gearshape")
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .help(AppLocalization.string("터미널 설정"))
+                }
+                .accessibilityIdentifier("terminal-node-settings")
+                .popover(isPresented: $showingSettings, arrowEdge: .top) {
+                    TerminalNodeSettingsPanel(deviceID: session.deviceId, nodeName: session.deviceName)
+                        .frame(width: 420, height: 560)
+                }
+            }
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(.bar)
             if case .disconnected(let reason) = session.state {
                 HStack {
                     Text(reason ?? AppLocalization.string("연결 끊김")).foregroundColor(.red).font(.caption)
