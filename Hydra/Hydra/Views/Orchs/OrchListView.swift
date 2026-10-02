@@ -124,6 +124,10 @@ struct OrchDetailView: View {
                 }
 
                 // Health
+                #if os(macOS)
+                OrchAIAgentsSection(orch: orch).id(orch.id)
+                #endif
+
                 if let health = vm.health {
                     GroupBox("Node Health") {
                         ForEach(health.nodes) { node in

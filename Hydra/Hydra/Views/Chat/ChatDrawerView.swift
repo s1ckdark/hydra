@@ -15,6 +15,8 @@ struct ChatDrawerView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            ChatAgentContextView()
+            AgentTreeChatSummary()
             Divider()
             messagesArea
             Divider()
@@ -23,6 +25,7 @@ struct ChatDrawerView: View {
         .frame(maxHeight: .infinity)
         .background(.background)
         .onAppear { inputFocused = true }
+        .onChange(of: vm.selectedAgent) { _, _ in draft = "" }
     }
 
     private var header: some View {
@@ -117,11 +120,12 @@ struct ChatDrawerView: View {
                 .lineLimit(1...4)
                 .focused($inputFocused)
                 .onSubmit { submit() }
+                .disabled(!vm.canSend)
             Button(action: submit) {
                 Image(systemName: "paperplane.fill")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty || vm.isThinking)
+            .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty || !vm.canSend)
             if vm.isThinking { ProgressView().controlSize(.small) }
         }
         .padding(.horizontal, 10)
@@ -129,10 +133,11 @@ struct ChatDrawerView: View {
     }
 
     private func submit() {
+        guard vm.canSend else { return }
         let msg = draft
         draft = ""
         let preamble = ChatContextProvider.snapshot(
-            for: appState.activeTab,
+            for: vm.selectedAgent == nil ? appState.activeTab : .orchs,
             dashboardVM: dashboardVM,
             selection: currentSelection()
         )
@@ -144,7 +149,7 @@ struct ChatDrawerView: View {
             device: appState.selectedDeviceId.flatMap { id in
                 dashboardVM.devices.first { $0.id == id }
             },
-            orch: appState.selectedOrchId.flatMap { id in
+            orch: (vm.selectedAgent?.orchestrationID ?? appState.selectedOrchId).flatMap { id in
                 dashboardVM.orchs.first { $0.id == id }
             },
             task: appState.selectedTaskId.flatMap { id in
@@ -164,6 +169,9 @@ private struct DrawerTurnRow: View {
             Text(roleLabel)
                 .font(.caption2.bold())
                 .foregroundStyle(.secondary)
+            if let selection = turn.modelSelection {
+                ChatModelSelectionLabel(selection: selection)
+            }
             Text(turn.content)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)

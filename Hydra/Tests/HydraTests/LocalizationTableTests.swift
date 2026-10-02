@@ -20,6 +20,48 @@ final class LocalizationTableTests: XCTestCase {
         XCTAssertEqual(Set(en.keys).subtracting(ko.keys).sorted(), [], "en에만 있는 키")
     }
 
+    func testAgentConfigurationDynamicCopyHasTranslations() throws {
+        let en = try Self.table("en"), ko = try Self.table("ko")
+        let paths = ["Hydra/Models/OrchAIAgents.swift", "Hydra/ViewModels/ChatViewModel.swift",
+                     "Hydra/Views/Orchs/OrchAIAgentsView.swift", "Hydra/Views/Chat/ChatAgentContextView.swift"]
+        let pattern = try NSRegularExpression(pattern:
+            #"(?:errors.append\(|AppLocalization.string\(|title: |automaticTitle: )"([^"\n]+)""#)
+        var keys = Set(["Explicit model", "Chosen by head", "Let head decide", "Use global AI settings"])
+        for path in paths {
+            let source = try String(contentsOf: Self.packageRoot.appendingPathComponent(path), encoding: .utf8)
+            for match in pattern.matches(in: source, range: NSRange(source.startIndex..., in: source)) {
+                keys.insert(String(source[Range(match.range(at: 1), in: source)!]))
+            }
+        }
+        XCTAssertGreaterThan(keys.count, 20, "Dynamic validation and control copy must be covered")
+        for key in keys {
+            XCTAssertNotNil(en[key], key)
+            XCTAssertNotNil(ko[key], key)
+        }
+    }
+
+    func testAgentTreeDynamicStatusAndTransportCopyHasTranslations() throws {
+        let en = try Self.table("en"), ko = try Self.table("ko")
+        let paths = ["Hydra/Models/AgentRun.swift", "Hydra/Views/Chat/AgentTreeView.swift",
+                     "Hydra/ViewModels/ChatViewModel.swift", "Hydra/Services/APIClient.swift"]
+        let pattern = try NSRegularExpression(pattern:
+            #"(?:return |AppLocalization.string\(|AppLocalization.format\(|title: )"([^"\n]+)""#)
+        var keys = Set<String>()
+        for path in paths {
+            let source = try String(contentsOf: Self.packageRoot.appendingPathComponent(path), encoding: .utf8)
+            for match in pattern.matches(in: source, range: NSRange(source.startIndex..., in: source)) {
+                let key = String(source[Range(match.range(at: 1), in: source)!])
+                if key.contains("\\(") || key.hasPrefix("http") || key.hasPrefix("서버") { continue }
+                keys.insert(key)
+            }
+        }
+        XCTAssertGreaterThan(keys.count, 15)
+        for key in keys {
+            XCTAssertNotNil(en[key], key)
+            XCTAssertNotNil(ko[key], key)
+        }
+    }
+
     /// macOS 화면의 LocalizedStringKey 리터럴(보간 없는 것)은 모두 테이블에 키가 있어야 한다.
     /// `Hydra/Views`뿐 아니라 `Hydra/Theme`(터미널 설정 패널 등)도 같은 필터로 훑는다.
     func testMacViewLiteralsHaveTranslations() throws {

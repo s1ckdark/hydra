@@ -11,6 +11,8 @@ struct ChatTabView: View {
 
     var body: some View {
         VStack(spacing: 12) {
+            ChatAgentContextView()
+            AgentTreeChatSummary()
             if vm.turns.isEmpty && vm.pendingPlan == nil {
                 emptyState
             } else {
@@ -53,6 +55,7 @@ struct ChatTabView: View {
         }
         .padding(.bottom, 8)
         .onAppear { inputFocused = true }
+        .onChange(of: vm.selectedAgent) { _, _ in draft = "" }
     }
 
     private var emptyState: some View {
@@ -78,11 +81,12 @@ struct ChatTabView: View {
                 .textFieldStyle(.roundedBorder)
                 .focused($inputFocused)
                 .onSubmit { submit() }
+                .disabled(!vm.canSend)
             Button(action: submit) {
                 Image(systemName: "paperplane.fill")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty || vm.isThinking)
+            .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty || !vm.canSend)
             if vm.isThinking {
                 ProgressView().controlSize(.small)
             }
@@ -91,6 +95,7 @@ struct ChatTabView: View {
     }
 
     private func submit() {
+        guard vm.canSend else { return }
         let msg = draft
         draft = ""
         Task { await vm.send(msg) }
@@ -115,9 +120,14 @@ private struct ChatTurnRow: View {
                 .font(.caption.bold())
                 .frame(width: 16)
                 .foregroundStyle(.secondary)
-            Text(turn.content)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                if let selection = turn.modelSelection {
+                    ChatModelSelectionLabel(selection: selection)
+                }
+                Text(turn.content)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
     private var roleSymbol: String {
