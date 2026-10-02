@@ -3,6 +3,9 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var dashboardVM: DashboardViewModel
     @EnvironmentObject var appState: AppState
+    #if os(macOS)
+    @State private var settingsSection: SettingsSection = .server
+    #endif
 
     var body: some View {
         Group {
@@ -122,31 +125,46 @@ struct ContentView: View {
             .init(tab: .tasks, title: "Tasks", icon: "list.bullet.clipboard"),
             .init(tab: .console, title: "Console", icon: "terminal"),
             .init(tab: .terminal, title: "Terminal", icon: "apple.terminal"),
-            .init(tab: .settings, title: "Settings", icon: "gearshape"),
         ]
         #endif
         return items
     }
 
     private var customTabBar: some View {
-        HStack(spacing: 4) {
-            ForEach(tabItems) { item in
-                let active = appState.activeTab == item.tab
-                HStack(spacing: 5) {
-                    Image(systemName: item.icon)
-                    AppLocalizedText(item.title)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 4) {
+                    ForEach(tabItems) { item in
+                        let active = appState.activeTab == item.tab
+                        HStack(spacing: 5) {
+                            Image(systemName: item.icon)
+                            AppLocalizedText(item.title)
+                        }
+                        .font(.callout)
+                        .foregroundStyle(active ? Color.accentColor : Color.secondary)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(active ? Color.accentColor.opacity(0.15) : Color.clear,
+                                    in: RoundedRectangle(cornerRadius: 8))
+                        .contentShape(Rectangle())
+                        .onTapGesture { appState.activeTab = item.tab }
+                    }
+                    #if os(macOS)
+                    SettingsNavigationView(selection: $settingsSection,
+                                           isActive: appState.activeTab == .settings,
+                                           onOpen: { appState.activeTab = .settings },
+                                           onExpand: {
+                        proxy.scrollTo("settings-navigation", anchor: .leading)
+                    })
+                    #endif
                 }
-                .font(.callout)
-                .foregroundStyle(active ? Color.accentColor : Color.secondary)
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(active ? Color.accentColor.opacity(0.15) : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 8))
-                .contentShape(Rectangle())
-                .onTapGesture { appState.activeTab = item.tab }
+                .fixedSize(horizontal: true, vertical: false)
             }
-            Spacer(minLength: 0)
+            .scrollIndicators(.hidden)
+            .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
+        .padding(.leading, 10)
+        .padding(.trailing, appState.isChatDrawerOpen ? 10 : 48)
+        .padding(.vertical, 6)
     }
 
     @ViewBuilder private var selectedContent: some View {
@@ -169,7 +187,7 @@ struct ContentView: View {
         case .tasks: TasksView()
         case .console: ConsoleView()
         case .terminal: TerminalTabView(dashboardVM: dashboardVM)
-        case .settings: SettingsView()
+        case .settings: SettingsContentView(selection: settingsSection)
         default: EmptyView()
         }
     }

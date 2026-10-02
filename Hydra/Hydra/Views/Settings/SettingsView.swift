@@ -1,25 +1,192 @@
 import SwiftUI
 
 #if os(macOS)
-struct SettingsView: View {
+enum SettingsSection: String, CaseIterable, Identifiable {
+    case server, tailscale, ai, terminal, appearance
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .server: return "Server"
+        case .tailscale: return "Tailscale"
+        case .ai: return "AI"
+        case .terminal: return "Terminal"
+        case .appearance: return "Appearance"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .server: return "server.rack"
+        case .tailscale: return "network"
+        case .ai: return "brain"
+        case .terminal: return "apple.terminal"
+        case .appearance: return "paintbrush"
+        }
+    }
+}
+
+/// Shared by the dashboard tab and the standalone Settings window.
+struct SettingsNavigationView: View {
+    @Binding var selection: SettingsSection
+    var isActive: Bool = true
+    var onOpen: () -> Void = {}
+    var onExpand: () -> Void = {}
+    @State private var isExpanded = false
+    @FocusState private var focusedSection: SettingsSection?
+
     var body: some View {
-        TabView {
-            ServerSettingsTab()
-                .tabItem { Label("Server", systemImage: "server.rack") }
+        HStack(spacing: 4) {
+            settingsButton
+            if isExpanded {
+                HStack(spacing: 4) {
+                    ForEach(SettingsSection.allCases) { section in
+                        sectionButton(section)
+                            .id(section)
+                    }
+                }
+                .onAppear(perform: onExpand)
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .id("settings-navigation")
+        .onExitCommand { isExpanded = false }
+        .onChange(of: isActive) { _, active in
+            if !active { isExpanded = false }
+        }
+    }
 
-            TailscaleSettingsTab()
-                .tabItem { Label("Tailscale", systemImage: "network") }
+    private var settingsButton: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "gearshape")
+            AppLocalizedText("Settings")
+            Image(systemName: isExpanded ? "chevron.left" : "chevron.right")
+                .font(.caption2)
+        }
+        .font(.callout)
+        .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(isActive ? Color.accentColor.opacity(0.15) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 8))
+        .contentShape(Rectangle())
+        // Match the custom tab bar's gesture path; avoid the macOS Button crash.
+        .onTapGesture(perform: toggleMenu)
+        .focusable()
+        .onKeyPress(.return) { toggleMenu(); return .handled }
+        .onKeyPress(.space) { toggleMenu(); return .handled }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("settings-menu")
+        .accessibilityAction { toggleMenu() }
+    }
 
-            AISettingsTab()
-                .tabItem { Label("AI", systemImage: "brain") }
+    private func sectionButton(_ section: SettingsSection) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: section.icon)
+            AppLocalizedText(section.title)
+        }
+        .font(.callout)
+        .foregroundStyle(selection == section ? Color.accentColor : Color.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(selection == section ? Color.accentColor.opacity(0.15) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .onTapGesture { select(section) }
+        .focusable()
+        .focused($focusedSection, equals: section)
+        .onKeyPress(.return) { select(section); return .handled }
+        .onKeyPress(.space) { select(section); return .handled }
+        .onKeyPress(.rightArrow) { moveFocus(from: section, by: 1); return .handled }
+        .onKeyPress(.leftArrow) { moveFocus(from: section, by: -1); return .handled }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(selection == section ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier("settings-section-\(section.rawValue)")
+        .accessibilityAction { select(section) }
+    }
 
-            TerminalSettingsTab()
-                .tabItem { Label("Terminal", systemImage: "apple.terminal") }
+    private func toggleMenu() {
+        onOpen()
+        isExpanded.toggle()
+    }
 
-            AppearanceSettingsTab()
-                .tabItem { Label("Appearance", systemImage: "paintbrush") }
+    private func select(_ section: SettingsSection) {
+        selection = section
+    }
+
+    private func moveFocus(from section: SettingsSection, by offset: Int) {
+        let sections = SettingsSection.allCases
+        guard let index = sections.firstIndex(of: section) else { return }
+        focusedSection = sections[(index + offset + sections.count) % sections.count]
+    }
+}
+
+struct SettingsView: View {
+    @State private var selection: SettingsSection = .server
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    SettingsNavigationView(selection: $selection, onExpand: {
+                        proxy.scrollTo("settings-navigation", anchor: .leading)
+                    })
+                }
+                .scrollIndicators(.hidden)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            Divider()
+            SettingsContentView(selection: selection)
         }
         .frame(width: 560, height: 520)
+    }
+}
+
+struct SettingsContentView: View {
+    let selection: SettingsSection
+    @State private var visitedSections: Set<SettingsSection> = []
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: selection.icon)
+                AppLocalizedText(selection.title)
+            }
+            .font(.headline)
+            .padding()
+
+            // Keep visited panes mounted so draft credentials and connection-test
+            // results survive section changes, as they did in the original TabView.
+            ZStack {
+                ForEach(SettingsSection.allCases) { section in
+                    if selection == section || visitedSections.contains(section) {
+                        content(for: section)
+                            .opacity(selection == section ? 1 : 0)
+                            .disabled(selection != section)
+                            .allowsHitTesting(selection == section)
+                            .accessibilityHidden(selection != section)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onChange(of: selection, initial: true) { previous, current in
+            visitedSections.formUnion([previous, current])
+        }
+    }
+
+    @ViewBuilder private func content(for section: SettingsSection) -> some View {
+        switch section {
+        case .server: ServerSettingsTab()
+        case .tailscale: TailscaleSettingsTab()
+        case .ai: AISettingsTab()
+        case .terminal: TerminalSettingsTab()
+        case .appearance: AppearanceSettingsTab()
+        }
     }
 }
 
