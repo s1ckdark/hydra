@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/s1ckdark/hydra/internal/domain"
 	"github.com/s1ckdark/hydra/internal/infra/ssh"
 	"github.com/s1ckdark/hydra/internal/infra/tailscale"
+	"github.com/s1ckdark/hydra/internal/repository"
 	"github.com/s1ckdark/hydra/internal/repository/sqlite"
 	"github.com/s1ckdark/hydra/internal/usecase"
 	"github.com/s1ckdark/hydra/internal/usecase/agent"
@@ -221,16 +223,20 @@ func main() {
 	var gpuLister agent.GPULister // nil — no bulk GPU snapshot path exists yet
 	agentRegistry := agent.NewActionRegistry(deviceUC, orchUC, monitorUC, gpuLister, cmdRunner, orchMgr)
 	agentValidator := agent.NewValidator(deviceUC, orchUC)
+	teamStore := repository.NewFileAgentTeams(filepath.Join(config.GetConfigDir(), "agent-teams.json"))
+	teamService := agent.NewTeamService(teamStore, orchUC, buildTeamLLM)
+	h.SetAgentTeams(teamService)
 	rebuildAgent := func(ai config.AIConfig) {
 		reg := buildAIRegistry(ai)
-		if chatLLM := buildChatLLM(reg); chatLLM != nil {
-			uc := agent.NewAgentUseCase(chatLLM, agentRegistry, agentValidator)
-			uc.SetInstruction(ai.Instruction)
-			h.SetAgentUseCase(uc)
+		chatLLM := buildChatLLM(reg)
+		uc := agent.NewAgentUseCase(chatLLM, agentRegistry, agentValidator)
+		uc.SetInstruction(ai.Instruction)
+		uc.SetTeamService(teamService)
+		h.SetAgentUseCase(uc)
+		if chatLLM != nil {
 			log.Printf("[agent] chat agent enabled (provider=%s)", ai.Resolve("chat").Provider)
 		} else {
-			h.SetAgentUseCase(nil)
-			log.Printf("[agent] chat agent disabled (no chat-role provider configured)")
+			log.Printf("[agent] global chat disabled; orchestration team models remain available")
 		}
 	}
 	rebuildAgent(cfg.Agent.AI)
@@ -383,6 +389,8 @@ func main() {
 	apiWrite.POST("/agent/execute", h.APIAgentExecute)
 	apiWrite.POST("/agent/command", h.APIAgentCommand)
 	apiWrite.POST("/agent/assess", h.APIAgentAssess)
+	apiWrite.GET("/orchs/:id/ai-agents", h.APIGetAgentTeam)
+	apiWrite.PUT("/orchs/:id/ai-agents", h.APIPutAgentTeam)
 
 	// Config routes (Tailscale network auth required)
 	apiWrite.GET("/config/tailscale", h.APIGetTailscaleConfig)

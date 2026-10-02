@@ -20,6 +20,7 @@ type AgentUseCase struct {
 	actions     *ActionRegistry
 	val         *Validator
 	instruction string // user-defined system instruction, appended to prompts
+	teams       *TeamService
 }
 
 func NewAgentUseCase(llm LLMClient, actions *ActionRegistry, val *Validator) *AgentUseCase {
@@ -30,14 +31,31 @@ func NewAgentUseCase(llm LLMClient, actions *ActionRegistry, val *Validator) *Ag
 // command assistant's system prompts. Empty clears it.
 func (a *AgentUseCase) SetInstruction(s string) { a.instruction = s }
 
+// SetTeamService is called before publishing this use case to request handlers.
+func (a *AgentUseCase) SetTeamService(s *TeamService) { a.teams = s }
+
+func (a *AgentUseCase) HasLLM() bool { return a != nil && a.llm != nil }
+
 // Chat sends one user message + truncated history to the LLM and returns
 // its structured reply. If the LLM proposes a plan, we run the validator
 // up-front so the UI can disable Run when the plan is already stale.
 // Validation issues are appended to the response message rather than
 // dropped — the user (and the LLM in the next turn) can see them.
-func (a *AgentUseCase) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error) {
+func (a *AgentUseCase) Chat(ctx context.Context, req ChatRequest) (response ChatResponse, responseErr error) {
+	if req.HasTeamScope() {
+		if a.teams == nil {
+			return ChatResponse{}, ErrTeamUnavailable
+		}
+		return a.teams.chat(ctx, a, req)
+	}
 	if a.llm == nil {
 		return ChatResponse{}, fmt.Errorf("chat agent: no LLM configured")
+	}
+	progress := runTracker(ctx)
+	progress.BeginAgent()
+	defer func() { progress.FinishAgent(ctx, responseErr) }()
+	if err := ctx.Err(); err != nil {
+		return ChatResponse{}, err
 	}
 	instruction := req.Instruction
 	if instruction == "" {
@@ -47,6 +65,9 @@ func (a *AgentUseCase) Chat(ctx context.Context, req ChatRequest) (ChatResponse,
 	prompt := a.buildUserPrompt(req)
 	resp, err := AskOnce(ctx, a.llm, system, prompt)
 	if err != nil {
+		return ChatResponse{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return ChatResponse{}, err
 	}
 	if resp.Type == ChatTypePlan && resp.Plan != nil {
@@ -86,9 +107,15 @@ func joinErrs(errs []error) string {
 // errors don't abort the rest — every action gets a status in the
 // response.
 func (a *AgentUseCase) Execute(ctx context.Context, plan Plan) (ExecuteResponse, error) {
+	progress := runTracker(ctx)
 	results := make([]ActionResult, 0, len(plan.Actions))
-	for _, action := range plan.Actions {
+	for i, action := range plan.Actions {
+		if progress != nil && ctx.Err() != nil {
+			progress.SkipActions(i, len(plan.Actions), "Request cancelled before dispatch")
+			return ExecuteResponse{Results: results}, ctx.Err()
+		}
 		if perActionErr := a.val.Validate(ctx, Plan{Actions: []Action{action}}); len(perActionErr) > 0 {
+			progress.Action(i, "skipped", "Action did not pass validation")
 			results = append(results, ActionResult{
 				Type:   action.Type,
 				Status: "error",
@@ -96,9 +123,42 @@ func (a *AgentUseCase) Execute(ctx context.Context, plan Plan) (ExecuteResponse,
 			})
 			continue
 		}
-		results = append(results, a.actions.Run(ctx, action))
+		if progress != nil && ctx.Err() != nil {
+			progress.SkipActions(i, len(plan.Actions), "Request cancelled before dispatch")
+			return ExecuteResponse{Results: results}, ctx.Err()
+		}
+		progress.Action(i, "running", "Executing action")
+		if progress != nil && ctx.Err() != nil {
+			progress.Action(i, "cancelled", "Request cancelled before dispatch")
+			progress.SkipActions(i+1, len(plan.Actions), "Request cancelled before dispatch")
+			return ExecuteResponse{Results: results}, ctx.Err()
+		}
+		result := a.actions.Run(ctx, action)
+		results = append(results, result)
+		if result.Status == "ok" {
+			progress.Action(i, "completed", "Action completed")
+		} else if ctx.Err() != nil {
+			progress.Action(i, "cancelled", "Action interrupted; outcome may be incomplete")
+		} else {
+			progress.Action(i, "failed", "Action failed")
+		}
 	}
 	return ExecuteResponse{Results: results, Summary: a.summarizeResults(ctx, plan, results)}, nil
+}
+
+// ExecuteRequest preserves the selected model for an explicitly approved plan.
+// Legacy requests without a selection retain their existing execution path.
+func (a *AgentUseCase) ExecuteRequest(ctx context.Context, req ExecuteRequest) (ExecuteResponse, error) {
+	if req.invalidScope || (req.selectionPresent && req.ModelSelection == nil) {
+		return ExecuteResponse{}, TeamInputError("scoped execution requires a complete model_selection")
+	}
+	if req.ModelSelection != nil {
+		if a.teams == nil {
+			return ExecuteResponse{}, ErrTeamUnavailable
+		}
+		return a.teams.execute(ctx, a, req)
+	}
+	return a.Execute(ctx, req.Plan)
 }
 
 // summarizeResults asks the LLM for a short natural-language explanation of
@@ -106,7 +166,9 @@ func (a *AgentUseCase) Execute(ctx context.Context, plan Plan) (ExecuteResponse,
 // summary above the raw terminal output. Empty when no LLM is configured or
 // the call fails — the raw results still stand on their own.
 func (a *AgentUseCase) summarizeResults(ctx context.Context, plan Plan, results []ActionResult) string {
+	progress := runTracker(ctx)
 	if a.llm == nil || len(results) == 0 {
+		progress.Summary("skipped", "No summary was requested")
 		return ""
 	}
 	var sb strings.Builder
@@ -122,11 +184,27 @@ func (a *AgentUseCase) summarizeResults(ctx context.Context, plan Plan, results 
 	system := "You explain the results of executed actions to a user in 1-3 plain, " +
 		"natural-language sentences. State what was done and the key finding from the " +
 		"output. Be concise and factual. No markdown, no code fences."
-	out, err := a.llm.Complete(ctx, system, sb.String())
-	if err != nil {
+	progress.Summary("running", "Preparing the execution summary")
+	if ctx.Err() != nil {
+		progress.Summary("cancelled", "Request cancelled")
 		return ""
 	}
-	return strings.TrimSpace(out)
+	out, err := a.llm.Complete(ctx, system, sb.String())
+	if err != nil {
+		if ctx.Err() != nil {
+			progress.Summary("cancelled", "Summary request cancelled")
+		} else {
+			progress.Summary("failed", "Summary unavailable")
+		}
+		return ""
+	}
+	out = strings.TrimSpace(out)
+	if out == "" {
+		progress.Summary("failed", "Summary returned no text")
+	} else {
+		progress.Summary("completed", "Summary prepared")
+	}
+	return out
 }
 
 func truncate(s string, max int) string {
