@@ -67,7 +67,7 @@ class SettingsRepository(private val context: Context) : SettingsSource {
     }
 
     companion object {
-        const val DEFAULT_SERVER_URL = "http://localhost:8080"
+        const val DEFAULT_SERVER_URL = "http://100.125.85.81:8081"
         const val DEFAULT_SSH_USERNAME = "root"
         private val SERVER_URL = stringPreferencesKey("serverUrl")
         private val AI_INSTRUCTION = stringPreferencesKey("aiInstruction")

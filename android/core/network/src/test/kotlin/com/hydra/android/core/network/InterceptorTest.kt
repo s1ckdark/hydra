@@ -9,6 +9,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertTrue
 
 private class FakeConfig(var url: String, var key: String?) : ServerConfigProvider {
     override fun baseUrl() = url
@@ -84,16 +91,46 @@ class InterceptorTest {
     }
 
     @Test
-    fun `base url interceptor leaves the request alone when the config is unparseable`() {
+    fun `base url interceptor rejects an invalid configured URL before network dispatch`() {
         val config = FakeConfig("not a url", null)
         val client = OkHttpClient.Builder()
             .addInterceptor(BaseUrlInterceptor(config)).build()
         server.enqueue(MockResponse().setBody("{}"))
 
-        client.newCall(Request.Builder().url(server.url("/health")).build())
-            .execute().close()
+        val failure = runCatching {
+            client.newCall(Request.Builder().url(server.url("/health")).build()).execute().close()
+        }.exceptionOrNull()
+        assertTrue(failure is java.io.IOException)
+        assertEquals(0, server.requestCount)
+    }
 
-        assertEquals("/health", server.takeRequest().path)
+    @Test
+    fun `clearing hydrated custom URL never reads its key or contacts a fallback server`() {
+        val fallback = MockWebServer().also { it.start() }
+        var configuredUrl = server.url("/").toString()
+        var authReads = 0
+        val config = object : ServerConfigProvider {
+            override fun baseUrl() = configuredUrl
+            override fun apiKey(): String { authReads++; return "custom-server-key" }
+        }
+        val client = OkHttpClient.Builder().addInterceptor(BaseUrlInterceptor(config))
+            .addInterceptor(AuthInterceptor(config)).build()
+        try {
+            server.enqueue(MockResponse().setBody("{}"))
+            client.newCall(Request.Builder().url(fallback.url("/health")).build()).execute().close()
+            assertEquals("Bearer custom-server-key", server.takeRequest().getHeader("Authorization"))
+            for (edited in listOf("", "   ", "incomplete-address")) {
+                configuredUrl = edited
+                authReads = 0
+                val failure = runCatching {
+                    client.newCall(Request.Builder().url(fallback.url("/health")).build()).execute().close()
+                }.exceptionOrNull()
+                assertTrue(failure is java.io.IOException)
+                assertEquals(0, authReads)
+                assertEquals(0, fallback.requestCount)
+                assertEquals(1, server.requestCount)
+            }
+        } finally { fallback.shutdown() }
     }
 
     @Test
@@ -147,5 +184,39 @@ class InterceptorTest {
         val recorded = server.takeRequest()
         assertEquals("GET", recorded.method)
         assertEquals("Bearer k", recorded.getHeader("Authorization"))
+    }
+
+    @Test
+    fun `legacy calls await saved URL hydration before reading key or contacting default`() = runBlocking {
+        val defaultServer = MockWebServer().also { it.start() }
+        val hydrated = CompletableDeferred<Unit>()
+        val config = object : ServerConfigProvider {
+            override fun baseUrl() = if (hydrated.isCompleted) server.url("/").toString() else defaultServer.url("/").toString()
+            override fun apiKey(): String { assertTrue(hydrated.isCompleted); return "custom-server-key" }
+            override suspend fun awaitReady() { hydrated.await() }
+        }
+        try {
+            server.enqueue(MockResponse().setBody("{}"))
+            val client = OkHttpClient.Builder().addInterceptor(BaseUrlInterceptor(config)).addInterceptor(AuthInterceptor(config)).build()
+            val result = async(Dispatchers.IO) { client.newCall(Request.Builder().url("http://placeholder.invalid/health").build()).execute().close() }
+            delay(50)
+            assertEquals(0, defaultServer.requestCount)
+            assertEquals(0, server.requestCount)
+            hydrated.complete(Unit)
+            withTimeout(3_000) { result.await() }
+            assertEquals(0, defaultServer.requestCount)
+            assertEquals("Bearer custom-server-key", server.takeRequest().getHeader("Authorization"))
+        } finally { defaultServer.shutdown() }
+    }
+
+    @Test
+    fun `legacy auth uses captured credentials rather than rereading after origin change`() {
+        val config = FakeConfig(server.url("/").toString(), "captured-key")
+        server.enqueue(MockResponse().setBody("{}"))
+        val client = OkHttpClient.Builder().addInterceptor(BaseUrlInterceptor(config))
+            .addInterceptor { chain -> config.key = "replacement-key"; chain.proceed(chain.request()) }
+            .addInterceptor(AuthInterceptor(config)).build()
+        client.newCall(Request.Builder().url("http://placeholder.invalid/health").build()).execute().close()
+        assertEquals("Bearer captured-key", server.takeRequest().getHeader("Authorization"))
     }
 }

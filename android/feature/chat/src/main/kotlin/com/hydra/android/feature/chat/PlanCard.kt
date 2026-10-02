@@ -13,6 +13,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -75,8 +77,8 @@ fun PlanCard(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = onCancel) { Text("Cancel") }
-            Button(onClick = onRun, enabled = !isThinking) { Text("Run") }
+            TextButton(onClick = onCancel, enabled = !isThinking, modifier = Modifier.testTag("chat-cancel-plan")) { Text(stringResource(R.string.chat_cancel)) }
+            Button(onClick = onRun, enabled = !isThinking, modifier = Modifier.testTag("chat-run-plan")) { Text(stringResource(R.string.chat_run)) }
         }
     }
 }

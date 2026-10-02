@@ -11,6 +11,11 @@ import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
+import javax.inject.Qualifier
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class AgentNetwork
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -50,4 +55,17 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideHydraApi(retrofit: Retrofit): HydraApi = retrofit.create(HydraApi::class.java)
+
+    @Provides @Singleton @AgentNetwork
+    fun provideAgentHttp(config: ServerConfigProvider): OkHttpClient = agentHttpClient(config)
+
+    @Provides @Singleton
+    fun provideAgentApi(@AgentNetwork client: OkHttpClient, json: Json): AgentApi = Retrofit.Builder()
+        .baseUrl("http://placeholder.invalid/").client(client)
+        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .build().create(AgentApi::class.java)
+
+    @Provides @Singleton
+    fun provideAgentStreamTransport(@AgentNetwork client: OkHttpClient, config: ServerConfigProvider, json: Json): AgentStreamTransport =
+        OkHttpAgentStreamTransport(client, config, json)
 }

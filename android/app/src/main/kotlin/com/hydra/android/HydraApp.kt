@@ -17,11 +17,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.hydra.android.feature.chat.CHAT_ROUTE
+import com.hydra.android.feature.chat.ChatViewModel
 import com.hydra.android.feature.chat.chatScreen
 import com.hydra.android.feature.dashboard.DASHBOARD_ROUTE
 import com.hydra.android.feature.dashboard.dashboardScreen
@@ -64,8 +67,11 @@ enum class HydraDestination(
 }
 
 @Composable
-fun HydraApp() {
+fun HydraApp(chatViewModel: ChatViewModel = hiltViewModel()) {
     val navController = rememberNavController()
+    // Keep the chat session at the activity level so switching to Orchs does
+    // not discard its running stream, captured model selection, or approval.
+    val chatState by chatViewModel.state.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
@@ -115,12 +121,28 @@ fun HydraApp() {
                 onOpenDetail = { id -> navController.navigate(orchDetailRoute(id)) },
                 onOpenCreate = { navController.navigate(CREATE_ORCH_ROUTE) },
                 onBack = { navController.popBackStack() },
+                onOpenAgentChat = { target ->
+                    if (chatViewModel.selectAgent(target)) {
+                        navController.navigate(CHAT_ROUTE) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                },
+                canSwitchAgent = chatState.canSwitchAgent,
+                agentRun = chatState.agentRun,
+                runOrchestrationId = chatState.runOrchestrationId,
+                progressDisconnected = chatState.progressDisconnected,
+                progressUnavailable = chatState.progressUnavailable,
             )
             tasksScreens(
                 onOpenEditor = { id -> navController.navigate(taskEditorRoute(id)) },
                 onBack = { navController.popBackStack() },
             )
-            chatScreen()
+            chatScreen(viewModel = chatViewModel)
             settingsScreen(
                 onOpenSshKey = { navController.navigate(SSH_KEY_ROUTE) },
                 onBack = { navController.popBackStack() },

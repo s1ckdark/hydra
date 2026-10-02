@@ -8,4 +8,7 @@ package com.hydra.android.core.network
 interface ServerConfigProvider {
     fun baseUrl(): String
     fun apiKey(): String?
+    /** Fakes/default providers are ready immediately; DataStore waits for its first value. */
+    fun isReady(): Boolean = true
+    suspend fun awaitReady() = Unit
 }

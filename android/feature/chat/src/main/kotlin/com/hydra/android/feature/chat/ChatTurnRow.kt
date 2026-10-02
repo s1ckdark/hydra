@@ -17,6 +17,7 @@ fun ChatTurnRow(turn: ChatTurn) {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        turn.modelSelection?.let { ModelSelectionLabel(it) }
         Text(turn.content, style = MaterialTheme.typography.bodyMedium)
     }
 }

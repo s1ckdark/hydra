@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_title">Chat</string>
+    <string name="chat_input_hint">Ask…</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_fixed_model">Explicit model</string>
+    <string name="chat_head_selected">Chosen by head</string>
+    <string name="chat_head_will_choose">The head will choose a model when you send.</string>
+    <string name="chat_default">Default Hydra Chat</string>
+    <string name="chat_switch_blocked">Finish the request and run or cancel the plan before switching.</string>
+    <string name="chat_expand_tree">Expand Agent Tree</string>
+    <string name="chat_disconnected">Connection interrupted. The latest state is unknown.</string>
+    <string name="chat_progress_unavailable">Live progress is unavailable from this server.</string>
+    <string name="chat_empty_title">Ask Hydra</string>
+    <string name="chat_empty_hint">Ask a question or request an action.</string>
+    <string name="chat_processing">Processing…</string>
+    <string name="chat_tree_title">Agent Tree</string>
+    <string name="chat_close">Close</string>
+    <string name="chat_cancel">Cancel</string>
+    <string name="chat_run">Run</string>
+</resources>

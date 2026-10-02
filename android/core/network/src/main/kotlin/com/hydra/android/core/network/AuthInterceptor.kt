@@ -13,7 +13,8 @@ import okhttp3.Response
  */
 class AuthInterceptor(private val config: ServerConfigProvider) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
-        val key = config.apiKey()?.trim().orEmpty()
+        val captured = chain.request().tag(CapturedServerAuth::class.java)
+        val key = (if (captured != null) captured.apiKey else config.apiKey())?.trim().orEmpty()
         if (key.isEmpty()) return chain.proceed(chain.request())
         return chain.proceed(
             chain.request().newBuilder()
