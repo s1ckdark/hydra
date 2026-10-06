@@ -65,6 +65,8 @@ type Handler struct {
 	monitorUC          *usecase.MonitorUseCase
 	failoverUC         *usecase.FailoverUseCase
 	agentUC            *agent.AgentUseCase
+	agentMu            sync.RWMutex
+	agentTeams         *agent.TeamService
 	executor           RemoteExecutor
 	sshRecoverer       SSHRecoverer
 	cfg                *config.Config
@@ -130,7 +132,19 @@ func (h *Handler) SetAIArbiterRebuilder(rebuild func(ai config.AIConfig)) {
 
 // SetAgentUseCase wires the chat agent. Optional — if not set, the
 // agent endpoints return 503 with a clear error.
-func (h *Handler) SetAgentUseCase(a *agent.AgentUseCase) { h.agentUC = a }
+func (h *Handler) SetAgentUseCase(a *agent.AgentUseCase) {
+	h.agentMu.Lock()
+	defer h.agentMu.Unlock()
+	h.agentUC = a
+}
+
+func (h *Handler) agentUseCase() *agent.AgentUseCase {
+	h.agentMu.RLock()
+	defer h.agentMu.RUnlock()
+	return h.agentUC
+}
+
+func (h *Handler) SetAgentTeams(s *agent.TeamService) { h.agentTeams = s }
 
 // SetAgentRebuilder wires a callback invoked after PUT /api/config/ai so the
 // chat agent's LLM (used by Ask AI and the agent chat) is rebuilt live when

@@ -26,6 +26,10 @@ let package = Package(
                 .product(name: "KnownHosts", package: "TerminalCore", condition: .when(platforms: [.macOS])),
             ],
             path: "Hydra",
+            // 번역 테이블은 scripts/bundle-app.sh가 .app/Contents/Resources로 직접 복사한다
+            // (SwiftUI Text 리터럴이 Bundle.main에서 찾도록). SwiftPM 리소스로 넣으면 Bundle.module로 가고
+            // defaultLocalization도 요구하므로 제외한다.
+            exclude: ["Resources"],
             resources: [
                 .process("Assets.xcassets")
             ],

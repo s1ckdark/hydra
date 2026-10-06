@@ -10,6 +10,7 @@ import SwiftTerm
 /// named `TerminalTabView` (see TerminalView.swift) to avoid the clash.
 struct SwiftTermRepresentable: NSViewRepresentable {
     let session: TerminalSession
+    var settings: TerminalSettings = TerminalSettings()
 
     func makeCoordinator() -> Coordinator { Coordinator(session: session) }
 
@@ -21,10 +22,20 @@ struct SwiftTermRepresentable: NSViewRepresentable {
             guard let view else { return }
             view.feed(byteArray: [UInt8](data)[...])
         }
+        applySettings(to: view, coordinator: context.coordinator)
         return view
     }
 
-    func updateNSView(_ nsView: SwiftTerm.TerminalView, context: Context) {}
+    func updateNSView(_ nsView: SwiftTerm.TerminalView, context: Context) {
+        applySettings(to: nsView, coordinator: context.coordinator)
+    }
+
+    /// SwiftUI는 update를 자주 부른다 — 이전에 적용한 값과 다른 항목만 반영한다.
+    private func applySettings(to view: SwiftTerm.TerminalView, coordinator: Coordinator) {
+        guard coordinator.appliedSettings != settings else { return }
+        settings.apply(to: view, previous: coordinator.appliedSettings)
+        coordinator.appliedSettings = settings
+    }
 
     // SwiftTerm의 TerminalView는 intrinsicContentSize를 안 정하고 초기 프레임이
     // 640×400 고정이라, 기본 sizing에서는 SwiftUI가 뷰를 늘리지 않아 페인을 100%
@@ -38,6 +49,7 @@ struct SwiftTermRepresentable: NSViewRepresentable {
 
     final class Coordinator: NSObject, TerminalViewDelegate {
         let session: TerminalSession
+        var appliedSettings: TerminalSettings?
         init(session: TerminalSession) { self.session = session }
 
         // TerminalViewDelegate 콜백은 메인 스레드로 오지만, SwiftUI가 이 NSView를

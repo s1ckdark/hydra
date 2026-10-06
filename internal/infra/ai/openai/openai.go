@@ -11,14 +11,15 @@ import (
 	ai "github.com/s1ckdark/hydra/internal/infra/ai"
 )
 
-const defaultModel    = "gpt-4o"
+const defaultModel = "gpt-4o"
 const defaultEndpoint = "https://api.openai.com/v1/chat/completions"
 
 type Provider struct {
-	apiKey   string
-	model    string
-	endpoint string
-	client   *http.Client
+	apiKey               string
+	model                string
+	endpoint             string
+	client               *http.Client
+	completionTokenLimit bool
 }
 
 func NewProvider(apiKey, model string) *Provider {
@@ -26,10 +27,11 @@ func NewProvider(apiKey, model string) *Provider {
 		model = defaultModel
 	}
 	return &Provider{
-		apiKey:   apiKey,
-		model:    model,
-		endpoint: defaultEndpoint,
-		client:   &http.Client{},
+		apiKey:               apiKey,
+		model:                model,
+		endpoint:             defaultEndpoint,
+		client:               &http.Client{},
+		completionTokenLimit: true,
 	}
 }
 
@@ -69,9 +71,13 @@ func (p *Provider) Complete(ctx context.Context, system, prompt string) (string,
 	messages = append(messages, map[string]string{"role": "user", "content": prompt})
 
 	reqBody := map[string]interface{}{
-		"model":      p.model,
-		"max_tokens": 1024,
-		"messages":   messages,
+		"model":    p.model,
+		"messages": messages,
+	}
+	if p.completionTokenLimit {
+		reqBody["max_completion_tokens"] = 4096
+	} else {
+		reqBody["max_tokens"] = 1024
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {

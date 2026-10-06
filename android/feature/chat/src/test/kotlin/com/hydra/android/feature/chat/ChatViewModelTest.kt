@@ -32,7 +32,7 @@ import org.junit.Test
 private val PLAN = AgentPlan("check uptime", listOf(AgentAction("exec", JsonObject(emptyMap()))))
 
 /** Never called; ChatRepository is subclassed, not exercised through it. */
-private object FakeUnusedApi : HydraApi {
+internal object FakeUnusedApi : HydraApi {
     override suspend fun health() = throw UnsupportedOperationException()
     override suspend fun listDevices(refresh: Boolean?, includeMobile: Boolean?) =
         throw UnsupportedOperationException()
@@ -79,7 +79,7 @@ private class FakeChatRepository(
     override suspend fun execute(plan: AgentPlan) = executeResult
 }
 
-private class FakeSettings(instruction: String = "") : SettingsSource {
+internal class FakeSettings(instruction: String = "") : SettingsSource {
     override val serverUrl = MutableStateFlow("")
     override val aiInstruction = MutableStateFlow(instruction)
     override val hideMobileDevices = MutableStateFlow(false)

@@ -38,6 +38,7 @@ struct AppearanceModifier: ViewModifier {
     // 옵셔널: nil = 사용자가 Font를 명시 선택한 적 없음 → 프리셋 기본 폰트 사용.
     @AppStorage("appFontDesign") private var fontDesign: String?
     @AppStorage("appFontScale") private var fontScale = appFontScaleDefault
+    @AppStorage(AppAppearancePreferences.languageKey) private var language = AppDisplayLanguage.deviceDefault().rawValue
 
     private var appStyle: AppStyle { AppStyle(rawValue: style) ?? .defaultStyle }
 
@@ -47,6 +48,7 @@ struct AppearanceModifier: ViewModifier {
             .fontDesign(resolvedFontDesign(stored: fontDesign, style: appStyle))
             .dynamicTypeSize(appDynamicTypeSize(forScalePercent: fontScale))
             .preferredColorScheme((AppTheme(rawValue: theme) ?? .system).colorScheme)
+            .environment(\.locale, Locale(identifier: (AppDisplayLanguage(rawValue: language) ?? .deviceDefault()).rawValue))
     }
 }
 
@@ -63,12 +65,23 @@ struct AppearanceSettingsTab: View {
     @AppStorage(AppStyle.storageKey) private var style = AppStyle.defaultStyle.rawValue
     @AppStorage("appFontDesign") private var fontDesign: String?
     @AppStorage("appFontScale") private var fontScale = appFontScaleDefault
+    @AppStorage(AppAppearancePreferences.languageKey) private var language = AppDisplayLanguage.deviceDefault().rawValue
     @Environment(\.theme) private var themeTokens
 
     private var appStyle: AppStyle { AppStyle(rawValue: style) ?? .defaultStyle }
 
     var body: some View {
         Form {
+            Section {
+                Picker("Language", selection: $language) {
+                    ForEach(AppDisplayLanguage.allCases) { Text(verbatim: $0.label).tag($0.rawValue) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            } header: {
+                Text("Language")
+            }
+
             Section {
                 Picker("Style", selection: $style) {
                     ForEach(AppStyle.allCases) { Text($0.label).tag($0.rawValue) }

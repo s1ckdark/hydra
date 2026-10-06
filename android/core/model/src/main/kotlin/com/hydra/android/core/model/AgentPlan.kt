@@ -1,6 +1,7 @@
 package com.hydra.android.core.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Transient
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -50,11 +51,19 @@ data class ActionResult(
 }
 
 @Serializable
-data class AgentExecuteRequest(val plan: AgentPlan)
+data class AgentExecuteRequest(
+    val plan: AgentPlan,
+    @SerialName("model_selection") val modelSelection: AgentModelSelection? = null,
+    @SerialName("run_id") val runId: String? = null,
+    @Transient val expectedServerUrl: String? = null,
+)
 
 @Serializable
 data class AgentExecuteResponse(
     val results: List<ActionResult> = emptyList(),
     /** Natural-language summary generated server-side; the UI computes its own. */
     val summary: String? = null,
+    @SerialName("run_id") val runId: String? = null,
 )
+
+typealias ExecuteResponse = AgentExecuteResponse

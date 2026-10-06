@@ -60,6 +60,9 @@ func parseChatResponse(raw string) (ChatResponse, error) {
 	if err := json.Unmarshal([]byte(candidate), &resp); err != nil {
 		return ChatResponse{}, fmt.Errorf("unmarshal: %w", err)
 	}
+	// Model provenance is assigned by our routing layer, never by LLM text.
+	resp.ModelSelection = nil
+	resp.RunID = ""
 	switch resp.Type {
 	case ChatTypeAsk:
 		return resp, nil

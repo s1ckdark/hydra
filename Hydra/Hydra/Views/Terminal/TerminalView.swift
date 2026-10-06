@@ -148,8 +148,10 @@ private struct SidebarRowView: View {
         .opacity(row.isEnabled ? 1 : 0.4)
         .listRowBackground(isActive ? Color.accentColor.opacity(0.18) : nil)
         .help(row.isEnabled
-              ? (row.sessionId == nil ? "\(row.name)에 SSH 터미널 세션 열기" : "세션으로 이동")
-              : "오프라인이거나 SSH를 사용할 수 없는 노드")
+              ? (row.sessionId == nil
+                 ? AppLocalization.format("%@에 SSH 터미널 세션 열기", row.name)
+                 : AppLocalization.string("세션으로 이동"))
+              : AppLocalization.string("오프라인이거나 SSH를 사용할 수 없는 노드"))
     }
 }
 
@@ -171,11 +173,29 @@ private struct SessionStateDot: View {
 
 private struct TerminalSessionPane: View {
     @ObservedObject var session: TerminalSession
+    @ObservedObject private var settingsStore = TerminalSettingsStore.shared
+    @State private var showingSettings = false
     var body: some View {
         VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                // Button 대신 TapLabel — _ButtonGesture 크래시 회피(파일 상단 주석).
+                TapLabel(action: { showingSettings = true }) {
+                    Image(systemName: "gearshape")
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .help(AppLocalization.string("터미널 설정"))
+                }
+                .accessibilityIdentifier("terminal-node-settings")
+                .popover(isPresented: $showingSettings, arrowEdge: .top) {
+                    TerminalNodeSettingsPanel(deviceID: session.deviceId, nodeName: session.deviceName)
+                        .frame(width: 420, height: 560)
+                }
+            }
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .background(.bar)
             if case .disconnected(let reason) = session.state {
                 HStack {
-                    Text(reason ?? "연결 끊김").foregroundColor(.red).font(.caption)
+                    Text(reason ?? AppLocalization.string("연결 끊김")).foregroundColor(.red).font(.caption)
                     Spacer()
                     // Button 대신 TapLabel — _ButtonGesture 크래시 회피(파일 상단 주석).
                     TapLabel(action: { Task { await session.connect(cols: 80, rows: 24) } }) {
@@ -187,7 +207,7 @@ private struct TerminalSessionPane: View {
                     }
                 }.padding(6).background(Color.red.opacity(0.08))
             }
-            SwiftTermRepresentable(session: session)
+            SwiftTermRepresentable(session: session, settings: settingsStore.effective(for: session.deviceId))
                 // 페인을 꽉 채운다. 없으면 SwiftTerm NSView가 고유 크기(초기 80×24
                 // 그리드)로 작아져 창을 100% 안 채운다. 채우면 SwiftTerm이 bounds에서
                 // cols/rows를 다시 계산하고 sizeChanged→session.resize로 원격 PTY까지 맞춘다.

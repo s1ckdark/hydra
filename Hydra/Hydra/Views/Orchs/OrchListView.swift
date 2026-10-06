@@ -26,7 +26,7 @@ struct OrchListView: View {
                         }
                     }
             }
-            .navigationTitle("Orchestrations")
+            .localizedNavigationTitle("Orchestrations")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: { vm.showCreateSheet = true }) {
@@ -124,6 +124,10 @@ struct OrchDetailView: View {
                 }
 
                 // Health
+                #if os(macOS)
+                OrchAIAgentsSection(orch: orch).id(orch.id)
+                #endif
+
                 if let health = vm.health {
                     GroupBox("Node Health") {
                         ForEach(health.nodes) { node in
@@ -157,7 +161,7 @@ struct OrchDetailView: View {
                         Button(action: {
                             Task { await vm.execute(command: command) }
                         }) {
-                            Label(vm.isExecuting ? "Running..." : "Run on All Workers", systemImage: "play.fill")
+                            Label(AppLocalization.string(vm.isExecuting ? "Running..." : "Run on All Workers"), systemImage: "play.fill")
                         }
                         .disabled(command.isEmpty || vm.isExecuting)
 

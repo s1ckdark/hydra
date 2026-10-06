@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import javax.inject.Singleton
 
 @Module
@@ -60,7 +61,9 @@ object DataModule {
         val provider = SettingsServerConfigProvider(secureStore)
         // Keeps the atomic cell current for the non-suspending interceptors.
         CoroutineScope(SupervisorJob()).launch {
-            settings.serverUrl.collectLatest { provider.updateServerUrl(it) }
+            try { settings.serverUrl.collectLatest { provider.updateServerUrl(it) } }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { provider.failReadiness() }
         }
         return provider
     }

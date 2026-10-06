@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_title">채팅</string>
+    <string name="chat_input_hint">질문 입력…</string>
+    <string name="chat_send">보내기</string>
+    <string name="chat_fixed_model">직접 지정한 모델</string>
+    <string name="chat_head_selected">헤드가 선택한 모델</string>
+    <string name="chat_head_will_choose">메시지를 보내면 헤드가 모델을 선택합니다.</string>
+    <string name="chat_default">기본 Hydra 채팅</string>
+    <string name="chat_switch_blocked">요청이 끝난 후 계획을 실행하거나 취소하면 전환할 수 있습니다.</string>
+    <string name="chat_expand_tree">에이전트 트리 펼치기</string>
+    <string name="chat_disconnected">연결이 끊어져 최신 상태를 확인할 수 없습니다.</string>
+    <string name="chat_progress_unavailable">이 서버에서는 실시간 진행 상태를 확인할 수 없습니다.</string>
+    <string name="chat_empty_title">Hydra에게 물어보기</string>
+    <string name="chat_empty_hint">질문하거나 작업을 요청하세요.</string>
+    <string name="chat_processing">처리 중…</string>
+    <string name="chat_tree_title">에이전트 트리</string>
+    <string name="chat_close">닫기</string>
+    <string name="chat_cancel">취소</string>
+    <string name="chat_run">실행</string>
+</resources>

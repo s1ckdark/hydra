@@ -29,7 +29,7 @@ struct TasksView: View {
                         Button("Delete", role: .destructive) { store.delete(task) }
                     }
             }
-            .navigationTitle("Tasks")
+            .localizedNavigationTitle("Tasks")
             .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 380)
             .toolbar {
                 ToolbarItem {
@@ -169,10 +169,10 @@ struct TaskDetailView: View {
 
                 // Info grid
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                    InfoCard(label: "Target", value: task.targetDeviceName ?? "Select at runtime")
+                    InfoCard(label: "Target", value: task.targetDeviceName ?? AppLocalization.string("Select at runtime"))
                     InfoCard(label: "Timeout", value: "\(task.timeout)s")
                     InfoCard(label: "Priority", value: task.priority.rawValue.capitalized)
-                    InfoCard(label: "Schedule", value: task.schedule?.displayText ?? "Off")
+                    InfoCard(label: "Schedule", value: task.schedule?.displayText ?? AppLocalization.string("Off"))
                     if !task.requiredCapabilities.isEmpty {
                         InfoCard(label: "Capabilities", value: task.requiredCapabilities.joined(separator: ", "))
                     }
@@ -205,7 +205,7 @@ struct TaskDetailView: View {
                         } label: {
                             HStack {
                                 Image(systemName: store.runningTaskIds.contains(task.id) ? "hourglass" : "play.fill")
-                                Text(store.runningTaskIds.contains(task.id) ? "Running..." : "Run Now")
+                                AppLocalizedText(store.runningTaskIds.contains(task.id) ? "Running..." : "Run Now")
                             }
                         }
                         .buttonStyle(.borderedProminent)
@@ -218,7 +218,7 @@ struct TaskDetailView: View {
                                 HStack {
                                     Image(systemName: result.hasError ? "xmark.circle.fill" : "checkmark.circle.fill")
                                         .foregroundStyle(result.hasError ? .red : .green)
-                                    Text(result.hasError ? "Failed" : "Success")
+                                    AppLocalizedText(result.hasError ? "Failed" : "Success")
                                         .font(.caption.bold())
                                     Spacer()
                                     Text(String(format: "%.0fms", result.durationMs))
@@ -271,7 +271,7 @@ private struct InfoCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label)
+            AppLocalizedText(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text(value)
@@ -303,7 +303,7 @@ struct TaskEditorSheet: View {
         VStack(spacing: 0) {
             // Title bar
             HStack {
-                Text(isEditing ? "Edit Task" : "New Task")
+                AppLocalizedText(isEditing ? "Edit Task" : "New Task")
                     .font(.headline)
                 Spacer()
                 Button("Cancel") { onCancel() }

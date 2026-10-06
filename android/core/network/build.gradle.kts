@@ -13,6 +13,7 @@ dependencies {
     implementation(libs.retrofit.serialization)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:${libs.versions.coroutinesTest.get()}")
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     testImplementation(libs.junit)

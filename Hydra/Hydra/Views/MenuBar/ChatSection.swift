@@ -68,9 +68,9 @@ struct ChatSection: View {
         if let plan = vm.pendingPlan {
             return "Plan pending (\(plan.actions.count) action\(plan.actions.count == 1 ? "" : "s"))"
         }
-        if vm.isThinking { return "Thinking…" }
-        if vm.error != nil { return "Error" }
-        return "Idle"
+        if vm.isThinking { return AppLocalization.string("Thinking…") }
+        if vm.error != nil { return AppLocalization.string("Error") }
+        return AppLocalization.string("Idle")
     }
 
     private var statusColor: Color {

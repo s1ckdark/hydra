@@ -62,6 +62,12 @@ if [[ -d "$RESOURCE_BUNDLE" ]]; then
     cp -R "$RESOURCE_BUNDLE" "$APP/Contents/Resources/"
 fi
 
+# 공유 번역 테이블 — SwiftUI Text 리터럴은 Bundle.main에서 .lproj를 찾는다.
+cp -R Hydra/Resources/*.lproj "$APP/Contents/Resources/"
+
+# 번들 터미널 폰트 (TerminalFontCatalog.registerBundledFonts가 Resources/Fonts에서 찾는다)
+cp -R Hydra/Resources/Fonts "$APP/Contents/Resources/"
+
 echo "[4/7] compiling Assets.car via actool"
 XCASSETS="Hydra/Assets.xcassets"
 if [[ -d "$XCASSETS" ]]; then

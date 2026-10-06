@@ -1,6 +1,7 @@
 package com.hydra.android.core.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Transient
 import java.util.UUID
 
@@ -17,6 +18,7 @@ data class ChatTurn(
     val content: String,
     val plan: AgentPlan? = null,
     val results: List<ActionResult>? = null,
+    @Transient val modelSelection: AgentModelSelection? = null,
 ) {
     @Transient
     val id: String = UUID.randomUUID().toString()
@@ -28,6 +30,9 @@ data class ChatRequest(
     val message: String,
     /** Per-request system instruction, so the Settings field applies immediately. */
     val instruction: String? = null,
+    @SerialName("orchestration_id") val orchestrationId: String? = null,
+    @SerialName("agent_id") val agentId: String? = null,
+    @Transient val expectedServerUrl: String? = null,
 )
 
 /** Either `ask` (clarifying question, no plan) or `plan` (intent + actions). */
@@ -36,4 +41,6 @@ data class ChatResponse(
     val type: String,
     val message: String,
     val plan: AgentPlan? = null,
+    @SerialName("model_selection") val modelSelection: AgentModelSelection? = null,
+    @SerialName("run_id") val runId: String? = null,
 )

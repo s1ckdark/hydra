@@ -4,6 +4,8 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.hydra.android.core.model.AgentChatTarget
+import com.hydra.android.core.model.AgentRunSnapshot
 
 const val ORCHS_ROUTE = "orchs"
 const val CREATE_ORCH_ROUTE = "orchs/create"
@@ -15,6 +17,12 @@ fun NavGraphBuilder.orchsScreens(
     onOpenDetail: (String) -> Unit,
     onOpenCreate: () -> Unit,
     onBack: () -> Unit,
+    onOpenAgentChat: (AgentChatTarget) -> Unit = {},
+    canSwitchAgent: Boolean = true,
+    agentRun: AgentRunSnapshot? = null,
+    runOrchestrationId: String? = null,
+    progressDisconnected: Boolean = false,
+    progressUnavailable: Boolean = false,
 ) {
     composable(ORCHS_ROUTE) {
         OrchsScreen(onOpenDetail = onOpenDetail, onOpenCreate = onOpenCreate)
@@ -29,6 +37,12 @@ fun NavGraphBuilder.orchsScreens(
         OrchDetailScreen(
             orchId = entry.arguments?.getString("orchId").orEmpty(),
             onBack = onBack,
+            onOpenAgentChat = onOpenAgentChat,
+            canSwitchAgent = canSwitchAgent,
+            agentRun = agentRun,
+            runOrchestrationId = runOrchestrationId,
+            progressDisconnected = progressDisconnected,
+            progressUnavailable = progressUnavailable,
         )
     }
 }

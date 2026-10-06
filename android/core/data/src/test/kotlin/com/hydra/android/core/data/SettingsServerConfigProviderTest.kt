@@ -2,6 +2,8 @@ package com.hydra.android.core.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private class FakeSecureStore(private var key: String?) : SecureStore {
@@ -16,9 +18,10 @@ private class FakeSecureStore(private var key: String?) : SecureStore {
 class SettingsServerConfigProviderTest {
 
     @Test
-    fun `defaults to localhost before any settings emission arrives`() {
+    fun `uses deployed default before hydration without being ready`() {
         val provider = SettingsServerConfigProvider(FakeSecureStore(null))
-        assertEquals("http://localhost:8080", provider.baseUrl())
+        assertFalse(provider.isReady())
+        assertEquals("http://100.125.85.81:8081", provider.baseUrl())
     }
 
     @Test
@@ -29,10 +32,20 @@ class SettingsServerConfigProviderTest {
     }
 
     @Test
-    fun `blank server url falls back to the default rather than breaking requests`() {
-        val provider = SettingsServerConfigProvider(FakeSecureStore(null))
+    fun `cleared custom server stays blank instead of selecting the default`() {
+        val provider = SettingsServerConfigProvider(FakeSecureStore("custom-server-key"))
+        provider.updateServerUrl("http://custom.example:8080")
         provider.updateServerUrl("   ")
-        assertEquals("http://localhost:8080", provider.baseUrl())
+        assertEquals("", provider.baseUrl())
+        assertTrue(provider.isReady())
+    }
+
+    @Test
+    fun `invalid stored server URL remains invalid instead of selecting the default`() {
+        val provider = SettingsServerConfigProvider(FakeSecureStore("custom-server-key"))
+        provider.updateServerUrl("  incomplete-address  ")
+        assertEquals("incomplete-address", provider.baseUrl())
+        assertTrue(provider.isReady())
     }
 
     @Test
@@ -40,6 +53,14 @@ class SettingsServerConfigProviderTest {
         val provider = SettingsServerConfigProvider(FakeSecureStore(null))
         provider.updateServerUrl("  http://1.2.3.4:8080  ")
         assertEquals("http://1.2.3.4:8080", provider.baseUrl())
+    }
+
+    @Test
+    fun `existing stored localhost URL is preserved after hydration`() {
+        val provider = SettingsServerConfigProvider(FakeSecureStore(null))
+        provider.updateServerUrl("http://localhost:8080")
+        assertEquals("http://localhost:8080", provider.baseUrl())
+        assertTrue(provider.isReady())
     }
 
     @Test

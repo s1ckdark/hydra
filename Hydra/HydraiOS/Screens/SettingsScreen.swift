@@ -20,6 +20,12 @@ struct SettingsScreen: View {
             }
             AppearanceSettingsSection()
             DeviceRefreshSettingsSection(model: dashboardVM)
+            Section("터미널") {
+                NavigationLink("터미널 설정") {
+                    TerminalSettingsScreen(nodeName: { id in dashboardVM.devices.first { $0.id == id }?.displayName ?? id })
+                }
+                .accessibilityIdentifier("settings-terminal-scheme")
+            }
             Section("SSH") {
                 TextField("username", text: $sshUsername)
                     .textInputAutocapitalization(.never)

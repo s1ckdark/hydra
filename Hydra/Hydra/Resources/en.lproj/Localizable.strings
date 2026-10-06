@@ -7,7 +7,7 @@
 "앱 언어" = "App language";
 "테마" = "Theme";
 "언어 및 테마" = "Language and theme";
-"선택하면 바로 적용됩니다. 시스템 설정을 선택하면 기기 설정을 따릅니다." = "Changes apply immediately. Select System to follow your device settings.";
+"선택하면 바로 적용됩니다." = "Changes apply immediately.";
 "설정" = "Settings";
 "Settings" = "Settings";
 "기기" = "Devices";
@@ -262,3 +262,429 @@
 "서버의 공개키 등록 명령이 실패했습니다. 서버의 명령 실행 허용 여부와 기본 셸 설정을 확인하세요." = "The server's public key registration command failed. Check command execution permissions and the default shell settings.";
 "공개키가 추가되었을 수 있으므로 터미널에서 연결을 확인하세요." = "The public key may have been added; check the connection in a terminal.";
 " (서버 종료 코드: %d)" = " (server exit code: %d)";
+"Language" = "Language";
+
+/* MARK: macOS ChatDrawerView */
+"Expand to full window" = "Expand to full window";
+"Close drawer" = "Close drawer";
+"Active tab is auto-included as context." = "Active tab is auto-included as context.";
+"Ask…" = "Ask…";
+
+/* MARK: macOS ChatTabView */
+"Ask Hydra anything" = "Ask Hydra anything";
+"e.g. \\\"list devices\\\" or \\\"create an orch on home-mac\\\"" = "e.g. \"list devices\" or \"create an orch on home-mac\"";
+"Ask Hydra…" = "Ask Hydra…";
+
+/* MARK: macOS ConnectionView */
+"서버를 찾고 있습니다..." = "Searching for server...";
+"연결 중..." = "Connecting...";
+"서버를 찾을 수 없습니다" = "Server not found";
+"인증에 실패했습니다" = "Authentication failed";
+
+/* MARK: macOS ContentView */
+"Hydra" = "Hydra";
+"Open chat (⌘/)" = "Open chat (⌘/)";
+"Console" = "Console";
+"디바이스 정보를 불러오는 중…" = "Loading device information…";
+"로컬 서버 시작 중…" = "Starting local server…";
+
+/* MARK: macOS ConsoleView */
+"새 스니펫" = "New Snippet";
+"실행" = "Run";
+"로컬(:8080)에서 실행됨 — 사용자 코드가 이 머신에서 그대로 실행됩니다." = "Runs locally (:8080) — your code executes directly on this machine.";
+
+/* MARK: macOS DashboardView */
+"Force refresh — re-probe and re-collect metrics from every device" = "Force refresh — re-probe and re-collect metrics from every device";
+"Server Connected" = "Server Connected";
+"Server Disconnected" = "Server Disconnected";
+"Checking..." = "Checking...";
+"Utilization" = "Utilization";
+"Avg Util" = "Avg Util";
+"GPUs" = "GPUs";
+"Allow = run all · Ask = approve each · Auto = AI runs safe ones, asks on risky" = "Allow = run all · Ask = approve each · Auto = AI runs safe ones, asks on risky";
+"Command, or describe a goal for the AI agent…" = "Command, or describe a goal for the AI agent…";
+"Ask the AI agent to plan & run this" = "Ask the AI agent to plan & run this";
+"Run this command directly on the selected device" = "Run this command directly on the selected device";
+"Remove from history" = "Remove from history";
+"Running..." = "Running...";
+"Terminal output" = "Terminal output";
+"GPU Nodes" = "GPU Nodes";
+"online" = "online";
+"·" = "·";
+"CPU" = "CPU";
+"RAM" = "RAM";
+"GPU" = "GPU";
+"Open %@" = "Open %@";
+"— offline" = "— offline";
+
+/* MARK: macOS DeviceListView */
+"Search devices" = "Search devices";
+"Show mobile devices (iPhone / iPad)" = "Show mobile devices (iPhone / iPad)";
+"Hide mobile devices — worker-only view" = "Hide mobile devices — worker-only view";
+"Done editing" = "Done editing";
+"Edit device order & visibility" = "Edit device order & visibility";
+"Select a device" = "Select a device";
+"터미널 열기" = "Open Terminal";
+"이 디바이스로 SSH 터미널 세션을 엽니다 — Terminal 탭에서 확인" = "Opens an SSH terminal session to this device — check the Terminal tab";
+"OS" = "OS";
+"User" = "User";
+"Enabled" = "Enabled";
+"Disabled" = "Disabled";
+"Unknown" = "Unknown";
+"Load:" = "Load:";
+"Ping" = "Ping";
+"Ping device" = "Ping device";
+"Probing" = "Probing";
+"min" = "min";
+"avg" = "avg";
+"max" = "max";
+"loss" = "loss";
+"Target" = "Target";
+"succeeded" = "succeeded";
+"Click Ping device to measure TCP connect latency to this device's Tailscale IP." = "Click Ping device to measure TCP connect latency to this device's Tailscale IP.";
+"Core" = "Core";
+"VRAM" = "VRAM";
+"Fan speed" = "Fan speed";
+"Current SM / memory clock" = "Current SM / memory clock";
+"Performance state — P0 is max, P12+ is idle" = "Performance state — P0 is max, P12+ is idle";
+"Current PCIe link" = "Current PCIe link";
+"Processes" = "Processes";
+"Policy:" = "Policy:";
+"Allow = run all · Ask = approve each · Auto = AI judges safety, asks on risky" = "Allow = run all · Ask = approve each · Auto = AI judges safety, asks on risky";
+"Shell command to run on this device…" = "Shell command to run on this device…";
+"Execute" = "Execute";
+"Need the AI agent? Open Chat (⌘/) — it already knows this device." = "Need the AI agent? Open Chat (⌘/) — it already knows this device.";
+"이 호스트 SSH 공개키" = "This host's SSH public key";
+"~/.ssh에 키가 없어요. Ed25519 키페어를 생성하고 공개키를 복사합니다." = "No key found in ~/.ssh. Generates an Ed25519 key pair and copies the public key.";
+"디바이스 ~/.ssh/authorized_keys에 등록할 공개키를 클립보드로 복사합니다." = "Copies the public key to the clipboard for registering in the device's ~/.ssh/authorized_keys.";
+"원격 ~/.ssh/authorized_keys 에 붙여넣어 사용" = "Paste into the remote ~/.ssh/authorized_keys";
+"복사됨" = "Copied";
+"복사됨 — " = "Copied — ";
+"Tailscale addresses" = "Tailscale addresses";
+"MagicDNS" = "MagicDNS";
+"IPv4" = "IPv4";
+"IPv6" = "IPv6";
+"Copy %@" = "Copy %@";
+"Taildrop" = "Taildrop";
+"Select or drag and drop a file to send it to this device…" = "Select or drag and drop a file to send it to this device…";
+"Select a File…" = "Select a File…";
+"Sending" = "Sending";
+"Sending…" = "Sending…";
+"Sent %@ to %@" = "Sent %1$@ to %2$@";
+"SSH 연결 경고: %@" = "SSH connection warning: %@";
+"SSH 복구 배너 닫기" = "Dismiss SSH recovery banner";
+"지금 재시도" = "Retry now";
+"새 호스트 키를 신뢰하시겠습니까?" = "Trust the new host key?";
+"이 새 키 신뢰" = "Trust this new key";
+"연결 일시 중단됨 — 재시도 대기 중" = "Connection suspended — waiting to retry";
+"SSH 연결 오류" = "SSH connection error";
+"신뢰하고 업데이트" = "Trust and update";
+"재시도" = "Retry";
+"로그인 정보 확인" = "Check login credentials";
+"키 파일 위치 확인" = "Check key file location";
+"Tailscale 열기" = "Open Tailscale";
+"다시 진단" = "Diagnose again";
+"SSH 연결 진단" = "Diagnose SSH connection";
+"SSH 키가 서버의 authorized_keys에 등록되어 있는지, 사용자 계정이 올바른지 확인하세요." = "Check that the SSH key is registered in the server's authorized_keys and that the account is correct.";
+"Hydra가 사용하는 SSH 개인키 경로를 환경 설정에서 확인하세요." = "Check the SSH private key path Hydra uses in Preferences.";
+"SSH 연결이 정상입니다." = "The SSH connection is healthy.";
+"진단을 시작할 수 없습니다. 잠시 후 다시 시도하세요." = "Could not start diagnosis. Try again shortly.";
+"호스트 키가 업데이트되었습니다. 재연결 중..." = "Host key updated. Reconnecting...";
+"키를 저장하지 못했습니다. 잠시 후 다시 시도하세요." = "Could not save the key. Try again shortly.";
+"재시도 중..." = "Retrying...";
+"재시도를 시작할 수 없습니다. 잠시 후 다시 시도하세요." = "Could not start the retry. Try again shortly.";
+"Head Node" = "Head Node";
+"Unknown error" = "Unknown error";
+
+/* MARK: macOS ChatSection (MenuBar) */
+"Open Chat" = "Open Chat";
+"Idle" = "Idle";
+
+/* MARK: macOS MenuBarView */
+"GPU Orch Manager" = "GPU Orch Manager";
+"connection error" = "connection error";
+"Open Dashboard" = "Open Dashboard";
+"Refresh Now" = "Refresh Now";
+"Quit" = "Quit";
+
+/* MARK: macOS CreateOrchView */
+"Orchestration name" = "Orchestration name";
+
+/* MARK: macOS OrchListView */
+"Orchestrations" = "Orchestrations";
+"Select a orch" = "Select a orch";
+"Command..." = "Command...";
+"Running on All Workers" = "Running on All Workers";
+"Run on All Workers" = "Run on All Workers";
+
+/* MARK: macOS AISettingsTab */
+"Provider" = "Provider";
+"API key" = "API key";
+"Endpoint" = "Endpoint";
+"Model (optional)" = "Model (optional)";
+"Model" = "Model";
+"(optional)" = "(optional)";
+"e.g. Prefer read-only commands. Answer concisely in Korean. Use nvidia-smi for GPU checks." = "e.g. Prefer read-only commands. Answer concisely in Korean. Use nvidia-smi for GPU checks.";
+"Sent with every Ask AI request — applies immediately, no server push needed." = "Sent with every Ask AI request — applies immediately, no server push needed.";
+"① AI Provider (Default)" = "① AI Provider (Default)";
+"② AI Instruction (optional)" = "② AI Instruction (optional)";
+"③ Verify" = "③ Verify";
+"④ Advanced (optional)" = "④ Advanced (optional)";
+"⑤ Save" = "⑤ Save";
+"Test Connection" = "Test Connection";
+"Testing…" = "Testing…";
+"Invalid provider or endpoint" = "Invalid provider or endpoint";
+"No response" = "No response";
+"Connected to" = "Connected to";
+"Save Locally" = "Save Locally";
+"Save & Push to Server" = "Save & Push to Server";
+"Test the connection first before saving." = "Test the connection first before saving.";
+"Pushing to server…" = "Pushing to server…";
+"Saved to Keychain" = "Saved to Keychain";
+"Saved locally & pushed to server" = "Saved locally & pushed to server";
+"Uses the default provider above." = "Uses the default provider above.";
+"Overrides are stored locally. Push to server to apply." = "Overrides are stored locally. Push to server to apply.";
+"claude, openai, ollama…" = "claude, openai, ollama…";
+"endpoint URL" = "endpoint URL";
+"Saved" = "Saved";
+"Invalid server URL:" = "Invalid server URL:";
+"Server returned" = "Server returned";
+
+/* MARK: macOS AppearanceSettingsTab */
+"Style" = "Style";
+"Theme" = "Theme";
+"Font" = "Font";
+"Text size" = "Text size";
+"Preview" = "Preview";
+"The quick brown fox jumps over the lazy dog" = "The quick brown fox jumps over the lazy dog";
+"Devices 12/12 online · 6 GPUs" = "Devices 12/12 online · 6 GPUs";
+"$ nvidia-smi --query-gpu=utilization.gpu --format=csv" = "$ nvidia-smi --query-gpu=utilization.gpu --format=csv";
+
+/* MARK: macOS SettingsView */
+"tmux 세션 지속" = "Persist tmux session";
+"세션 지속" = "Persist session";
+"Server URL" = "Server URL";
+"API Key (optional)" = "API Key (optional)";
+"Only needed when connecting from outside the Tailscale network. On localhost or Tailscale, requests are authenticated automatically.\\n\\nTo generate a key: run `hydra config set api-key <your-key>` on the server, then enter the same key here." = "Only needed when connecting from outside the Tailscale network. On localhost or Tailscale, requests are authenticated automatically.\n\nTo generate a key: run `hydra config set api-key <your-key>` on the server, then enter the same key here.";
+"Hydra Server Connection" = "Hydra Server Connection";
+"Failed: non-200 response" = "Failed: non-200 response";
+"Connected —" = "Connected —";
+"Error:" = "Error:";
+"Tailnet" = "Tailnet";
+"OAuth Client ID" = "OAuth Client ID";
+"OAuth Client Secret" = "OAuth Client Secret";
+"Auth Method" = "Auth Method";
+"Tailscale API Key" = "Tailscale API Key";
+"Generate at admin.tailscale.com > Settings > Keys" = "Generate at admin.tailscale.com > Settings > Keys";
+"Create OAuth client at admin.tailscale.com > Settings > OAuth clients" = "Create OAuth client at admin.tailscale.com > Settings > OAuth clients";
+"① Tailscale Network" = "① Tailscale Network";
+"Your Tailscale tailnet name (e.g. \\\"myteam.org\\\" or use \\\"-\\\" for default)" = "Your Tailscale tailnet name (e.g. \"myteam.org\" or use \"-\" for default)";
+"② Authentication" = "② Authentication";
+"Connecting to Tailscale API..." = "Connecting to Tailscale API...";
+"④ Save" = "④ Save";
+"Save locally and send credentials to the hydra server" = "Save locally and send credentials to the hydra server";
+"Pushing to server..." = "Pushing to server...";
+"Invalid tailnet name" = "Invalid tailnet name";
+"Authentication failed — check your API key or OAuth credentials" = "Authentication failed — check your API key or OAuth credentials";
+"Connected to Tailscale API" = "Connected to Tailscale API";
+"Tailscale API returned status" = "Tailscale API returned status";
+
+/* MARK: macOS TasksView */
+"Select a task or create a new one" = "Select a task or create a new one";
+"Duplicate" = "Duplicate";
+"Timeout" = "Timeout";
+"Capabilities" = "Capabilities";
+"Last Run" = "Last Run";
+"Off" = "Off";
+"Target device:" = "Target device:";
+"Failed" = "Failed";
+"Success" = "Success";
+"Edit Task" = "Edit Task";
+"New Task" = "New Task";
+"Task Name" = "Task Name";
+"Command" = "Command";
+"seconds" = "seconds";
+"Add capability (e.g. gpu, gps)" = "Add capability (e.g. gpu, gps)";
+"Every" = "Every";
+"minutes" = "minutes";
+
+/* MARK: macOS TerminalView */
+"왼쪽에서 노드를 선택하세요." = "Select a node on the left.";
+"세션으로 이동" = "Go to session";
+"%@에 SSH 터미널 세션 열기" = "Open an SSH terminal session to %@";
+"오프라인이거나 SSH를 사용할 수 없는 노드" = "Node is offline or SSH is unavailable";
+"연결 끊김" = "Disconnected";
+"재연결" = "Reconnect";
+"새 호스트키" = "New host key";
+"신뢰" = "Trust";
+
+/* MARK: macOS misc (coverage fixups) */
+"ms" = "ms";
+"Appearance" = "Appearance";
+"Enable Schedule" = "Enable Schedule";
+
+/* MARK: macOS review fix wave — window titles, SSH banner, numeric copy, format substitutions */
+"%lld workers" = "%lld workers";
+"Results from %lld workers" = "Results from %lld workers";
+"Terminal output · %lld/%lld actions ok" = "Terminal output · %lld/%lld actions ok";
+"up %@" = "up %@";
+"SSH OK" = "SSH OK";
+"네트워크 연결 불가" = "Network unreachable";
+"호스트 키가 변경되었습니다" = "Host key changed";
+"SSH 인증 실패" = "SSH authentication failed";
+"SSH 키 파일 문제" = "SSH key file problem";
+"Tailscale 확인 필요" = "Check Tailscale";
+"SSH 오류" = "SSH error";
+"%lld GPUs total" = "%lld GPUs total";
+"%lld running" = "%lld running";
+"%lld total" = "%lld total";
+"%lld device offline:" = "%lld device offline:";
+"%lld devices offline:" = "%lld devices offline:";
+"Sending %@…" = "Sending %@…";
+"Connection failed:" = "Connection failed:";
+
+/* MARK: terminal settings */
+"블록 (깜빡임)" = "Block (blinking)";
+"블록" = "Block";
+"밑줄 (깜빡임)" = "Underline (blinking)";
+"밑줄" = "Underline";
+"세로줄 (깜빡임)" = "Bar (blinking)";
+"세로줄" = "Bar";
+"색상 테마" = "Color theme";
+"폰트" = "Font";
+"크기 %lld pt" = "Size %lld pt";
+"동작" = "Behavior";
+"커서" = "Cursor";
+"스크롤백" = "Scrollback";
+"%lld줄" = "%lld lines";
+"(사용할 수 없음)" = "(unavailable)";
+"노드별 설정이 없습니다." = "No per-node settings.";
+"초기화" = "Reset";
+"노드별 설정" = "Per-node settings";
+"터미널 화면의 ⚙에서 '전체 설정 따르기'를 끄면 그 노드만의 설정을 쓸 수 있습니다." = "Turn off 'Use global settings' from ⚙ in a terminal to give that node its own settings.";
+"터미널 설정" = "Terminal settings";
+"전체 설정 따르기" = "Use global settings";
+"설정 화면의 터미널 설정을 그대로 씁니다." = "Uses the terminal settings from Settings.";
+"여기서 바꾼 값은 이 노드에만 적용됩니다." = "Changes here apply only to this node.";
+"글자 크게" = "Bigger text";
+"글자 작게" = "Smaller text";
+"기본 크기" = "Default size";
+"Aa" = "Aa";
+
+/* MARK: Orchestration AI agents */
+"AI Agents" = "AI Agents";
+"API keys are kept by the server. Leave a saved key blank to keep it." = "API keys are kept by the server. Leave a saved key blank to keep it.";
+"Add Agent" = "Add Agent";
+"Add Connection" = "Add Connection";
+"Add Model" = "Add Model";
+"Add agents with their own roles and models for this orchestration." = "Add agents with their own roles and models for this orchestration.";
+"Add at least one model for the head to assign to agents." = "Add at least one model for the head to assign to agents.";
+"Agent Model" = "Agent Model";
+"Agent Name" = "Agent Name";
+"Agent and connection IDs must be unique." = "Agent and connection IDs must be unique.";
+"Agents" = "Agents";
+"An API key is required for this connection." = "An API key is required for this connection.";
+"An agent refers to a removed connection or model. Choose another model or let the head decide." = "An agent refers to a removed connection or model. Choose another model or let the head decide.";
+"Choose a supported provider." = "Choose a supported provider.";
+"Chosen by head" = "Chosen by head";
+"Configure AI Agents" = "Configure AI Agents";
+"Configure Agents" = "Configure Agents";
+"Connection Name" = "Connection Name";
+"Default Hydra Chat" = "Default Hydra Chat";
+"Endpoint (optional for cloud providers)" = "Endpoint (optional for cloud providers)";
+"Enter an API key for each new or changed cloud connection." = "Enter an API key for each new or changed cloud connection.";
+"Enter an HTTP or HTTPS endpoint without embedded credentials." = "Enter an HTTP or HTTPS endpoint without embedded credentials.";
+"Enter at least one exact model ID for each connection." = "Enter at least one exact model ID for each connection.";
+"Enter exact model IDs available to your account. One connection can provide several models." = "Enter exact model IDs available to your account. One connection can provide several models.";
+"Exact model ID" = "Exact model ID";
+"Explicit model" = "Explicit model";
+"Give every agent a name and role instructions." = "Give every agent a name and role instructions.";
+"Give every connection a name." = "Give every connection a name.";
+"Head Model" = "Head Model";
+"Head will choose a model when you send." = "Head will choose a model when you send.";
+"Let head decide" = "Let head decide";
+"Model IDs" = "Model IDs";
+"Model IDs must be unique within a connection." = "Model IDs must be unique within a connection.";
+"Open Agent Chat" = "Open Agent Chat";
+"Provider Connections" = "Provider Connections";
+"Remove Agent" = "Remove Agent";
+"Remove Connection" = "Remove Connection";
+"Remove Model" = "Remove Model";
+"Remove leading or trailing spaces from model IDs." = "Remove leading or trailing spaces from model IDs.";
+"Role instructions" = "Role instructions";
+"Run or cancel the pending plan and wait for the current request before switching agents." = "Run or cancel the pending plan and wait for the current request before switching agents.";
+"Saved key available. Leave blank to keep it." = "Saved key available. Leave blank to keep it.";
+"Select an available head model or use global AI settings." = "Select an available head model or use global AI settings.";
+"Switching agents starts a new conversation." = "Switching agents starts a new conversation.";
+"The head chooses a model from these connections using each agent's role and the task. An explicit agent model always wins." = "The head chooses a model from these connections using each agent's role and the task. An explicit agent model always wins.";
+"The server did not return the selected agent's model. Send the request again after updating the server." = "The server did not return the selected agent's model. Send the request again after updating the server.";
+"Unavailable model" = "Unavailable model";
+"Use global AI settings" = "Use global AI settings";
+
+/* MARK: Agent Tree */
+"Agent Tree" = "Agent Tree";
+"Connection interrupted. The latest state is unknown." = "Connection interrupted. The latest state is unknown.";
+"Follow the arrows from left to right. Dashed arrows show delegation." = "Follow the arrows from left to right. Dashed arrows show delegation.";
+"No agent activity has been reported yet." = "No agent activity has been reported yet.";
+"Duration: %.1f s" = "Duration: %.1f s";
+"Step %d" = "Step %d";
+"Expand Agent Tree" = "Expand Agent Tree";
+"Live progress is unavailable from this server." = "Live progress is unavailable from this server.";
+"Queued" = "Queued";
+"Running" = "Running";
+"Waiting for approval" = "Waiting for approval";
+"Completed" = "Completed";
+"Skipped" = "Skipped";
+"Cancelled" = "Cancelled";
+"Status unknown" = "Status unknown";
+"Planning" = "Planning";
+"Executing" = "Executing";
+"Task" = "Task";
+"The progress connection ended before the final result arrived." = "The progress connection ended before the final result arrived.";
+"The progress response exceeded the supported size." = "The progress response exceeded the supported size.";
+"The agent request failed." = "The agent request failed.";
+"Execution may have changed the system. Check its state before requesting another plan." = "Execution may have changed the system. Check its state before requesting another plan.";
+"Orchestration" = "Orchestration";
+"Head model selection" = "Head model selection";
+"Orchestration assistant" = "Orchestration assistant";
+"User approval" = "User approval";
+"List orchestrations" = "List orchestrations";
+"List devices" = "List devices";
+"Summarize results" = "Summarize results";
+"Choosing a registered worker model" = "Choosing a registered worker model";
+"Worker model selected" = "Worker model selected";
+"Preparing a response" = "Preparing a response";
+"Response prepared" = "Response prepared";
+"Waiting for an explicit Run" = "Waiting for an explicit Run";
+"Validating the approved plan" = "Validating the approved plan";
+"Executing action" = "Executing action";
+"Action completed" = "Action completed";
+"Preparing the execution summary" = "Preparing the execution summary";
+"Summary prepared" = "Summary prepared";
+"Execution completed" = "Execution completed";
+"Create orchestration" = "Create orchestration";
+"Delete orchestration" = "Delete orchestration";
+"Execute command" = "Execute command";
+"One or more steps did not complete" = "One or more steps did not complete";
+"Read GPU metrics" = "Read GPU metrics";
+"Read device metrics" = "Read device metrics";
+"Read recent tasks" = "Read recent tasks";
+"Request cancelled" = "Request cancelled";
+"Request failed" = "Request failed";
+"Response completed" = "Response completed";
+"Response could not be prepared" = "Response could not be prepared";
+"Step was not run" = "Step was not run";
+"Summary was not requested" = "Summary was not requested";
+"Unsupported action" = "Unsupported action";
+"Using the global chat model directly" = "Using the global chat model directly";
+"Action did not pass validation" = "Action did not pass validation";
+"Action failed" = "Action failed";
+"No summary was requested" = "No summary was requested";
+"Request cancelled before dispatch" = "Request cancelled before dispatch";
+"Summary request cancelled" = "Summary request cancelled";
+"Summary returned no text" = "Summary returned no text";
+"Summary unavailable" = "Summary unavailable";
+"AI agent teams are not configured" = "AI agent teams are not configured";
+"Explicit agent model override" = "Explicit agent model override";
+"Head selection failed" = "Head selection failed";
+"Current step" = "Current step";

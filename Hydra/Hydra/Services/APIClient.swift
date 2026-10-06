@@ -165,13 +165,26 @@ actor APIClient {
     /// server returns either a clarifying question (type="ask") or a plan
     /// (type="plan").
     func chat(_ request: ChatRequest) async throws -> ChatResponse {
-        return try await post("/api/agent/chat", body: request)
+        return try await post("/api/agent/chat", body: request,
+                              timeout: request.agentID == nil ? nil : 130)
     }
 
     /// Runs a previously returned plan. The server re-validates before
     /// any action runs.
-    func executePlan(_ plan: AgentPlan) async throws -> AgentExecuteResponse {
-        return try await post("/api/agent/execute", body: AgentExecuteRequest(plan: plan))
+    func executePlan(_ plan: AgentPlan, modelSelection: AgentModelSelection? = nil) async throws -> AgentExecuteResponse {
+        return try await post("/api/agent/execute", body: AgentExecuteRequest(plan: plan, modelSelection: modelSelection),
+                              timeout: modelSelection == nil ? nil : 130)
+    }
+
+    func chatStreaming(_ request: ChatRequest, onProgress: @escaping AgentProgressHandler) async throws -> ChatResponse {
+        try await streamPost("/api/agent/chat?stream=1", body: request, finalEvent: "chat_result", onProgress: onProgress)
+    }
+
+    func executePlanStreaming(_ plan: AgentPlan, modelSelection: AgentModelSelection?, runID: String?,
+                              onProgress: @escaping AgentProgressHandler) async throws -> AgentExecuteResponse {
+        try await streamPost("/api/agent/execute?stream=1",
+                             body: AgentExecuteRequest(plan: plan, modelSelection: modelSelection, runID: runID),
+                             finalEvent: "execute_result", onProgress: onProgress)
     }
 
     struct GenerateCommandRequest: Encodable {
@@ -262,6 +275,21 @@ actor APIClient {
         return try await get("/api/orchs/\(id)")
     }
 
+    func getOrchAIAgents(id: String) async throws -> OrchAIAgents {
+        try await get("/api/orchs/\(id)/ai-agents")
+    }
+
+    func saveOrchAIAgents(id: String, configuration: OrchAIAgents) async throws -> OrchAIAgents {
+        var request = URLRequest(url: makeURL("/api/orchs/\(id)/ai-agents"))
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAuth(&request)
+        request.httpBody = try JSONEncoder().encode(configuration)
+        let (data, response) = try await session.data(for: request)
+        try checkResponse(response, data)
+        return try decoder.decode(OrchAIAgents.self, from: data)
+    }
+
     func createOrch(name: String, headID: String, workerIDs: [String]) async throws -> Orch {
         let req = CreateOrchRequest(name: name, head_id: headID, worker_ids: workerIDs)
         return try await post("/api/orchs", body: req)
@@ -327,6 +355,51 @@ actor APIClient {
 
     // MARK: - HTTP
 
+    /// Reads progress and the final DTO from one POST. An older server may
+    /// ignore stream=1 and return JSON; consume that same body without replay.
+    private func streamPost<T: Decodable, B: Encodable>(_ path: String, body: B, finalEvent: String,
+                                                       onProgress: @escaping AgentProgressHandler) async throws -> T {
+        var request = URLRequest(url: makeURL(path))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 130
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream, application/json", forHTTPHeaderField: "Accept")
+        applyAuth(&request)
+        request.httpBody = try JSONEncoder().encode(body)
+        let (bytes, response) = try await session.bytes(for: request)
+        let http = response as? HTTPURLResponse
+        let isSuccess = http.map { (200...299).contains($0.statusCode) } ?? true
+        let isStream = http?.value(forHTTPHeaderField: "Content-Type")?.lowercased().hasPrefix("text/event-stream") == true
+        if !isSuccess || !isStream {
+            var data = Data()
+            for try await byte in bytes {
+                guard data.count < 8 * 1024 * 1024 else { throw AgentStreamError.tooLarge }
+                data.append(byte)
+            }
+            try checkResponse(response, data)
+            return try decoder.decode(T.self, from: data)
+        }
+
+        var framing = AgentSSEDecoder()
+        for try await byte in bytes {
+            guard let event = try framing.feed(byte) else { continue }
+            switch event.name {
+            case "progress":
+                let snapshot = try decoder.decode(AgentRunSnapshot.self, from: event.data)
+                await onProgress(snapshot)
+            case finalEvent:
+                return try decoder.decode(T.self, from: event.data)
+            case "error":
+                let message = (try? decoder.decode([String: String].self, from: event.data))?["error"]
+                throw AgentStreamError.server(message ?? AppLocalization.string("The agent request failed."))
+            default:
+                // Keep-alives and future event types are not final results.
+                continue
+            }
+        }
+        throw AgentStreamError.incomplete
+    }
+
     private func makeURL(_ path: String) -> URL {
         URL(string: path, relativeTo: baseURL)!.absoluteURL
     }
@@ -339,9 +412,10 @@ actor APIClient {
         return try decoder.decode(T.self, from: data)
     }
 
-    private func post<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
+    private func post<T: Decodable, B: Encodable>(_ path: String, body: B, timeout: TimeInterval? = nil) async throws -> T {
         var request = URLRequest(url: makeURL(path))
         request.httpMethod = "POST"
+        if let timeout { request.timeoutInterval = timeout }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         applyAuth(&request)
         request.httpBody = try JSONEncoder().encode(body)

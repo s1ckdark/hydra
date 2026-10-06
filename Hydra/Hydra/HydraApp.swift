@@ -13,6 +13,11 @@ struct HydraApp: App {
     @StateObject private var chatVM = ChatViewModel()
     @StateObject private var appState = AppState()
 
+    init() {
+        TerminalFontCatalog.registerBundledFonts()
+        AppAppearancePreferences().migrateLanguageIfNeeded()
+    }
+
     var body: some Scene {
         #if os(iOS)
         WindowGroup {
@@ -76,6 +81,8 @@ struct HydraApp: App {
                 .keyboardShortcut("z", modifiers: [.command, .shift])
             }
 
+            CommandMenu("Terminal") { TerminalFontCommands() }
+
             CommandMenu("Chat") {
                 Button("Toggle Chat Drawer") {
                     appState.isChatDrawerOpen.toggle()
@@ -96,6 +103,7 @@ struct HydraApp: App {
 
         Settings {
             SettingsView()
+                .environmentObject(dashboardVM)
                 .appAppearance()
         }
 
@@ -159,7 +167,39 @@ struct HydraApp: App {
         await CapabilityReporter.shared.report(via: APIClient.shared)
         #endif
     }
+
 }
+
+#if os(macOS)
+/// "Terminal" 커맨드 메뉴의 폰트 크기 항목. 활성 세션이 있을 때만 활성화되고
+/// (finding 5), 어느 탭/창에 포커스가 있든 `TerminalSessionStore.shared`의
+/// `activeSessionId`(= 세션 id = 노드 id)를 대상으로 한다.
+private struct TerminalFontCommands: View {
+    @ObservedObject private var sessions = TerminalSessionStore.shared
+
+    var body: some View {
+        Group {
+            Button("Increase Font Size") { adjust(1) }
+                .keyboardShortcut("=")
+            Button("Decrease Font Size") { adjust(-1) }
+                .keyboardShortcut("-")
+            Button("Reset Font Size") { reset() }
+                .keyboardShortcut("0")
+        }
+        .disabled(sessions.activeSessionId == nil)
+    }
+
+    private func adjust(_ delta: Double) {
+        guard let id = sessions.activeSessionId else { return }
+        TerminalSettingsStore.shared.adjustFontSize(id, by: delta)
+    }
+
+    private func reset() {
+        guard let id = sessions.activeSessionId else { return }
+        TerminalSettingsStore.shared.resetFontSize(id)
+    }
+}
+#endif
 
 #if os(macOS)
 /// Pins the app's activation policy and re-surfaces the dashboard window

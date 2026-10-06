@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 
 enum AppDisplayLanguage: String, CaseIterable, Identifiable {
-    case system
     case korean = "ko"
     case english = "en"
 
@@ -10,24 +9,20 @@ enum AppDisplayLanguage: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .system: return "System"
         case .korean: return "한국어"
         case .english: return "English"
         }
     }
 
-    func resolvedIdentifier(preferredLanguages: [String] = Locale.preferredLanguages) -> String {
-        switch self {
-        case .korean: return "ko"
-        case .english: return "en"
-        case .system:
-            for identifier in preferredLanguages {
-                let code = identifier.replacingOccurrences(of: "_", with: "-")
-                    .split(separator: "-").first?.lowercased()
-                if let code, code == "ko" || code == "en" { return code }
-            }
-            return "en"
+    /// 기기 선호 언어 중 처음 나오는 ko/en. 둘 다 없으면 English.
+    static func deviceDefault(preferredLanguages: [String] = Locale.preferredLanguages) -> AppDisplayLanguage {
+        for identifier in preferredLanguages {
+            let code = identifier.replacingOccurrences(of: "_", with: "-")
+                .split(separator: "-").first?.lowercased()
+            if code == "ko" { return .korean }
+            if code == "en" { return .english }
         }
+        return .english
     }
 }
 
@@ -43,13 +38,19 @@ struct AppAppearancePreferences {
     }
 
     var language: AppDisplayLanguage {
-        get { AppDisplayLanguage(rawValue: defaults.string(forKey: Self.languageKey) ?? "") ?? .system }
+        get { AppDisplayLanguage(rawValue: defaults.string(forKey: Self.languageKey) ?? "") ?? .deviceDefault() }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Self.languageKey) }
     }
 
     var theme: AppTheme {
         get { AppTheme(rawValue: defaults.string(forKey: Self.themeKey) ?? "") ?? .system }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Self.themeKey) }
+    }
+
+    /// 저장값이 없거나 예전 "system"·알 수 없는 값이면 기기 언어로 한 번 정해 저장한다.
+    func migrateLanguageIfNeeded(preferredLanguages: [String] = Locale.preferredLanguages) {
+        guard AppDisplayLanguage(rawValue: defaults.string(forKey: Self.languageKey) ?? "") == nil else { return }
+        language = .deviceDefault(preferredLanguages: preferredLanguages)
     }
 }
 
@@ -62,7 +63,7 @@ enum AppLocalization {
         defaults: UserDefaults = .standard,
         bundle: Bundle = .main
     ) -> String {
-        let identifier = (language ?? AppAppearancePreferences(defaults: defaults).language).resolvedIdentifier()
+        let identifier = (language ?? AppAppearancePreferences(defaults: defaults).language).rawValue
         guard let path = bundle.path(forResource: identifier, ofType: "lproj"),
               let localizedBundle = Bundle(path: path) else { return key }
         let localized = localizedBundle.localizedString(forKey: key, value: key, table: nil)
@@ -90,7 +91,7 @@ enum AppLocalization {
         let language = AppAppearancePreferences().language
         return String(
             format: string(key, language: language),
-            locale: Locale(identifier: language.resolvedIdentifier()),
+            locale: Locale(identifier: language.rawValue),
             arguments: arguments
         )
     }
@@ -104,20 +105,20 @@ struct AppLocalizedText: View {
     init(_ key: String) { self.key = key }
 
     var body: some View {
-        let language = AppDisplayLanguage(rawValue: locale.language.languageCode?.identifier ?? "") ?? .system
+        let language = AppDisplayLanguage(rawValue: locale.language.languageCode?.identifier ?? "") ?? AppAppearancePreferences().language
         Text(AppLocalization.string(key, language: language))
     }
 }
 
 private struct HydraAppearancePreferencesModifier: ViewModifier {
-    @AppStorage(AppAppearancePreferences.languageKey) private var languageRaw = AppDisplayLanguage.system.rawValue
+    @AppStorage(AppAppearancePreferences.languageKey) private var languageRaw = AppDisplayLanguage.deviceDefault().rawValue
     @AppStorage(AppAppearancePreferences.themeKey) private var themeRaw = AppTheme.system.rawValue
 
     func body(content: Content) -> some View {
-        let language = AppDisplayLanguage(rawValue: languageRaw) ?? .system
+        let language = AppDisplayLanguage(rawValue: languageRaw) ?? .deviceDefault()
         let theme = AppTheme(rawValue: themeRaw) ?? .system
         content
-            .environment(\.locale, Locale(identifier: language.resolvedIdentifier()))
+            .environment(\.locale, Locale(identifier: language.rawValue))
             .preferredColorScheme(theme.colorScheme)
     }
 }
@@ -125,5 +126,29 @@ private struct HydraAppearancePreferencesModifier: ViewModifier {
 extension View {
     func hydraAppearancePreferences() -> some View {
         modifier(HydraAppearancePreferencesModifier())
+    }
+}
+
+/// macOS resolves window/navigation titles outside the environment's
+/// injected `\.locale` (unlike `Text`, which does pick it up), so a plain
+/// `.navigationTitle("Dashboard")` keeps showing English even after the user
+/// switches Hydra's display language to Korean. This modifier reads the
+/// injected locale directly and builds the title from `AppLocalization`
+/// instead, so window/split-view titles track the in-app language.
+private struct LocalizedNavigationTitleModifier: ViewModifier {
+    @Environment(\.locale) private var locale
+    let key: String
+
+    func body(content: Content) -> some View {
+        let language = AppDisplayLanguage(rawValue: locale.language.languageCode?.identifier ?? "") ?? AppAppearancePreferences().language
+        content.navigationTitle(Text(verbatim: AppLocalization.string(key, language: language)))
+    }
+}
+
+extension View {
+    /// Use in place of a raw `.navigationTitle` string-literal call for any title
+    /// that must react to the in-app display language on macOS.
+    func localizedNavigationTitle(_ key: String) -> some View {
+        modifier(LocalizedNavigationTitleModifier(key: key))
     }
 }

@@ -23,6 +23,14 @@ struct ChatResponse: Codable {
     let type: String
     let message: String
     let plan: AgentPlan?
+    var modelSelection: AgentModelSelection? = nil
+    var runID: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case type, message, plan
+        case modelSelection = "model_selection"
+        case runID = "run_id"
+    }
 }
 
 /// Per-action result returned by /api/agent/execute.
@@ -40,6 +48,12 @@ struct AgentExecuteResponse: Codable {
     let results: [ActionResult]
     /// Natural-language summary of the results, generated server-side.
     let summary: String?
+    var runID: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case results, summary
+        case runID = "run_id"
+    }
 }
 
 extension AgentPlan {

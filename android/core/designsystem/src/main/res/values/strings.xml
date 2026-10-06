@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="agent_tree_title">Agent Tree</string>
+    <string name="agent_tree_current_step">Current step</string>
+    <string name="agent_tree_disconnected">Connection interrupted. The latest state is unknown.</string>
+    <string name="agent_tree_direction">Follow arrows from top to bottom. Dashed arrows show delegation.</string>
+    <string name="agent_tree_empty">No agent activity has been reported yet.</string>
+    <string name="agent_tree_duration">Duration: %1$.1f s</string>
+    <string name="agent_tree_task">Task</string>
+    <string name="agent_tree_step">Step %1$d</string>
+    <string name="agent_status_queued">Queued</string>
+    <string name="agent_status_running">Running</string>
+    <string name="agent_status_waiting">Waiting for approval</string>
+    <string name="agent_status_completed">Completed</string>
+    <string name="agent_status_failed">Failed</string>
+    <string name="agent_status_skipped">Skipped</string>
+    <string name="agent_status_cancelled">Cancelled</string>
+    <string name="agent_status_unknown">Status unknown</string>
+    <string name="agent_phase_planning">Planning</string>
+    <string name="agent_phase_executing">Executing</string>
+    <string name="agent_tree_orchestration">Orchestration</string>
+    <string name="agent_tree_head">Head model selection</string>
+    <string name="agent_tree_approval">User approval</string>
+    <string name="agent_tree_summary">Summarize results</string>
+    <string name="agent_action_devices">List devices</string>
+    <string name="agent_action_orchs">List orchestrations</string>
+    <string name="agent_action_metrics">Read device metrics</string>
+    <string name="agent_action_gpu">Read GPU metrics</string>
+    <string name="agent_action_tasks">Read recent tasks</string>
+    <string name="agent_action_create">Create orchestration</string>
+    <string name="agent_action_delete">Delete orchestration</string>
+    <string name="agent_action_execute">Execute command</string>
+</resources>
