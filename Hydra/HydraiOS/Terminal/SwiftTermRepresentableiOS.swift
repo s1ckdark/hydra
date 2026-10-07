@@ -14,13 +14,6 @@ struct SwiftTermRepresentableiOS: UIViewRepresentable {
         let container = NativeTerminalInputView(frame: .zero)
         let view = container.terminal
         view.terminalDelegate = context.coordinator
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--terminal-recovery-ui-test") {
-            // An infinite cursor animation prevents XCTest from reaching UI idle.
-            // Only the isolated navigation fixture uses a steady cursor.
-            view.getTerminal().setCursorStyle(.steadyBlock)
-        }
-        #endif
         // Feed session output into the terminal.
         session.onOutput = { [weak view] data in
             guard let view else { return }
@@ -43,6 +36,14 @@ struct SwiftTermRepresentableiOS: UIViewRepresentable {
         container.backgroundColor = TerminalColorScheme.platformColor(TerminalColorScheme.find(id: settings.colorSchemeID).background)
         container.setNeedsLayout()
         coordinator.appliedSettings = settings
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--terminal-recovery-ui-test") {
+            // An infinite cursor animation prevents XCTest from reaching UI idle.
+            // Only the isolated navigation fixture uses a steady cursor. This must
+            // run after `settings.apply`, which would otherwise restore the blink.
+            container.terminal.getTerminal().setCursorStyle(.steadyBlock)
+        }
+        #endif
     }
 
     static func dismantleUIView(_ uiView: NativeTerminalInputView, coordinator: Coordinator) {
