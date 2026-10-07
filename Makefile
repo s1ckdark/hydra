@@ -191,13 +191,18 @@ help: ## Show this help
 
 ANDROID_JAVA_HOME=/Users/dave/.asdf/installs/java/temurin-21.0.3+9.0.LTS
 
+# Only modules with instrumented tests. A bare `connectedDebugAndroidTest` also
+# installs empty test APKs for every other module, which fail without a runner.
+ANDROID_INSTRUMENTED_TASKS=$(shell cd android && find . -path '*/build' -prune -o -type d -path '*/src/androidTest' -print \
+	| sed -e 's|^\./||' -e 's|/src/androidTest$$||' -e 's|/|:|g' -e 's|^|:|' -e 's|$$|:connectedDebugAndroidTest|' | sort)
+
 android-build: ## Build the Android debug APK
 	@echo "Building Android client..."
 	cd android && JAVA_HOME=$(ANDROID_JAVA_HOME) ./gradlew :app:assembleDebug
 
 android-instrumented-test: ## Run Android instrumented (on-device) tests — needs a running emulator or device
 	@echo "Running Android instrumented tests..."
-	cd android && JAVA_HOME=$(ANDROID_JAVA_HOME) ./gradlew connectedDebugAndroidTest
+	cd android && JAVA_HOME=$(ANDROID_JAVA_HOME) ./gradlew $(ANDROID_INSTRUMENTED_TASKS)
 
 android-test: ## Run Android unit tests
 	@echo "Testing Android client..."
